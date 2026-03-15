@@ -4,11 +4,9 @@ import { NSEServiceClass } from "../nse.service.js";
 import { user_finance_service } from "../onboarding/user.finance.service.js";
 
 class TradingAccountServiceClass extends NSEServiceClass {
-    // kyc_base_url: string;
 
     constructor() {
         super();
-        // this.kyc_base_url = `${env.KYC_BASE_URL}/kyc/v1`;
     }
 
 
@@ -17,7 +15,7 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
         const headers = this.get_nse_headers();
 
-        const response = await axios.post(`${this.kyc_base_url}/nse/v2/registration/client-registration`, {
+        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/client-registration`, {
             data: {
                 reg_details: [data]
             }
@@ -31,11 +29,15 @@ class TradingAccountServiceClass extends NSEServiceClass {
         logger.debug("Client registration response from NSE API ==> ", response.data);
 
 
-        // If data tax_status === 01 (Individual), need to call fatca registration API as well. This is mandatory for individual clients.
-        logger.debug("Client is individual, proceeding with FATCA registration...");
+        if (response.data.code != 1) {
+            logger.warn("Client registration failed with NSE API. Response ==> ", response.data);
+            throw new Error("Client registration failed with NSE API, Reason : " + response.data.data.reg_details[0].reg_remark);
+        }
+
+        logger.debug("Proceeding with FATCA registration...");
         // Call fatca registration API
         const fatca_data = await this.extract_fatca_data(user_id, data);
-        const fatca_res = await axios.post(`${this.kyc_base_url}/nse/v2/registration/fatca-registration`, {
+        const fatca_res = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/fatca-registration`, {
             data: {
                 reg_details: [fatca_data]
             }

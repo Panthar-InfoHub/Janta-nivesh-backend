@@ -15,4 +15,4 @@ kyc_router.get("/mf-verify", login_require, kyc_controller.verify_kyc)
 
 // Trading account specific routes
 kyc_router.get("/pan-verify", login_require, trading_account_controller.pan_verification)
-kyc_router.post("/trading-account", login_require, trading_account_controller.create_trading_account)
+kyc_router.post("/trading-account", login_require, trading_account_controller.create_trading_account) // Client registration API for NSE trading account creation

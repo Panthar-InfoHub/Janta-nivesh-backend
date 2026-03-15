@@ -7,6 +7,7 @@ import { user_service } from "../../services/user.service.js";
 import AppError from "../../middleware/error.middleware.js";
 import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.service.js";
 import { kyc_finnsys_service } from "../../services/kyc/kyc.finnsys.service.js";
+import { nse_service } from "../../services/nse.service.js";
 
 class TradingAccountControllerClass {
     create_trading_account = async (req: Request, res: Response, next: NextFunction) => {
@@ -38,14 +39,35 @@ class TradingAccountControllerClass {
                 });
             }
 
+            /**
+             * Trading account creation flow:
+             * 1. Call client registration API to create trading account in NSE system.
+             * 2. Call FATCA registration API as well.
+             * 3. Update user record with NSE client code and other relevant details.
+             * 4. Generate short URL for client code activation and send it in response.
+             * 
+             * Note: Client code activation is a separate step that user needs to do by clicking on the short URL sent in response. We are not automating that step as it requires user interaction and consent.
+             */
             const data = await trading_account_service.client_registration(req.user!.id, result.data);
-            await user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code });
+            const [_user, short_url_res] = await Promise.all([
+                user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
+                nse_service.get_short_url("CL_ACT", raw_payload.client_code)
+            ]);
+
             logger.info("Trading account created successfully for user id ==> ", req.user?.id, " with client code ==> ", raw_payload.client_code);
+            logger.debug("Short URL response from NSE ==> ", short_url_res);
+
+            if (short_url_res.code != 1) {
+                logger.warn("Failed to generate short URL for trading account creation. Response from NSE ==> ", short_url_res);
+                throw new AppError("Trading account created but failed to generate short URL, Check your registered mail for Client Code activation", 500, "SHORT_URL_ERROR");
+            }
 
             res.status(200).json({
                 success: true,
-                message: "Trading account created successfully",
-                data,
+                message: "Trading account created successfully and FATCA registration completed",
+                data: {
+                    short_url: short_url_res.data.firstHolderLink
+                },
             });
             return;
 
