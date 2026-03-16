@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { mutual_fund_controller } from "../controller/mutual-fund.controller.js";
 import { login_require } from "../middleware/session.middleware.js";
+import { require_mfKyc, require_tradingKyc } from "../middleware/kyc.middleware.js";
 
 export const mututal_fund_router = Router();
 
@@ -10,5 +11,11 @@ mututal_fund_router.get("/:id", mutual_fund_controller.get_mutual_fund_by_id);
 
 
 // Purchasing Mutualfunds
-mututal_fund_router.post("/lumpsum-cart", login_require, mutual_fund_controller.add_to_lumpsum_cart);
-mututal_fund_router.post("/sip-cart", login_require, mutual_fund_controller.add_to_sip_cart);
+mututal_fund_router.post("/lumpsum-cart",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.add_to_lumpsum_cart
+);
+mututal_fund_router.post("/sip-cart",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.add_to_sip_cart
+);

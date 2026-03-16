@@ -50,6 +50,11 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
         logger.debug("FATCA registration response from NSE API ==> ", fatca_res.data);
 
+        if (fatca_res.data.code != 1) {
+            logger.warn("FATCA registration failed with NSE API. Response ==> ", fatca_res.data);
+            throw new Error("FATCA registration failed with NSE API, Reason : " + fatca_res.data.data.reg_details[0].reg_remark);
+        }
+
         return response.data;
     }
 
@@ -59,22 +64,30 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
     private async extract_fatca_data(user_id: string, user_input: any) {
         const income_slab = await user_finance_service.get_income_slab_code(user_id);
+        const full_name = [
+            user_input.primary_holder_first_name,
+            user_input.primary_holder_middle_name,
+            user_input.primary_holder_last_name
+        ]
+            .filter(Boolean)
+            .join(" ");
+
 
         return {
             // --- 1. PREFILLED DATA (Mapped from input) ---
-            pan_rp: user_input.pan_rp || "",
-            inv_name: user_input.inv_name || "",
-            dob: user_input.dob || "",
+            pan_rp: user_input.primary_holder_pan || "",
+            inv_name: full_name || "",
+            dob: user_input.primary_holder_dob_incorporation || "",
             co_bir_inc: user_input.co_bir_inc || "IN",
-            tpin1: user_input.pan_rp || "",
-            log_name: user_input.inv_name || "",
+            tpin1: user_input.primary_holder_pan || "",
+            log_name: full_name,
 
             // --- 2. USER INPUTS (Requested from UI) ---
             addr_type: user_input.addr_type || "1",
             po_bir_inc: user_input.po_bir_inc || "", // Place of birth for individual clients, country of incorporation for non-individual clients
             srce_wealt: user_input.srce_wealt || "", // 01 : Salary | 02 : Business Income | 03 : Gift | 04 : Ancestral Property | 05 : Rental Income | 06 : Prize Money | 07 : Royalty | 08 : Other
             inc_slab: income_slab, // Auto-calculated from user_finance
-            occ_code: user_input.occ_code || "", // store from user kyc process | TODO : user model should have occupation code field to store this data | Don't ask user
+            occ_code: user_input.occupation_code || "", // store from user kyc process | TODO : user model should have occupation code field to store this data | Don't ask user
             occ_type: user_input.occ_type || "", // S - Service; B - Business, O - Others; X - Not Categorized
             pep_flag: user_input.pep_flag || "N",
 

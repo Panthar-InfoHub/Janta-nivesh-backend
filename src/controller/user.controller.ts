@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import { user_service } from "../services/user.service.js";
+import AppError from "../middleware/error.middleware.js";
 
 class UserFinanceControllerClass {
     async onboarding_create(req: Request) {
@@ -42,6 +43,68 @@ class UserFinanceControllerClass {
             next(error);
             return;
         }
+    }
+
+    get_user_cart = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            logger.info(`Fetching user cart for User ID: ${user.id}`);
+
+            const user_cart_res = await user_service.get_user_cart_finnsys(user.log!, user.pwd!)
+
+            logger.debug(`User data fetched successfully ==> `, user_cart_res);
+
+            if (user_cart_res.code != 1) {
+                logger.warn(`Failed to fetch user cart from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_cart_res.code}`);
+                throw new AppError("Failed to fetch user cart from Finnsys", 502, "FINNSYS_CART_FETCH_FAILED");
+            }
+
+            const { sip_items, lump_sum_items } = this.extract_cart_items(user_cart_res);
+
+            res.status(200).json({
+                code: 200,
+                message: "User cart fetched successfully",
+                data: {
+                    sip_items,
+                    lump_sum_items
+                }
+            });
+            return;
+
+        } catch (error) {
+            logger.error(`Error in getting user cart: `, error);
+            next(error);
+            return;
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ================================ HELPER FUNCTIONS ================================
+
+    private extract_cart_items = (finnsys_cart_response: any) => {
+        const sip_items: any = [];
+        const lump_sum_items: any = [];
+        finnsys_cart_response.results.map((item: any) => {
+            if (item.sip_freq) {
+                sip_items.push(item);
+            } else {
+                lump_sum_items.push(item);
+            }
+        })
+        return { sip_items, lump_sum_items };
     }
 }
 

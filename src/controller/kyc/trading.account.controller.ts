@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../../middleware/logger.js";
 import { trading_account_service } from "../../services/kyc/trading.account.service.js";
+import { kyc_type_service } from "../../services/kyc/kyc.type.service.js";
 import { generate_unique_code } from "../../helpers/unique.code.js";
 import { NseRegistrationSchema } from "../../lib/zod-schemas/trading.account.schema.js";
 import { user_service } from "../../services/user.service.js";
@@ -14,11 +15,16 @@ class TradingAccountControllerClass {
         try {
             logger.info("Creating trading account for user id ==> ", req.user?.id);
 
+            // 1. Mark KYC status as initiated
+            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "initiated");
+
             const raw_payload = {
-                ...req.body,
+                ...req.body.data,
                 paperless_flag: "Z",
-                client_code: generate_unique_code("VLVTINV"),
+                client_code: await generate_unique_code("VLVTINV"),
             };
+
+            logger.debug("Raw payload for trading account creation ==> ", raw_payload);
 
             const result = NseRegistrationSchema.safeParse(raw_payload);
 
@@ -54,13 +60,16 @@ class TradingAccountControllerClass {
                 nse_service.get_short_url("CL_ACT", raw_payload.client_code)
             ]);
 
-            logger.info("Trading account created successfully for user id ==> ", req.user?.id, " with client code ==> ", raw_payload.client_code);
+            logger.info(`Trading account created successfully for user id ==> ${req.user?.id} with NSE client code ==> ${raw_payload.client_code}`);
             logger.debug("Short URL response from NSE ==> ", short_url_res);
 
             if (short_url_res.code != 1) {
                 logger.warn("Failed to generate short URL for trading account creation. Response from NSE ==> ", short_url_res);
                 throw new AppError("Trading account created but failed to generate short URL, Check your registered mail for Client Code activation", 500, "SHORT_URL_ERROR");
             }
+
+            // 5. Update KYC status to in_progress
+            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "in_progress");
 
             res.status(200).json({
                 success: true,
@@ -135,6 +144,23 @@ class TradingAccountControllerClass {
             logger.error("Error in pan verification controller ==> ", error);
             next(error);
             return;
+        }
+    }
+
+    confirm_trading_account = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            logger.info("Confirming trading account verification for user id ==> ", req.user?.id);
+
+            // Update KYC status to verified
+            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "verified");
+
+            res.status(200).json({
+                success: true,
+                message: "Trading account verification confirmed"
+            });
+        } catch (error) {
+            logger.error("Error in confirming trading account ==> ", error);
+            next(error);
         }
     }
 }

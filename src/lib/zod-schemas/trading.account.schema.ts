@@ -44,22 +44,24 @@ export const NseRegistrationSchema = z.object({
     nomination_authentication: z.enum(["W", "E", "O", "V"], {
         error: "Invalid nomination authentication mode",
     }),
-}).superRefine((data, ctx) => {
-    if (data.nomination_opt === "Y" && !["W", "E", "O"].includes(data.nomination_authentication)) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["nomination_authentication"],
-            message: "When nomination_opt is Y, authentication must be W (Wet Signature), E (E-Sign), or O (OTP Authentication)",
-        });
-    }
-    if (data.nomination_opt === "N" && !["O", "V"].includes(data.nomination_authentication)) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["nomination_authentication"],
-            message: "When nomination_opt is N, authentication must be O (OTP with Declaration) or V (Video Recording)",
-        });
-    }
-});
+})
+    .passthrough()
+    .superRefine((data, ctx) => {
+        if (data.nomination_opt === "Y" && !["W", "E", "O"].includes(data.nomination_authentication)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["nomination_authentication"],
+                message: "When nomination_opt is Y, authentication must be W (Wet Signature), E (E-Sign), or O (OTP Authentication)",
+            });
+        }
+        if (data.nomination_opt === "N" && !["O", "V"].includes(data.nomination_authentication)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["nomination_authentication"],
+                message: "When nomination_opt is N, authentication must be O (OTP with Declaration) or V (Video Recording)",
+            });
+        }
+    });
 
 // Type inference for your service layer
 export type NseRegistrationPayload = z.infer<typeof NseRegistrationSchema>;

@@ -1,10 +1,19 @@
+import axios from "axios";
 import { UserWithAllData } from "../lib/types.js";
 import { UserCreateInput, UserInclude } from "../prisma/generated/prisma/models.js";
 import { db } from "../server.js";
+import { env } from "../lib/config-env.js";
 
 
 
 class UserServiceClass {
+
+    private finnsys_base_url: string;
+
+    constructor() {
+        this.finnsys_base_url = `${env.finsys_base_api}`;
+    }
+
     async create_user(data: UserCreateInput) {
 
         return await db.user.upsert({
@@ -87,6 +96,18 @@ class UserServiceClass {
                 user_goals: options?.user_goals ?? false,
             }
         });
+    }
+
+
+    async get_user_cart_finnsys(user_log: string, user_pwd: string) {
+        const response = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {
+            params: {
+                log: user_log,
+                pwd: user_pwd,
+                svc: "getcart"
+            }
+        })
+        return response.data;
     }
 }
 
