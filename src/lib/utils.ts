@@ -41,7 +41,7 @@ export const logMemoryUsage = (step: string) => {
     logger.info(`[Memory Check] ${step}: ${memoryInMB} MB`);
 };
 
-export const decompressAndFilter = async (buffer: Buffer, period: string) => {
+export const decompressAndFilter = async (buffer: Buffer, period?: string) => {
 
     const gunzipAsync = promisify(gunzip);
     const decompressed = await gunzipAsync(buffer);

@@ -3,6 +3,11 @@ import { UserWithAllData } from "../lib/types.js";
 import { UserCreateInput, UserInclude } from "../prisma/generated/prisma/models.js";
 import { db } from "../server.js";
 import { env } from "../lib/config-env.js";
+import { user_finance_service } from "./onboarding/user.finance.service.js";
+import { user_assets_service } from "./onboarding/user.assets.service.js";
+import { user_insurance_service } from "./onboarding/user.insurance.service.js";
+import { user_loan_service } from "./onboarding/user.loan.service.js";
+import { user_goal_service } from "./onboarding/user.goal.service.js";
 
 
 
@@ -94,10 +99,35 @@ class UserServiceClass {
                 user_insurance: options?.user_insurance ?? false,
                 user_loan: options?.user_loan ?? false,
                 user_goals: options?.user_goals ?? false,
+                user_bank_details: options?.user_bank_details ?? false,
             }
         });
     }
 
+    async discard_user_onboarding(user_id: string) {
+        await db.$transaction(async (tx) => {
+            await tx.user.update({
+                where: { id: user_id },
+                data: {
+                    full_name: null,
+                    city: null,
+                    dob: null,
+                    email: null,
+                    phone_no: null,
+                    meta_data: {
+                        current_onboarding_step: 0,
+                        is_onboarding_completed: false,
+                    },
+                },
+            });
+
+            await user_finance_service.delete(user_id, tx);
+            await user_assets_service.delete(user_id, tx);
+            await user_insurance_service.delete(user_id, tx);
+            await user_loan_service.delete_all_loans(user_id, tx);
+            await user_goal_service.delete_all_goals(user_id, tx);
+        });
+    }
 
     async get_user_cart_finnsys(user_log: string, user_pwd: string) {
         const response = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {

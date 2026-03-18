@@ -8,7 +8,7 @@ import { decompressAndFilter, get_mf_search_query } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
 import { lumpsum_cart_zod_schema, sip_cart_zod_schema } from "../lib/types.js";
 
-const gzipAsync = promisify(gzip);
+
 
 // Proxy client that returns Buffers instead of strings (node-redis v5 API)
 
@@ -96,40 +96,18 @@ class MutualFundControllerClass {
         try {
             const id = req.params.id as string;
             const period = req.query.period as string || "1y";
-            const history_key = `mf:h:${id}`;
 
-            logger.info(`Fetching history for MF: ${id}, period: ${period}`);
+            const full_history = await mututal_funds_service.get_mutual_fund_history(id, period);
 
-            const compressedHistory = await redis_buffer_client.get(history_key);
-
-            if (compressedHistory) {
-                logger.debug(`Cache Hit for History: ${id}`);
-                const nav_history = await decompressAndFilter(compressedHistory as Buffer, period);
-
-                return res.status(200).json({
-                    success: true,
-                    message: "History fetched successfully (from cache)",
-                    data: nav_history
-                });
-            }
-
-            logger.debug(`Cache Miss for History: ${id}. Get from DB...`);
-            const fullHistory = await mututal_funds_service.get_mutual_fund_history(id);
-
-            if (!fullHistory) {
+            if (!full_history) {
                 logger.warn(`No history found for MF ID: ${id}, returning empty array response`);
                 return res.status(200).json({ success: true, message: "History not found", data: [] });
             }
 
-            const compressed = await gzipAsync(JSON.stringify(fullHistory));
-            await redis_buffer_client.set(history_key, compressed, { EX: 86400 });
-
-            const filteredHistory = await decompressAndFilter(compressed, period);
-
             res.status(200).json({
                 success: true,
                 message: "History fetched successfully",
-                data: filteredHistory
+                data: full_history
             });
             return;
         } catch (error) {
@@ -182,6 +160,46 @@ class MutualFundControllerClass {
 
         } catch (error) {
             logger.error("Error in add_to_lumpsum_cart controller ==> ", error);
+            next(error);
+            return;
+        }
+    }
+
+    purchase_lumpsum = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Purchasing lumpsum items for user: ${user.id}`);
+
+            const result = await mututal_funds_service.execute_lumpsum_purchase(user.id, user.log!, user.pwd!);
+
+            res.status(200).json({
+                success: true,
+                message: "Lumpsum purchase initiated",
+                data: result
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in purchase_lumpsum:", error);
+            next(error);
+            return;
+        }
+    }
+
+    purchase_sip = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Purchasing SIP items for user: ${user.id}`);
+
+            const result = await mututal_funds_service.execute_sip_purchase(user.id, user.log!, user.pwd!);
+
+            res.status(200).json({
+                success: true,
+                message: "SIP purchase initiated",
+                data: result
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in purchase_sip:", error);
             next(error);
             return;
         }

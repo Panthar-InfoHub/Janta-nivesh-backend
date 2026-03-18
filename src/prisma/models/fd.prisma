@@ -1,0 +1,88 @@
+// Fixed Deposit Models
+
+enum FdPayoutFrequency {
+  CUMULATIVE
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+  ON_MATURITY
+}
+
+enum FdCustomerType {
+  STANDARD
+  SENIOR_CITIZEN
+  FEMALE
+}
+
+enum IssuerType {
+  BANK
+  NBFC
+}
+
+model FdIssuer {
+  id                String   @id @default(cuid())
+  full_name         String
+  display_name      String
+  issuer_type       IssuerType
+  logo_url          String
+  banner_url        String
+  rating_text       String   // e.g. "CRISIL AAA"
+  customer_served   String   // e.g. "2 Million+"
+  operating_since   String   // e.g. "1994"
+  about_description String   @db.Text
+  support_email     String
+  support_phone     String
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  products          FdProduct[]
+}
+
+model FdProduct {
+  id                        String   @id @default(cuid())
+  issuer_id                 String
+  type                      String   // e.g. "Fixed Deposit", "Corporate FD"
+  min_deposit               Decimal  @default(0.00) @db.Decimal(12, 2)
+  max_deposit               Decimal  @default(0.00) @db.Decimal(12, 2)
+  min_tenure_days           Int
+  max_tenure_days           Int
+  lock_in_period_days       Int
+  withdrawal_message        String
+  premature_penalty_percent Float
+  is_vkyc_required          Boolean  @default(false)
+  min_amount_for_vkyc       Decimal  @default(0.00) @db.Decimal(12, 2)
+  
+  usps                      Json?    // Unique Selling Points
+  faqs                      Json?    // Frequently Asked Questions
+  tags                      Json?    // Search tags
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  // Relations
+  issuer                    FdIssuer @relation(fields: [issuer_id], references: [id], onDelete: Cascade)
+  interest_rates            FdInterestRate[]
+}
+
+model FdInterestRate {
+  id                   String            @id @default(cuid())
+  fd_product_id        String
+  payout_frequency     FdPayoutFrequency
+  customer_type        FdCustomerType
+  tenure_days          Int
+  tenure_label         String            // e.g. "1 Year", "400 Days"
+  interest_rate        Decimal           @db.Decimal(5, 2)
+  annualized_yield     Decimal           @db.Decimal(5, 2)
+  is_default_selection Boolean           @default(false)
+  is_tax_saver         Boolean           @default(false)
+  
+  last_updated_at      DateTime          @default(now())
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  // Relations
+  product              FdProduct         @relation(fields: [fd_product_id], references: [id], onDelete: Cascade)
+}

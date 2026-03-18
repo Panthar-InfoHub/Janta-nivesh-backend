@@ -27,6 +27,12 @@ class UserInsuranceServiceClass {
             where: { user_id: user_id },
         });
     }
+
+    async delete(userId: string, tx: TxClient | typeof db = db) {
+        return await tx.userInsurance.delete({
+            where: { user_id: userId },
+        });
+    }
 }
 
 export const user_insurance_service = new UserInsuranceServiceClass();

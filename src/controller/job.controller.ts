@@ -49,7 +49,7 @@ class JobControllerClass {
 
             logger.info("Running mf nav history job...");
 
-            await mututal_funds_service.nav_history_job();
+            await job_service.nav_history_job();
 
             res.status(200).json({
                 success: true,
@@ -83,7 +83,7 @@ class JobControllerClass {
 
             logger.info("Running mf single nav history job...");
 
-            await mututal_funds_service.single_nav_history_job(scheme_id);
+            await job_service.single_nav_history_job(scheme_id);
 
             res.status(200).json({
                 success: true,

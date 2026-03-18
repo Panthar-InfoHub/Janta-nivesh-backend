@@ -144,6 +144,14 @@ class UserGoalServiceClass {
             }
         }));
     }
+
+    async delete_all_goals(user_id: string, tx: TxClient | typeof db = db) {
+        return await tx.userGoals.deleteMany({
+            where: {
+                user_id: user_id,
+            },
+        });
+    }
 }
 
 

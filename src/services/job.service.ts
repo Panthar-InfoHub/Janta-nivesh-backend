@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
+import pLimit from "p-limit";
+import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
 
 
 class JobServiceClass {
@@ -158,6 +160,138 @@ class JobServiceClass {
         }
     }
 
+
+
+
+
+    /**
+     * Scheduled Job to fetch and store NAV history for mutual funds
+     * Flow :
+     * 1. Fetch all mutual fund products from the database.
+     * 2. For each product, call the external API to get NAV history.
+     * 3. Store the NAV history in the database.
+     */
+    nav_history_job = async () => {
+
+        const endDate = (new Date()).toISOString().split('T')[0];
+        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
+
+        logger.debug(`NAV History Job: startDate=${startDate} endDate=${endDate}`);
+
+        const mf_products = await db.mfProduct.findMany({
+            select: { id: true, scheme_id: true, mapping_code: true }
+        });
+
+        let cursor: string | null = null;
+        const BATCH_SIZE = 100;
+        const limit = pLimit(5);
+
+        while (true) {
+
+            // Implemented cursor pagination to avoid loading all products in memory at once.....
+            // Hehehe... recently learned about this
+
+
+            const products: any[] = await db.mfProduct.findMany({
+                take: BATCH_SIZE,
+                skip: cursor ? 1 : 0,
+                cursor: cursor ? { id: cursor } : undefined,
+                select: { id: true, mapping_code: true },
+                orderBy: { id: 'asc' }
+            });
+
+            if (products.length === 0) break;
+
+            const tasks = products.map(product =>
+                limit(() => this.process_nav_history(product, startDate, endDate))
+            );
+
+            await Promise.allSettled(tasks);
+
+            cursor = products[products.length - 1].id;
+        }
+    }
+
+
+
+
+    process_nav_history = async (product: { id: string; scheme_id: string, mapping_code: string }, startDate: string, endDate: string) => {
+        try {
+            const nav_history_data = await axios.get(`${process.env.MF_LATEST_URL}/mf/${product.mapping_code}`, {
+                params: { startDate, endDate }
+            }).then(res => res.data.data);
+
+            logger.debug(`Fetched NAV history for scheme_id: ${product.mapping_code}, Records: ${nav_history_data.length}`);
+
+            const to_insert: MfNavHistoryCreateManyInput[] = nav_history_data.map((nav_record: any) => {
+                let parsedDate: Date;
+                if (typeof nav_record.date === 'string' && nav_record.date.includes('-')) {
+                    const parts = nav_record.date.split('-');
+                    if (parts.length === 3 && parts[0].length === 2) {
+                        parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                    } else {
+                        parsedDate = new Date(nav_record.date);
+                    }
+                } else {
+                    parsedDate = new Date(nav_record.date);
+                }
+
+                if (isNaN(parsedDate.getTime())) {
+                    logger.error(`Skipping ${product.scheme_id}: Invalid date format "${nav_record.date}"`);
+                }
+
+                return {
+                    mf_product_id: product.id,
+                    scheme_id: product.mapping_code,
+                    nav_date: parsedDate,
+                    nav: nav_record.nav,
+                } satisfies MfNavHistoryCreateManyInput;
+            });
+
+            if (to_insert.length > 0) {
+                await db.$transaction(async (tx) => {
+                    const BATCH_SIZE = 1000;
+                    for (let i = 0; i < to_insert.length; i += BATCH_SIZE) {
+                        await tx.mfNavHistory.createMany({
+                            data: to_insert.slice(i, i + BATCH_SIZE),
+                            skipDuplicates: true
+                        });
+                    }
+                });
+            }
+
+            logger.info(`NAV History Job: Inserted ${to_insert.length} records for scheme_id: ${product.scheme_id}`);
+        } catch (error) {
+            logger.error(`Error fetching/storing NAV history for scheme_id: ${product.scheme_id}`, error);
+        }
+    }
+
+
+
+
+
+
+    single_nav_history_job = async (scheme_code: string) => {
+
+        // const scheme_id: any = await this.get_only_mf_product(scheme_code).then(product => product?.mapping_code);
+
+        const endDate = (new Date()).toISOString().split('T')[0];
+        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
+
+        logger.debug(`Single NAV History Job: startDate=${startDate} endDate=${endDate}`);
+
+        const mf_product = await db.mfProduct.findFirst({
+            where: { id: scheme_code },
+            select: { id: true, scheme_id: true, mapping_code: true }
+        });
+
+        if (!mf_product) {
+            logger.warn(`Single NAV History Job: No product found for id: ${scheme_code}`);
+            return;
+        }
+
+        await this.process_nav_history(mf_product, startDate, endDate);
+    }
 
 }
 

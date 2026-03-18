@@ -42,8 +42,8 @@ class UserFinanceServiceClass {
         return "36";                            // Above 1Cr
     }
 
-    async delete(user_id: string) {
-        return await db.userFinance.delete({
+    async delete(user_id: string, tx: TxClient | typeof db = db) {
+        return await tx.userFinance.delete({
             where: { user_id: user_id },
         });
     }

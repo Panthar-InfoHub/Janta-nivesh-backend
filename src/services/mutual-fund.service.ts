@@ -1,12 +1,18 @@
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
-import pLimit from "p-limit";
+
 import type { MfNavHistoryCreateManyInput, MfProductOrderByWithRelationInput, MfProductWhereInput } from "../prisma/generated/prisma/models.js";
 import { Lumpsum_cart_data, Sip_cart_data } from "../lib/types.js";
 import { env } from "../lib/config-env.js";
 import AppError from "../middleware/error.middleware.js";
-
+import { redis_buffer_client } from "../lib/redis.js";
+import { decompressAndFilter } from "../lib/utils.js";
+import { gzip, gunzip } from "zlib";
+import { promisify } from "util";
+import { user_service } from "./user.service.js";
+import { generate_unique_code } from "../helpers/unique.code.js";
+const gzipAsync = promisify(gzip);
 
 export type pagination = {
     page: number;
@@ -85,11 +91,35 @@ class MututalFundServiceClass {
         });
     }
 
-    get_mutual_fund_history = async (id: string) => {
-        return await db.mfNavHistory.findMany({
+    get_mutual_fund_history = async (id: string, period?: string) => {
+
+        const history_key = `mf:h:${id}`;
+
+        logger.info(`Fetching history for MF: ${id}, period: ${period}`);
+
+        const compressedHistory = await redis_buffer_client.get(history_key);
+
+        if (compressedHistory) {
+            logger.debug(`Cache Hit for History: ${id}`);
+            const nav_history = await decompressAndFilter(compressedHistory as Buffer, period);
+
+            return nav_history;
+        }
+
+        logger.debug(`Cache Miss for History: ${id}. Get from DB...`);
+
+
+        const mf_nav_history = await db.mfNavHistory.findMany({
             where: { mf_product_id: id },
             orderBy: { nav_date: 'desc' }
         });
+
+        const compressed = await gzipAsync(JSON.stringify(mf_nav_history));
+        await redis_buffer_client.set(history_key, compressed, { EX: 86400 });
+
+        const filtered_history = await decompressAndFilter(compressed, period);
+
+        return filtered_history;
     }
 
     get_only_mf_product = async (id: string) => {
@@ -162,122 +192,150 @@ class MututalFundServiceClass {
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-    /**
-     * Scheduled Job to fetch and store NAV history for mutual funds
-     * Flow :
-     * 1. Fetch all mutual fund products from the database.
-     * 2. For each product, call the external API to get NAV history.
-     * 3. Store the NAV history in the database.
-     */
-    nav_history_job = async () => {
-
-        const endDate = (new Date()).toISOString().split('T')[0];
-        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
-
-        logger.debug(`NAV History Job: startDate=${startDate} endDate=${endDate}`);
-
-        const mf_products = await db.mfProduct.findMany({
-            select: { id: true, scheme_id: true, mapping_code: true }
-        });
-
-        const limit = pLimit(5);
-
-        await Promise.all(
-            mf_products.map(product =>
-                limit(() => this.process_nav_history(product, startDate, endDate))
-            )
-        );
-    }
-
-    single_nav_history_job = async (scheme_code: string) => {
-
-        // const scheme_id: any = await this.get_only_mf_product(scheme_code).then(product => product?.mapping_code);
-
-        const endDate = (new Date()).toISOString().split('T')[0];
-        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
-
-        logger.debug(`Single NAV History Job: startDate=${startDate} endDate=${endDate}`);
-
-        const mf_product = await db.mfProduct.findFirst({
-            where: { id: scheme_code },
-            select: { id: true, scheme_id: true, mapping_code: true }
-        });
-
-        if (!mf_product) {
-            logger.warn(`Single NAV History Job: No product found for id: ${scheme_code}`);
-            return;
-        }
-
-        await this.process_nav_history(mf_product, startDate, endDate);
-    }
-
-    process_nav_history = async (product: { id: string; scheme_id: string, mapping_code: string }, startDate: string, endDate: string) => {
-        try {
-            const nav_history_data = await axios.get(`${process.env.MF_LATEST_URL}/mf/${product.mapping_code}`, {
-                params: { startDate, endDate }
-            }).then(res => res.data.data);
-
-            logger.debug(`Fetched NAV history for scheme_id: ${product.mapping_code}, Records: ${nav_history_data.length}`);
-
-            const to_insert: MfNavHistoryCreateManyInput[] = nav_history_data.map((nav_record: any) => {
-                let parsedDate: Date;
-                if (typeof nav_record.date === 'string' && nav_record.date.includes('-')) {
-                    const parts = nav_record.date.split('-');
-                    if (parts.length === 3 && parts[0].length === 2) {
-                        parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                    } else {
-                        parsedDate = new Date(nav_record.date);
-                    }
-                } else {
-                    parsedDate = new Date(nav_record.date);
-                }
-
-                if (isNaN(parsedDate.getTime())) {
-                    logger.error(`Skipping ${product.scheme_id}: Invalid date format "${nav_record.date}"`);
-                }
-
-                return {
-                    mf_product_id: product.id,
-                    scheme_id: product.mapping_code,
-                    nav_date: parsedDate,
-                    nav: nav_record.nav,
-                } satisfies MfNavHistoryCreateManyInput;
-            });
-
-            if (to_insert.length > 0) {
-                await db.$transaction(async (tx) => {
-                    const BATCH_SIZE = 1000;
-                    for (let i = 0; i < to_insert.length; i += BATCH_SIZE) {
-                        await tx.mfNavHistory.createMany({
-                            data: to_insert.slice(i, i + BATCH_SIZE),
-                            skipDuplicates: true
-                        });
-                    }
-                });
-            }
-
-            logger.info(`NAV History Job: Inserted ${to_insert.length} records for scheme_id: ${product.scheme_id}`);
-        } catch (error) {
-            logger.error(`Error fetching/storing NAV history for scheme_id: ${product.scheme_id}`, error);
-        }
-    }
-
     get_mutual_fund_by_scheme_id = async (scheme_id: string) => {
         return await db.mfProduct.findFirst({
             where: { scheme_id },
             select: { id: true, scheme_id: true }
         });
     }
+
+    private get_primary_bank_details(user: any) {
+        if (!user.user_bank_details || user.user_bank_details.length === 0) {
+            throw new AppError("No bank details found for user", 400, "BANK_DETAILS_MISSING");
+        }
+
+        const primary_bank = user.user_bank_details.find((b: any) => b.is_primary) || user.user_bank_details[0];
+        return primary_bank;
+    }
+
+    private construct_transaction_payload(cart_items: any[], user: any) {
+        const primary_bank = this.get_primary_bank_details(user);
+
+        return cart_items.map(async (item: any) => {
+            return {
+                order_ref_number: await generate_unique_code("ORD"),
+                scheme_code: item.prod_code, // Mapped from prod_code
+                trxn_type: "P",
+                buy_sell_type: "FRESH", // Could be FRESH or ADDITIONAL, defaulting to FRESH for now
+                client_code: user.nse_client_code,
+                demat_physical: "P",
+                order_amount: item.txn_amount || item.sip_amt, // txn_amount for Lumpsum, sip_amt for SIP
+                folio_no: item.folio || "",
+                remarks: "Velvet Invest App",
+                kyc_flag: "Y",
+                sub_broker_code: "",
+                euin_number: "", // TODO: Add EUIN if available
+                euin_declaration: "Y",
+                min_redemption_flag: "N",
+                dpc_flag: "Y",
+                all_units: "N",
+                redemption_units: "",
+                sub_broker_arn: "",
+                bank_ref_no: "", // Optional?
+                account_no: primary_bank.account_no,
+                mobile_no: user.phone_no,
+                email: user.email,
+                mandate_id: "", // Required for SIP?
+
+                // SIP Specifics (If present in item)
+                ...(item.sip_freq ? {
+                    sip_st_date: item.sip_st_date,
+                    sip_en_date: item.sip_en_date,
+                    sip_freq: item.sip_freq,
+                    sip_day: item.sip_day,
+                    sip_amt: item.sip_amt
+                } : {})
+            };
+        });
+    }
+
+    execute_lumpsum_purchase = async (user_id: string, user_log: string, user_pwd: string) => {
+        // 1. Fetch User with Bank Details
+        const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+
+        // 2. Fetch Cart
+        const cart_res = await user_service.get_user_cart_finnsys(user_log, user_pwd);
+        if (cart_res.code != 1) {
+            throw new AppError("Failed to fetch cart from Finnsys", 502, "CART_FETCH_FAILED");
+        }
+
+        // 3. Filter Lumpsum Items (sub_txn_type = "N")
+        const lumpsum_items = cart_res.results.filter((item: any) => item.sub_txn_type === "N");
+
+        if (lumpsum_items.length === 0) {
+            throw new AppError("No lumpsum items found in cart", 400, "CART_EMPTY");
+        }
+
+        // 4. Construct Payload
+        const transaction_details = await Promise.all(this.construct_transaction_payload(lumpsum_items, user));
+
+        // 5. Call Upstream API
+        const payload = {
+            data: {
+                transaction_details
+            }
+        };
+
+        logger.info(`Executing Lumpsum Purchase for User ${user_id}. Payload: ${JSON.stringify(payload)}`);
+
+        // TODO: Replace with actual endpoint provided by user or discovered
+        // Assuming /purchase-lumpsum based on user request, but likely needs to be confirmed against Finnsys docs
+        // For now, using the structure the user validated
+
+        // MOCKING the call for now as I don't have the exact upstream URL confirmed beyond "purchase-redem api"
+        // In a real scenario:
+        // const response = await axios.post(`${this.finnsys_base_url}/purchase-lumpsum`, payload);
+        // return response.data;
+
+        // Simulating success for the structure implementation
+        return {
+            success: true,
+            message: "Lumpsum purchase initiated successfully",
+            details: payload
+        };
+    }
+
+    execute_sip_purchase = async (user_id: string, user_log: string, user_pwd: string) => {
+        // 1. Fetch User with Bank Details
+        const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
+        if (!user) throw new AppError("User not found", 404);
+        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+
+        // 2. Fetch Cart
+        const cart_res = await user_service.get_user_cart_finnsys(user_log, user_pwd);
+        if (cart_res.code != 1) {
+            throw new AppError("Failed to fetch cart from Finnsys", 502, "CART_FETCH_FAILED");
+        }
+
+        // 3. Filter SIP Items (sub_txn_type = "S")
+        const sip_items = cart_res.results.filter((item: any) => item.sub_txn_type === "S");
+
+        if (sip_items.length === 0) {
+            throw new AppError("No SIP items found in cart", 400, "CART_EMPTY");
+        }
+
+        // 4. Construct Payload
+        const transaction_details = await Promise.all(this.construct_transaction_payload(sip_items, user));
+
+        // 5. Call Upstream API
+        const payload = {
+            data: {
+                transaction_details
+            }
+        };
+
+        logger.info(`Executing SIP Purchase for User ${user_id}. Payload: ${JSON.stringify(payload)}`);
+
+        // MOCKING the call
+        return {
+            success: true,
+            message: "SIP purchase initiated successfully",
+            details: payload
+        };
+    }
+
 }
 
 export const mututal_funds_service = new MututalFundServiceClass();

@@ -81,6 +81,15 @@ class UserLoanServiceClass {
         });
     }
 
+    async delete_all_loans(user_id: string, tx: TxClient | typeof db = db) {
+        return await tx.userLoan.deleteMany({
+            where: {
+                user_id: user_id,
+            },
+        });
+    }
+
+
     async sync(user_id: string, loans: any[], tx: TxClient | typeof db = db) {
         await tx.userLoan.deleteMany({ where: { user_id } });
         if (loans.length > 0) {

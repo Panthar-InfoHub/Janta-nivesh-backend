@@ -28,8 +28,8 @@ class userAssetsServiceClass {
         });
     }
 
-    async delete(userId: string) {
-        return await db.userAssets.delete({
+    async delete(userId: string, tx: TxClient | typeof db = db) {
+        return await tx.userAssets.delete({
             where: { user_id: userId },
         });
     }

@@ -45,6 +45,30 @@ class UserFinanceControllerClass {
         }
     }
 
+
+    async discard_onboard(req: Request, res: Response, next: NextFunction) {
+        try {
+
+            const user_id: string = req.user!.id;
+            logger.info(`Fetching user data for User ID: ${user_id}`);
+
+            const data = await user_service.discard_user_onboarding(user_id);
+            logger.debug(`User onboarding discarded successfully ==> `, data);
+
+            res.status(200).json({
+                code: 200,
+                message: "User onboarding discarded successfully",
+                data
+            });
+            return;
+
+        } catch (error) {
+            logger.error(`Error in get_user: ${error}`);
+            next(error);
+            return;
+        }
+    }
+
     get_user_cart = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
@@ -98,7 +122,7 @@ class UserFinanceControllerClass {
         const sip_items: any = [];
         const lump_sum_items: any = [];
         finnsys_cart_response.results.map((item: any) => {
-            if (item.sip_freq) {
+            if (item.sub_txn_type === "S") {
                 sip_items.push(item);
             } else {
                 lump_sum_items.push(item);
