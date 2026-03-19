@@ -114,10 +114,10 @@ class UserServiceClass {
                 data: {
                     full_name: null,
                     city: null,
-                    dob: null,
+                    dob: null, 
                     email: null,
                     meta_data: {
-                        current_onboarding_step: 0,
+                        onboarding_stage: 0,
                         is_onboarding_completed: false,
                     },
                 },

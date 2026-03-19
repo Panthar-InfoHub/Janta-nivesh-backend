@@ -41,11 +41,16 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                     updateData.is_vkyc_initiated = false;
                 }
 
-                // Capture ROI and Tenure regardless of success/initiated for record keeping [cite: 193, 215]
+                // Capture ROI and Tenure regardless of success/initiated for record keeping
                 updateData.roi_at_booking = parseFloat(data.roi);
                 updateData.tenure_at_booking = data.tenure;
                 updateData.payment_tx_id = data.paymentTxId;
                 break
+            case "PAYMENT_FAILED": // Explicit event for failures
+                statusToUpdate = TransactionStatus.PAYMENT_FAILED;
+                updateData.failure_reason = data.reason; // "Transaction failed due to customer pressing cancel" 
+                updateData.payment_tx_id = data.paymentTxId;
+                break;
 
             case "VKYC": // Triggered for VKYC status changes
                 if (req.body.isVkycCompleted) { // Top level flag
