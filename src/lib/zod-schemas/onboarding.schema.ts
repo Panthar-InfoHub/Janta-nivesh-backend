@@ -53,13 +53,6 @@ const onboarding_goals_schema = z.array(user_goal_zod_schema).superRefine((goals
 
     for (let i = 0; i < goals.length; i++) {
         const goal_type = goals[i].goal_type_id;
-        if (goal_types.has(goal_type)) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Duplicate goal_type_id found: ${goal_type}`,
-                path: [i, "goal_type_id"],
-            });
-        }
         goal_types.add(goal_type);
     }
 });
