@@ -113,7 +113,7 @@ class AuthControllerClass {
                         phone_no: updated_user.phone_no,
                         metadata: updated_user.meta_data ?? {
                             onboarding_stage: 0,
-                            is_onboarding_complete: false,
+                            is_onboarding_completed: false,
                         }
                     },
                     token: token,
@@ -228,7 +228,7 @@ class AuthControllerClass {
                         phone_no: updated_user.phone_no,
                         metadata: updated_user.meta_data ?? {
                             onboarding_stage: 0,
-                            is_onboarding_complete: false,
+                            is_onboarding_completed: false,
                         }
                     },
                     token: token,

@@ -2,7 +2,7 @@
  * User Model
  * meta_data {
  * onboarding_stage : number
- * is_onboarding_complete : number
+ * is_onboarding_completed : number
  * }
  */
 

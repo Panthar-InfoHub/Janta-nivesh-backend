@@ -52,12 +52,20 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                 updateData.payment_tx_id = data.paymentTxId;
                 break;
 
-            case "VKYC": // Triggered for VKYC status changes
-                if (req.body.isVkycCompleted) { // Top level flag
+            case "VKYC":
+                // Checking nested flags: isVkycCompleted, isVkycInitiated, isVkycPending
+                if (data.isVkycCompleted === true) {
                     statusToUpdate = TransactionStatus.VKYC_COMPLETED;
                     updateData.vkyc_completed_at = new Date();
-                } else {
+                    updateData.is_vkyc_pending = false;
+                } else if (data.isVkycPending === true) {
                     statusToUpdate = TransactionStatus.VKYC_PENDING;
+                    updateData.is_vkyc_pending = true;
+                    updateData.is_vkyc_initiated = false;
+                } else if (data.isVkycInitiated === true) {
+                    // User has started VKYC but not finished [cite: 306]
+                    updateData.is_vkyc_initiated = true;
+                    updateData.is_vkyc_pending = false;
                 }
                 break;
 
