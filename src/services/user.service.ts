@@ -35,11 +35,14 @@ class UserServiceClass {
     }
 
     async update_user(user_id: string, data: Partial<UserCreateInput>) {
-        return await db.user.update({
+        return await db.user.upsert({
             where: {
                 id: user_id
             },
-            data: {
+            update: {
+                ...data
+            },
+            create: {
                 ...data
             }
         });
@@ -113,7 +116,6 @@ class UserServiceClass {
                     city: null,
                     dob: null,
                     email: null,
-                    phone_no: null,
                     meta_data: {
                         current_onboarding_step: 0,
                         is_onboarding_completed: false,
