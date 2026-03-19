@@ -19,7 +19,7 @@ class OnboardingServiceClass {
                 data: {
                     ...data.profile,
                     meta_data: {
-                        current_onboarding_step: 6,
+                        onboarding_stage: 6,
                         is_onboarding_completed: true,
                     },
                 },
@@ -43,7 +43,7 @@ class OnboardingServiceClass {
         }
 
         return {
-            current_onboarding_step: 6,
+            onboarding_stage: 6,
             is_onboarding_completed: true,
             loans_count: data.loans.length,
             goals_count: data.goals.length,

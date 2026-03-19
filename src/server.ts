@@ -19,6 +19,7 @@ import { user_goal_router } from "./routes/user/user.goal.router.js"
 import { user_insurance_router } from "./routes/user/user.insurance.router.js"
 import { user_loan_router } from "./routes/user/user.loan.router.js"
 import { user_router } from "./routes/user/user.router.js"
+import { webhook_router } from "./routes/webhook.router.js"
 
 
 //Configurations
@@ -55,6 +56,7 @@ app.use("/api/v1/user-loan", user_loan_router)
 app.use("/api/v1/user-insurance", user_insurance_router)
 app.use("/api/v1/user-goal", user_goal_router)
 app.use("/api/v1/fire-report", fire_report_router)
+app.use("/api/v1/webhook", webhook_router)
 
 app.use("/api/v1/kyc", kyc_router)
 //Health check
