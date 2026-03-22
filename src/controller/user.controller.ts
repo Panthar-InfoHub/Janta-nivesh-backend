@@ -103,6 +103,30 @@ class UserFinanceControllerClass {
         }
     }
 
+    get_user_fd_transactions = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id! as string;
+            const { page = 1, limit = 20, order = "desc", ...query } = req.query as any;
+
+            logger.info(`Fetching FD Transactions for User ID ${user_id} with query: ${JSON.stringify(query)}, page: ${page}, limit: ${limit}, order: ${order}`);
+
+            const data = await user_service.get_user_fd_data({ pagination: { page: parseInt(page), limit: parseInt(limit) }, user_id, order: { fd_issued_at: order }, query });
+
+            logger.debug(`FD Transactions fetched successfully for User ID ${user_id} ==> `, data);
+
+            res.status(200).json({
+                success: true,
+                message: "FD Transactions fetched successfully",
+                data
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in get_user_fd_transactions: ", error);
+            next(error);
+            return;
+        }
+    }
 
 
 

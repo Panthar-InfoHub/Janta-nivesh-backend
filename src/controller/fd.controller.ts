@@ -1,0 +1,257 @@
+import { NextFunction, Request, Response } from "express";
+import crypto from "crypto";
+import logger from "../middleware/logger.js";
+import { FdCustomerType, FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
+import { fd_service } from "../services/fd.service.js";
+import AppError from "../middleware/error.middleware.js";
+import { fd_transaction_service } from "../services/fd.transaction.service.js";
+import { env } from "../lib/config-env.js";
+import { user_service } from "../services/user.service.js";
+import { redis_buffer_client } from "../lib/redis.js";
+import {
+    build_fd_list_cache_key,
+    compress_json,
+    decompress_json,
+    get_fd_search_query
+} from "../lib/utils.js";
+
+class FdControllerClass {
+
+    private normalize_payout_frequency = (value?: string): FdPayoutFrequency => {
+        const normalized = String(value ?? FdPayoutFrequency.CUMULATIVE).toUpperCase();
+        return Object.values(FdPayoutFrequency).includes(normalized as FdPayoutFrequency)
+            ? (normalized as FdPayoutFrequency)
+            : FdPayoutFrequency.CUMULATIVE;
+    }
+
+    private normalize_customer_type = (value?: string): FdCustomerType => {
+        const normalized = String(value ?? FdCustomerType.STANDARD).toUpperCase();
+        return Object.values(FdCustomerType).includes(normalized as FdCustomerType)
+            ? (normalized as FdCustomerType)
+            : FdCustomerType.STANDARD;
+    }
+
+
+    private create_encryption_text = (plainText: any) => {
+
+        const iterations = 1000;
+        const keySize = 256 / 8;
+        const ivSize = 128 / 8;
+        function generateKeyAndIV() {
+            const password = env.BLOSTEM_ENCRYPTION_KEY;
+            const salt = env.BLOSTEM_ENCRYPTION_SALT;
+            const derivedBytes = crypto.pbkdf2Sync(password, Buffer.from(salt), iterations, keySize +
+                ivSize, 'sha256');
+            const key = derivedBytes.slice(0, keySize);
+            const IV = derivedBytes.slice(keySize);
+            return { key, IV };
+        }
+        try {
+            const { IV, key } = generateKeyAndIV();
+            const plainBytes = Buffer.from(plainText, 'utf-8');
+            const cipher = crypto.createCipheriv('aes-256-gcm', key, IV);
+            const encryptedBytes = Buffer.concat([cipher.update(plainBytes), cipher.final()]);
+            const tag = cipher.getAuthTag();
+            const encryptedData = Buffer.concat([encryptedBytes, tag]);
+            const encryptedBase64 = encryptedData.toString('base64');
+            return 'ENCRYPTED:' + encryptedBase64;
+        } catch (ex) {
+            logger.error("Error in create_encryption_text: ", ex);
+            throw ex;
+        }
+    }
+
+
+    create_purchase_url = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user_id = req.user?.id! as string;
+            logger.info(`Creating purchase URL for User ID: ${user_id}...`);
+
+
+            const { product_id, tenure, investment_amount, payout_frequency, investment_period } = req.body;
+            const [fd_product, user] = await Promise.all([
+                fd_service.get_fd_details({ id: product_id }),
+                user_service.get_user_by_id(user_id)
+            ]);
+
+            if (!fd_product) {
+                logger.error(`FD Product with ID ${product_id} not found`);
+                throw new AppError("FD Product not found", 404, "FD_PRODUCT_NOT_FOUND");
+            }
+
+            const requested_tenure_days = Number(tenure ?? investment_period);
+            logger.debug(`Requested Tenure (days): ${requested_tenure_days}, Payout Frequency: ${payout_frequency}`);
+
+            if (!Number.isFinite(requested_tenure_days) || requested_tenure_days <= 0) {
+                throw new AppError("Invalid tenure/investment_period", 400, "INVALID_TENURE");
+            }
+
+            const matched_rate = await fd_service.get_fd_interest_rate({
+                product_id,
+                payout_frequency: payout_frequency as FdPayoutFrequency,
+                tenure_days: requested_tenure_days,
+            });
+            if (!matched_rate) {
+                throw new AppError("Selected payout frequency and tenure are not available for this product", 400, "FD_RATE_NOT_AVAILABLE");
+            }
+
+
+            const { issuer_id } = fd_product;
+            const fd_transaction = await fd_transaction_service.create_transaction({
+                user: { connect: { id: user_id } },
+                issuer_id: issuer_id,
+                product: { connect: { id: product_id } },
+                amount: investment_amount,
+                payout_frequency: payout_frequency as FdPayoutFrequency,
+                tenure_at_booking: requested_tenure_days,
+                roi_at_booking: matched_rate.interest_rate,
+            })
+
+            const encrypted_text = this.create_encryption_text(user?.phone_no)
+
+            const response = await fd_transaction_service.create_transaction_with_purchase_url({
+                issuer_id,
+                jid: fd_transaction.id,
+                investment_amount,
+                payout_frequency,
+                investment_period, encrypted_text
+            })
+
+
+            logger.debug("Purchase URL response from Blostem: ", response);
+
+            res.status(200).json({
+                success: true,
+                message: "Purchase URL created successfully",
+                data: response
+            });
+            return;
+
+
+        } catch (error) {
+            logger.error("Error in create_purchase_url: ", error);
+            next(error);
+            return;
+        }
+    }
+
+
+
+    get_user_fd_transaction_by_id = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id! as string;
+            const transaction_id = req.params.transaction_id as string;
+
+            logger.info(`Fetching FD Transaction with ID ${transaction_id} for User ID ${user_id}...`);
+
+            const transaction = await user_service.get_user_fd_transaction_by_id({ user_id, transaction_id });
+
+            if (!transaction) {
+                logger.warn(`FD Transaction with ID ${transaction_id} not found for User ID ${user_id}`);
+                throw new AppError("FD Transaction not found", 404, "FD_TRANSACTION_NOT_FOUND");
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "FD Transaction retrieved successfully",
+                data: transaction
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in get_user_fd_transaction_by_id: ", error);
+            next(error);
+            return;
+        }
+    }
+
+
+
+    // Fetch public data of FDs for a user with pagination and filtering
+    get_fds = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const raw_query = req.query as Record<string, unknown>;
+            const { query, order, pagination, interest_rate_filter } = get_fd_search_query(raw_query);
+
+            const should_use_cache = pagination.page === 1;
+            const cache_key = should_use_cache ? build_fd_list_cache_key(raw_query) : "";
+
+            if (should_use_cache) {
+                const cached = await redis_buffer_client.get(cache_key);
+
+                if (cached) {
+                    logger.debug(`FD products cache hit for key: ${cache_key}`);
+                    const cached_data = await decompress_json<any>(cached as Buffer);
+
+                    res.status(200).json({
+                        success: true,
+                        message: "FD products fetched successfully",
+                        data: cached_data,
+                    });
+                    return;
+                }
+
+                logger.debug(`FD products cache miss for key: ${cache_key}`);
+            } else {
+                logger.debug(`FD products cache bypass for page: ${pagination.page}`);
+            }
+
+            const data = await fd_service.get_fd_products({ pagination, order, query, interest_rate_filter });
+
+            if (should_use_cache) {
+                const compressed = await compress_json(data);
+                await redis_buffer_client.set(cache_key, compressed, { EX: 300 });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "FD products fetched successfully",
+                data,
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in get_fds: ", error);
+            next(error);
+            return;
+        }
+    }
+
+
+
+    get_fd_by_id = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const fd_id = req.params.fd_id as string;
+            const payout_frequency = this.normalize_payout_frequency(req.query.payout_frequency as string | undefined);
+            const customer_type = this.normalize_customer_type(req.query.customer_type as string | undefined);
+
+            logger.info(`Fetching FD Product with ID ${fd_id}, payout_frequency: ${payout_frequency}, customer_type: ${customer_type}`);
+
+            const fd_product = await fd_service.get_fd_details({
+                id: fd_id,
+                payout_frequency,
+                customer_type,
+            });
+
+            if (!fd_product) {
+                logger.warn(`FD Product with ID ${fd_id} not found`);
+                throw new AppError("FD Product not found", 404, "FD_PRODUCT_NOT_FOUND");
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "FD Product retrieved successfully",
+                data: fd_product
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in get_fd_by_id: ", error);
+            next(error);
+            return;
+        }
+    }
+}
+export const fd_controller = new FdControllerClass();

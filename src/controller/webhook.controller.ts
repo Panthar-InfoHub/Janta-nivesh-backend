@@ -1,7 +1,9 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
+import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import { TransactionStatus } from "../prisma/generated/prisma/enums.js";
-import AppError from "../middleware/error.middleware.js";
+import { FdTransactionUpdateInput } from "../prisma/generated/prisma/models.js";
+import { fd_transaction_service } from "../services/fd.transaction.service.js";
 
 export const handleFdWebhook = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -15,76 +17,122 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
             throw new AppError("Invalid payload: missing jid", 400, "MISSING_JID");
         }
 
-        let statusToUpdate: TransactionStatus | undefined;
-        let updateData: any = {};
+        let status_to_update: TransactionStatus | undefined;
+        let update_data: FdTransactionUpdateInput = {};
+
+        // Event left : FD_Update, REFUND
 
         switch (event) {
             case "SSO": // Initial confirmation of user journey 
             case "ONBOARDING": // Triggered during onboarding steps
-                statusToUpdate = TransactionStatus.ONBOARDING_COMPLETED;
-                updateData.onboarded_at = new Date();
+                status_to_update = TransactionStatus.ONBOARDING_COMPLETED;
+                update_data.onboarded_at = new Date();
                 // Check if it's a Bank to flag VKYC requirement
                 if (req.body.type === 'BANK') {
-                    updateData.is_vkyc_required = true;
+                    update_data.is_vkyc_required = true;
                 }
                 break;
 
             case "PAYMENT": // Triggered for initiated/success events 
                 if (data.isPaymentCompleted === true) {
-                    statusToUpdate = TransactionStatus.PAYMENT_SUCCESS;
-                    updateData.payment_completed_at = new Date();
-                    updateData.is_vkyc_initiated = false; // Reset to move to next step
+                    status_to_update = TransactionStatus.PAYMENT_SUCCESS;
+                    update_data.payment_completed_at = new Date();
+                    update_data.is_vkyc_initiated = false; // Reset to move to next step
                 }
-                // Handling Payment Initiated status [cite: 202, 257]
+                    // Handling Payment Initiated status
                 else if (data.isPaymentInitiated === true) {
-                    statusToUpdate = TransactionStatus.PAYMENT_PENDING;
-                    updateData.is_vkyc_initiated = false;
+                    status_to_update = TransactionStatus.PAYMENT_PENDING;
+                    update_data.is_vkyc_initiated = false;
                 }
 
                 // Capture ROI and Tenure regardless of success/initiated for record keeping
-                updateData.roi_at_booking = parseFloat(data.roi);
-                updateData.tenure_at_booking = data.tenure;
-                updateData.payment_tx_id = data.paymentTxId;
+                update_data.amount = parseFloat(data.amount);
+                update_data.roi_at_booking = parseFloat(data.roi);
+                update_data.tenure_at_booking = data.tenure;
+                update_data.payment_tx_id = data.paymentTxId;
                 break
             case "PAYMENT_FAILED": // Explicit event for failures
-                statusToUpdate = TransactionStatus.PAYMENT_FAILED;
-                updateData.failure_reason = data.reason; // "Transaction failed due to customer pressing cancel" 
-                updateData.payment_tx_id = data.paymentTxId;
+                status_to_update = TransactionStatus.PAYMENT_FAILED;
+                update_data.failure_reason = data.reason; // "Transaction failed due to customer pressing cancel" 
+                update_data.payment_tx_id = data.paymentTxId;
                 break;
 
             case "VKYC":
                 // Checking nested flags: isVkycCompleted, isVkycInitiated, isVkycPending
                 if (data.isVkycCompleted === true) {
-                    statusToUpdate = TransactionStatus.VKYC_COMPLETED;
-                    updateData.vkyc_completed_at = new Date();
-                    updateData.is_vkyc_pending = false;
+                    status_to_update = TransactionStatus.VKYC_COMPLETED;
+                    update_data.vkyc_completed_at = new Date();
+                    update_data.is_vkyc_pending = false;
                 } else if (data.isVkycPending === true) {
-                    statusToUpdate = TransactionStatus.VKYC_PENDING;
-                    updateData.is_vkyc_pending = true;
-                    updateData.is_vkyc_initiated = false;
+                    status_to_update = TransactionStatus.VKYC_PENDING;
+                    update_data.is_vkyc_pending = true;
+                    update_data.is_vkyc_initiated = false;
                 } else if (data.isVkycInitiated === true) {
-                    // User has started VKYC but not finished [cite: 306]
-                    updateData.is_vkyc_initiated = true;
-                    updateData.is_vkyc_pending = false;
+                    // User has started VKYC but not finished 
+                    update_data.is_vkyc_initiated = true;
+                    update_data.is_vkyc_pending = false;
                 }
                 break;
+            case "VKYC_FAILED":
+                status_to_update = TransactionStatus.VKYC_FAILED;
+                update_data.vkyc_failure_reason = data.VkycFailureReason; // e.g. "Pan not clear" 
+                update_data.vkyc_failed_by = data.VkycFailedBy; // AGENT or AUDITOR
 
-            case "FD_CREATED": // Final success event
-                statusToUpdate = TransactionStatus.FD_CREATED;
-                updateData.fd_issued_at = new Date();
-                // Use accountNumber if bank, or the id for NBFC
-                updateData.fd_account_number = data.accountNumber || data.id;
-                updateData.maturity_amount = parseFloat(data.maturityAmount); // 
-                updateData.maturity_date = new Date(data.maturityDate); // 
+                update_data.failure_reason = `VKYC Failed by ${data.VkycFailedBy}: ${data.VkycFailureReason}`;
                 break;
+
+
+            case "REFUND":
+                status_to_update = TransactionStatus.REFUNDED;
+                update_data.refund_date = new Date(data.refundDate); //
+                update_data.failure_reason = "VKYC timeout (72 hours)"; // 
+                break;
+
+
+            case "FD_CREATED":
+                status_to_update = TransactionStatus.FD_CREATED;
+                update_data.fd_issued_at = new Date(req.body.createdAt);
+                // Normalize: NBFC uses data.id/applicationId, Bank uses data.accountNumber
+                update_data.fd_account_number =
+                    data.accountNumber ||  // Best: The actual FD account number
+                    data.id ||             // Second best: The unique deposit ID
+                    data.applicationId ||  // Third: The application reference
+                    jid;                   // Fallback: Our own transaction ID
+                update_data.maturity_amount = parseFloat(data.maturityAmount);
+                update_data.maturity_date = new Date(data.maturityDate);
+                update_data.maturity_instruction = data.maturityInstructions || data.maturity_instruction;
+                break;
+
+            case "MATURITY_INSTRUCTION_UPDATED":
+                // No status change, just update the instruction field
+                update_data.maturity_instruction = data.updatedInstruction;
+                break;
+
+            case "PREMATURE_WITHDRAW":
+                status_to_update = TransactionStatus.PREMATURE_WITHDRAWN;
+                // Capture how much they actually got back after penalties
+                update_data.maturity_amount = parseFloat(data.withdrawalAmount);
+                break;
+
+            case "MATURITY":
+                status_to_update = TransactionStatus.MATURED;
+                break;
+
+            case "REINVEST":
+                // Logic: Mark current as MATURED, and then trigger your service 
+                // to create a NEW transaction record for the next cycle.
+                status_to_update = TransactionStatus.MATURED;
+                break;
+
+
 
             default:
                 logger.info(`Event ${event} not handled in success flow yet.`);
         }
 
-        if (statusToUpdate) {
-            // Your service call here to persist the updateData using 'jid' as the 'id'
-            // await fd_transaction_service.updateStatus(jid, statusToUpdate, updateData);
+        if (status_to_update) {
+            // Your service call here to persist the update_data using 'jid' as the 'id'
+            await fd_transaction_service.update_status_and_details(jid, status_to_update, update_data);
         }
 
         res.status(200).json({ success: true });

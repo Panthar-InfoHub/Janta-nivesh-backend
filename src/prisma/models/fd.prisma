@@ -28,6 +28,7 @@ enum FdCustomerType {
   STANDARD
   SENIOR_CITIZEN
   FEMALE
+  SENIOR_CITIZEN_FEMALE // isSeniorCitizen + isFemale combined for easier querying
 }
 
 enum IssuerType {
@@ -118,27 +119,27 @@ model FdTransaction {
 
   // Status Tracking
   status           TransactionStatus @default(INITIATED)
-  is_vkyc_required Boolean           @default(false)
-  is_nominee_added Boolean           @default(false)
+  is_vkyc_required Boolean           @default(false) // Non webhook entity
+  is_nominee_added Boolean           @default(false) // Non webhook entity
 
-  // Webhook Data Sync (Fields filled as events arrive) [cite: 88, 181, 184]
-  payment_tx_id       String? @unique // From PAYMENT event [cite: 197]
-  bank_name_added     String? // From BANK_ADD event [cite: 178]
-  vkyc_failure_reason String? @db.Text // From VKYC_FAILED event [cite: 341]
-  vkyc_failed_by      String? // AGENT or AUDITOR [
+  // Webhook Data Sync (Fields filled as events arrive)
+  payment_tx_id       String? @unique // From PAYMENT event 
+  bank_name_added     String? // From BANK_ADD event 
+  vkyc_failure_reason String? @db.Text // From VKYC_FAILED event 
+  vkyc_failed_by      String? // AGENT or AUDITOR 
 
-  // Final FD Details (Populated by FD_CREATED) [cite: 362]
-  fd_account_number    String?   @unique // From FD_CREATED [cite: 423]
+  // Final FD Details (Populated by FD_CREATED) 
+  fd_account_number    String? // From FD_CREATED in case of NBFC
   maturity_amount      Decimal?  @db.Decimal(12, 2)
   maturity_date        DateTime?
   maturity_instruction String? // REFUND or REINVEST
 
   // Audit Timestamps for Funnel Analytics
-  onboarded_at         DateTime? // Updated on SSO/ONBOARDING event [cite: 106]
-  payment_completed_at DateTime? // Updated on PAYMENT success [cite: 221]
-  vkyc_completed_at    DateTime? // Updated on VKYC success [cite: 332]
-  fd_issued_at         DateTime? // Updated on FD_CREATED [cite: 382]
-  refund_date          DateTime? // Updated on REFUND event [cite: 355]
+  onboarded_at         DateTime? // Updated on SSO/ONBOARDING event 
+  payment_completed_at DateTime? // Updated on PAYMENT success
+  vkyc_completed_at    DateTime? // Updated on VKYC success
+  fd_issued_at         DateTime? // Updated on FD_CREATED
+  refund_date          DateTime? // Updated on REFUND event
 
   failure_reason    String? @db.Text // Captures Payment or VKYC failure reasons
   is_vkyc_initiated Boolean @default(false)
@@ -149,4 +150,5 @@ model FdTransaction {
 
   // Relations
   product FdProduct @relation(fields: [product_id], references: [id])
+  user    User      @relation(fields: [user_id], references: [id])
 }

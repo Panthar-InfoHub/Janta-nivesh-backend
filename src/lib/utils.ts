@@ -1,7 +1,34 @@
+import { createHash } from "crypto";
 import { promisify } from "util";
 import logger from "../middleware/logger.js";
-import { gunzip } from "zlib";
-import { MfProductOrderByWithRelationInput, MfProductWhereInput } from "../prisma/generated/prisma/models.js";
+import { gunzip, gzip } from "zlib";
+import { FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
+import {
+    FdInterestRateWhereInput,
+    FdProductOrderByWithRelationInput,
+    FdProductWhereInput,
+    MfProductOrderByWithRelationInput,
+    MfProductWhereInput
+} from "../prisma/generated/prisma/models.js";
+
+type RawFdParams = Record<string, unknown>;
+
+export type FdSearchBuildResult = {
+    query: FdProductWhereInput;
+    order: FdProductOrderByWithRelationInput;
+    pagination: { page: number, limit: number };
+    interest_rate_filter: FdInterestRateWhereInput;
+}
+
+const FD_TENURE_MAP: Record<string, number[]> = {
+    "1y": [365, 366],
+    "2y": [730, 731],
+    "3y": [1095, 1096],
+    "5y": [1825, 1826],
+};
+
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 
 export const get_mf_search_query = (params: any): { query: MfProductWhereInput, order: MfProductOrderByWithRelationInput } => {
 
@@ -20,6 +47,112 @@ export const get_mf_search_query = (params: any): { query: MfProductWhereInput, 
     }
 
     return { query, order };
+}
+
+const normalize_fd_pagination = (params: RawFdParams): { page: number, limit: number } => {
+    const page = Math.max(1, parseInt(params.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(params.limit as string) || 30));
+
+    return { page, limit };
+}
+
+const build_fd_interest_rate_filter = (params: RawFdParams): FdInterestRateWhereInput => {
+    const tenure_key = String(params.tenure ?? "3y").toLowerCase();
+    const tenure_days = FD_TENURE_MAP[tenure_key] ?? FD_TENURE_MAP["3y"];
+
+    const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase() as FdPayoutFrequency;
+
+    return {
+        tenure_days: { in: tenure_days },
+        payout_frequency,
+        is_default_selection: true,
+    };
+}
+
+const parse_optional_number = (value: unknown): number | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const build_fd_where_query = (params: RawFdParams, interestRateFilter: FdInterestRateWhereInput): FdProductWhereInput => {
+    const min_deposit = parse_optional_number(params.min_deposit);
+    const max_deposit = parse_optional_number(params.max_deposit);
+
+    return {
+        ...(params.issuer_id ? { issuer_id: String(params.issuer_id) } : {}),
+        ...(min_deposit !== undefined || max_deposit !== undefined
+            ? {
+                min_deposit: {
+                    ...(min_deposit !== undefined ? { gte: min_deposit } : {}),
+                    ...(max_deposit !== undefined ? { lte: max_deposit } : {}),
+                },
+            }
+            : {}),
+        interest_rates: { some: interestRateFilter }
+    };
+}
+
+const build_fd_order_query = (params: RawFdParams): FdProductOrderByWithRelationInput => {
+    const sort_by = String(params.sort_by ?? "created_at").toLowerCase();
+    const sort_order: "asc" | "desc" = String(params.sort_order ?? "desc").toLowerCase() === "asc" ? "asc" : "desc";
+
+    if (sort_by === "min_deposit") return { min_deposit: sort_order };
+    if (sort_by === "max_deposit") return { max_deposit: sort_order };
+    if (sort_by === "tenure") return { min_tenure_days: sort_order };
+
+    return { createdAt: sort_order };
+}
+
+export const get_fd_search_query = (params: RawFdParams): FdSearchBuildResult => {
+    const pagination = normalize_fd_pagination(params);
+    const interest_rate_filter = build_fd_interest_rate_filter(params);
+    const query = build_fd_where_query(params, interest_rate_filter);
+    const order = build_fd_order_query(params);
+
+    return {
+        query,
+        order,
+        pagination,
+        interest_rate_filter,
+    };
+}
+
+export const build_fd_list_cache_key = (params: RawFdParams): string => {
+    const pagination = normalize_fd_pagination(params);
+    const tenure_key = String(params.tenure ?? "3y").toLowerCase();
+    const normalized_tenure = FD_TENURE_MAP[tenure_key] ? tenure_key : "3y";
+    const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase();
+    const sort_by = String(params.sort_by ?? "created_at").toLowerCase();
+    const normalized_sort_by = ["min_deposit", "max_deposit", "tenure", "created_at"].includes(sort_by) ? sort_by : "created_at";
+    const sort_order = String(params.sort_order ?? "desc").toLowerCase() === "asc" ? "asc" : "desc";
+    const min_deposit = parse_optional_number(params.min_deposit);
+    const max_deposit = parse_optional_number(params.max_deposit);
+
+    const normalized_payload = {
+        version: 1,
+        page: pagination.page,
+        limit: pagination.limit,
+        tenure: normalized_tenure,
+        payout_frequency,
+        issuer_id: params.issuer_id ? String(params.issuer_id) : "",
+        min_deposit: min_deposit ?? null,
+        max_deposit: max_deposit ?? null,
+        sort_by: normalized_sort_by,
+        sort_order,
+    };
+
+    const hash = createHash("sha1").update(JSON.stringify(normalized_payload)).digest("hex");
+    return `fd:list:v1:page1:${hash}`;
+}
+
+export const compress_json = async (value: unknown): Promise<Buffer> => {
+    return await gzipAsync(JSON.stringify(value));
+}
+
+export const decompress_json = async <T>(buffer: Buffer): Promise<T> => {
+    const decompressed = await gunzipAsync(buffer);
+    return JSON.parse(decompressed.toString("utf-8")) as T;
 }
 
 
@@ -42,8 +175,6 @@ export const logMemoryUsage = (step: string) => {
 };
 
 export const decompressAndFilter = async (buffer: Buffer, period?: string) => {
-
-    const gunzipAsync = promisify(gunzip);
     const decompressed = await gunzipAsync(buffer);
 
     const nav_history = JSON.parse(decompressed.toString("utf-8"));

@@ -35,4 +35,7 @@ model User {
     // Kyc Relations
     kyc_types       KycType[]
     mfKycIdentities MfKycIdentity?
+
+    // Fd Relations
+    fds FdTransaction[]
 }

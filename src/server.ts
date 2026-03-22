@@ -20,6 +20,7 @@ import { user_insurance_router } from "./routes/user/user.insurance.router.js"
 import { user_loan_router } from "./routes/user/user.loan.router.js"
 import { user_router } from "./routes/user/user.router.js"
 import { webhook_router } from "./routes/webhook.router.js"
+import { fd_router } from "./routes/fd.router.js"
 
 
 //Configurations
@@ -48,6 +49,8 @@ if (process.env.ENVIRONMENT === "dev") {
 app.use("/api/v1/auth", auth_router)
 app.use("/api/v1/user", user_router)
 app.use("/api/v1/jobs", job_router)
+
+app.use("/api/v1/fd", fd_router)
 app.use("/api/v1/mf", mututal_fund_router)
 app.use("/api/v1/onboarding", onboarding_router)
 app.use("/api/v1/user-assets", user_assets_router)

@@ -1,6 +1,11 @@
 import axios from "axios";
 import { UserWithAllData } from "../lib/types.js";
-import { UserCreateInput, UserInclude } from "../prisma/generated/prisma/models.js";
+import {
+    FdTransactionOrderByWithRelationInput,
+    FdTransactionWhereInput,
+    UserCreateInput,
+    UserInclude
+} from "../prisma/generated/prisma/models.js";
 import { db } from "../server.js";
 import { env } from "../lib/config-env.js";
 import { user_finance_service } from "./onboarding/user.finance.service.js";
@@ -8,6 +13,15 @@ import { user_assets_service } from "./onboarding/user.assets.service.js";
 import { user_insurance_service } from "./onboarding/user.insurance.service.js";
 import { user_loan_service } from "./onboarding/user.loan.service.js";
 import { user_goal_service } from "./onboarding/user.goal.service.js";
+import { pagination } from "./mutual-fund.service.js";
+
+
+type GetUserFdDataInput = {
+    pagination: pagination;
+    user_id: string;
+    order?: FdTransactionOrderByWithRelationInput | FdTransactionOrderByWithRelationInput[];
+    query?: FdTransactionWhereInput;
+}
 
 
 
@@ -114,7 +128,7 @@ class UserServiceClass {
                 data: {
                     full_name: null,
                     city: null,
-                    dob: null, 
+                    dob: null,
                     email: null,
                     meta_data: {
                         onboarding_stage: 0,
@@ -140,6 +154,81 @@ class UserServiceClass {
             }
         })
         return response.data;
+    }
+
+
+    async get_user_fd_data({ pagination, user_id, order, query }: GetUserFdDataInput) {
+        const { page, limit } = pagination;
+        const offset = (page - 1) * limit;
+
+        const where: FdTransactionWhereInput = {
+            ...(query ?? {}),
+            user_id,
+        };
+
+        const [total, fd_transactions] = await Promise.all([
+            db.fdTransaction.count({ where }),
+            db.fdTransaction.findMany({
+                where,
+                select: {
+                    id: true,
+                    amount: true,
+                    roi_at_booking: true,
+                    tenure_at_booking: true,
+                    fd_issued_at: true,
+                    status: true,
+                    maturity_amount: true,
+                    user: {
+                        select: {
+                            id: true,
+                            full_name: true,
+                            email: true,
+                        }
+                    },
+                    product: {
+                        select: {
+                            issuer: {
+                                select: {
+                                    logo_url: true,
+                                    display_name: true,
+                                }
+                            }
+                        }
+                    }
+                },
+                skip: offset,
+                take: limit,
+                orderBy: order ?? { fd_issued_at: 'desc' }
+            })
+        ]);
+
+        return {
+            fd_transactions,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            }
+        };
+    }
+
+
+
+    async get_user_fd_transaction_by_id({ user_id, transaction_id }: { user_id: string, transaction_id: string }) {
+        return await db.fdTransaction.findFirst({
+            where: {
+                id: transaction_id,
+                user_id: user_id,
+            },
+            include: {
+                product: {
+                    include: {
+                        issuer: true
+                    }
+                }
+            }
+        });
     }
 }
 

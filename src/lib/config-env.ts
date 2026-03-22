@@ -18,6 +18,13 @@ export const env = {
     NSE_API_SECRET: process.env.NSE_API_SECRET!,
     NSE_USERNAME: process.env.NSE_USERNAME!,
 
+    // Blostem Creds
+    BLOSTEM_URL: process.env.BLOSTEM_URL!,
+    BLOSTEM_USERNAME: process.env.BLOSTEM_USERNAME!,
+    BLOSTEM_PASSWORD: process.env.BLOSTEM_PASSWORD!,
+    BLOSTEM_ENCRYPTION_KEY: process.env.BLOSTEM_ENCRYPTION_KEY!,
+    BLOSTEM_ENCRYPTION_SALT: process.env.BLOSTEM_ENCRYPTION_SALT!,
+    BLOSTEM_MASTER_URL: process.env.BLOSTEM_MASTER_URL!,
 
     // Redis Config
     REDIS_HOST: process.env.REDIS_HOST!,
