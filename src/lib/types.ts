@@ -20,6 +20,7 @@ export type UserWithAllData = UserGetPayload<{
         user_insurance: true
         user_loan: true
         user_goals: true
+        kyc_types: true
     }
 }>
 

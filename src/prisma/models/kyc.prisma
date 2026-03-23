@@ -49,7 +49,7 @@ model MfKycIdentity {
     id        String  @id @default(uuid())
     user_id   String  @unique
     uid       String // Aadhaar (Masked or full based on compliance)
-    pan_no    String? @unique // Added PAN
+    pan_no    String? // Added PAN
     full_name String
     dob       String
     gender    String

@@ -13,6 +13,28 @@ import {
 
 type RawFdParams = Record<string, unknown>;
 
+export const MF_ASSET_TYPE_BY_ID = {
+    "1": "Equity",
+    "2": "Debt",
+    "3": "Hybrid",
+    "4": "Precious Metal",
+    "5": "Others - Commodities",
+    "6": "Currency",
+    "7": "Liquid",
+    "8": "Others - Mutual Funds",
+    "9": "Solution Oriented",
+} as const;
+
+export type MfAssetTypeId = keyof typeof MF_ASSET_TYPE_BY_ID;
+
+export const map_mf_asset_type = (
+    asset_type_id?: string | number | null,
+    fallback_asset_type?: string | null
+): string | null => {
+    const key = asset_type_id !== undefined && asset_type_id !== null ? String(asset_type_id) : "";
+    return MF_ASSET_TYPE_BY_ID[key as MfAssetTypeId] ?? fallback_asset_type ?? null;
+}
+
 export type FdSearchBuildResult = {
     query: FdProductWhereInput;
     order: FdProductOrderByWithRelationInput;
@@ -32,11 +54,18 @@ const gunzipAsync = promisify(gunzip);
 
 export const get_mf_search_query = (params: any): { query: MfProductWhereInput, order: MfProductOrderByWithRelationInput } => {
 
-    const { category, risk, sort_by } = params;
+    const { category, risk, sort_by, search } = params;
+    const normalized_category = map_mf_asset_type(category, category);
 
     const query: MfProductWhereInput = {
-        ...(category && { asset_type: { equals: category } }),
+        ...(normalized_category && { asset_type: { equals: normalized_category } }),
         ...(risk && { risk_level: { equals: risk } }),
+        ...(search && {
+            OR: [
+                { scheme_name: { contains: search, mode: 'insensitive' } },
+                { scheme_type: { contains: search, mode: 'insensitive' } }
+            ]
+        }),
     }
 
     const order: MfProductOrderByWithRelationInput = {
@@ -78,6 +107,7 @@ const parse_optional_number = (value: unknown): number | undefined => {
 const build_fd_where_query = (params: RawFdParams, interestRateFilter: FdInterestRateWhereInput): FdProductWhereInput => {
     const min_deposit = parse_optional_number(params.min_deposit);
     const max_deposit = parse_optional_number(params.max_deposit);
+    const search = String(params.search ?? "").trim();
 
     return {
         ...(params.issuer_id ? { issuer_id: String(params.issuer_id) } : {}),
@@ -89,6 +119,21 @@ const build_fd_where_query = (params: RawFdParams, interestRateFilter: FdInteres
                 },
             }
             : {}),
+        ...(search && {
+            OR: [
+                { type: { contains: search, mode: 'insensitive' } },
+                {
+                    issuer: {
+                        OR: [
+                            { full_name: { contains: search, mode: 'insensitive' } },
+                            { display_name: { contains: search, mode: 'insensitive' } },
+                            { operating_since: { contains: search, mode: 'insensitive' } },
+                            { about_description: { contains: search, mode: 'insensitive' } },
+                        ]
+                    }
+                },
+            ]
+        }),
         interest_rates: { some: interestRateFilter }
     };
 }

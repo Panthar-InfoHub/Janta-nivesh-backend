@@ -21,6 +21,72 @@ import AppError from "../middleware/error.middleware.js";
 
 class FireReportServiceClass {
 
+    async get_current_fire_number(user_id: string) {
+        const data = await user_service.get_all_user_data(user_id, {
+            user_finance: true,
+            user_loan: true,
+            user_goals: true,
+        });
+
+        if (!data) {
+            logger.error(`No user data found for user_id: ${user_id}`);
+            throw new AppError("User data not found", 404, "USER_DATA_NOT_FOUND");
+        }
+
+        const computed_metrics = this.compute_metrics(data);
+        const monthly_expenses_total = computed_metrics.total_annual_expenses / 12;
+        const goals = this.normalize_goals_with_sip(
+            data.user_goals ?? [],
+            data.dob,
+            monthly_expenses_total,
+        );
+
+        const current_year = new Date().getFullYear();
+        const loans = this.normalize_loans(data.user_loan ?? []);
+
+        const current_year_emi = loans.reduce((sum, loan) => {
+            const months_paid = Math.max(0, Math.min(12, loan.tenure_months));
+            return sum + (loan.monthly_emi * months_paid);
+        }, 0);
+
+        const goal_commitment_annual = goals.reduce((sum, goal) =>
+            current_year <= goal.target_year
+                ? sum + (goal.required_monthly_sip * 12)
+                : sum
+            , 0);
+
+        const total_expenses_exclude = computed_metrics.total_annual_expenses;
+        const total_expenses_include = total_expenses_exclude + current_year_emi;
+
+        const fire_number_exclude = (total_expenses_exclude + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+        const fire_number_include = (total_expenses_include + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+
+        const fire_percentage_exclude = fire_number_exclude > 0
+            ? (computed_metrics.net_worth * 100) / fire_number_exclude
+            : 0;
+        const fire_percentage_include = fire_number_include > 0
+            ? (computed_metrics.net_worth * 100) / fire_number_include
+            : 0;
+
+        return {
+            year: current_year,
+            net_worth: Math.round(computed_metrics.net_worth),
+            goal_commitment_annual: Math.round(goal_commitment_annual),
+            total_expenses: {
+                emi_include: Math.round(total_expenses_include),
+                emi_exclude: Math.round(total_expenses_exclude),
+            },
+            fire_number: {
+                emi_include: Math.round(fire_number_include),
+                emi_exclude: Math.round(fire_number_exclude),
+            },
+            fire_percentage: {
+                emi_include: parseFloat(fire_percentage_include.toFixed(2)),
+                emi_exclude: parseFloat(fire_percentage_exclude.toFixed(2)),
+            }
+        };
+    }
+
     async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportCoreResponse> {
         const data = await user_service.get_all_user_data(user_id, {
             user_finance: true,

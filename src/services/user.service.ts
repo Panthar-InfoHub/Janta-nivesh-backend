@@ -3,8 +3,7 @@ import { UserWithAllData } from "../lib/types.js";
 import {
     FdTransactionOrderByWithRelationInput,
     FdTransactionWhereInput,
-    UserCreateInput,
-    UserInclude
+    UserCreateInput
 } from "../prisma/generated/prisma/models.js";
 import { db } from "../server.js";
 import { env } from "../lib/config-env.js";
@@ -21,6 +20,16 @@ type GetUserFdDataInput = {
     user_id: string;
     order?: FdTransactionOrderByWithRelationInput | FdTransactionOrderByWithRelationInput[];
     query?: FdTransactionWhereInput;
+}
+
+type GetAllUserDataOptions = {
+    user_finance?: boolean;
+    user_assets?: boolean;
+    user_insurance?: boolean;
+    user_loan?: boolean;
+    user_goals?: boolean;
+    user_bank_details?: boolean;
+    kyc_types?: boolean;
 }
 
 
@@ -105,7 +114,7 @@ class UserServiceClass {
     }
 
 
-    async get_all_user_data(user_id: string, options?: Partial<Record<keyof UserInclude, boolean>>): Promise<UserWithAllData | null> {
+    async get_all_user_data(user_id: string, options?: GetAllUserDataOptions): Promise<UserWithAllData | null> {
         return await db.user.findUnique({
             where: {
                 id: user_id
@@ -117,6 +126,12 @@ class UserServiceClass {
                 user_loan: options?.user_loan ?? false,
                 user_goals: options?.user_goals ?? false,
                 user_bank_details: options?.user_bank_details ?? false,
+                kyc_types: options?.kyc_types ? {
+                    select: {
+                        kyc_type: true,
+                        status: true,
+                    }
+                } : false,
             }
         });
     }

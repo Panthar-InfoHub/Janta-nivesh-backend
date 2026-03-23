@@ -1,9 +1,9 @@
 import axios from "axios";
-import { UserGoalInput } from "../../lib/zod-schemas/goal.schema.js";
-import { db } from "../../server.js";
 import { env } from "../../lib/config-env.js";
+import { UserGoalInput } from "../../lib/zod-schemas/goal.schema.js";
 import logger from "../../middleware/logger.js";
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
+import { db } from "../../server.js";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -107,6 +107,17 @@ class UserGoalServiceClass {
 
         const res = await axios.get(this.finsys_api, { params });
         return res.data;
+    }
+
+
+    delete_goal = async (user: any, goal_id: string) => {
+        const user_goal = await db.userGoals.delete({
+            where: {
+                user_id: user.id,
+                id: goal_id
+            }
+        });
+        return user_goal;
     }
 
     sync_db = async (user_id: string, goals: UserGoalInput[], tx: TxClient | typeof db = db) => {

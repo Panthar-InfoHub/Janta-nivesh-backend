@@ -12,7 +12,7 @@ model MfProduct {
     amc_code String?
     amc_name String?
 
-    asset_type  String?
+    asset_type  String? // Hybrid, Equity, Debt, Liquid, etc
     scheme_type String?
     structure   String?
     risk_name   String?

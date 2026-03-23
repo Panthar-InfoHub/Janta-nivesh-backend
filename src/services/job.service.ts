@@ -1,6 +1,6 @@
 import { env } from "../lib/config-env.js";
 import { FdCustomerType, Prisma } from "../prisma/generated/prisma/client.js";
-import { chunkArray, logMemoryUsage } from "../lib/utils.js";
+import { chunkArray, logMemoryUsage, map_mf_asset_type } from "../lib/utils.js";
 import { v4 as uuidv4 } from 'uuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
@@ -39,10 +39,11 @@ class JobServiceClass {
                     // -> Prepare MF Product Values
                     const product_values = batch.map((mf: any) => {
                         const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
+                        const normalizedAssetType = map_mf_asset_type(mf.ASSET_TYPE_ID, mf.ASSET_TYPE);
                         return Prisma.sql`(
                         ${uuidv4()}, ${String(mf.SCHM_ID)}, ${mf.ISIN}, ${mf.MAPPING_CODE}, ${mf.NSE_SCHEME_CODE}, ${mf.PLATFORM_SCHEME_CODE}, ${mf.SCHEME_NAME},
                         ${mf.AMC_ID ? String(mf.AMC_ID) : null}, ${mf.AMC_CODE}, ${mf.AMC_NAME}, 
-                        ${mf.ASSET_TYPE}, ${mf.SCHEME_TYPE}, ${mf.STRUCTURE}, ${mf.RISK_NAME}, 
+                        ${normalizedAssetType}, ${mf.SCHEME_TYPE}, ${mf.STRUCTURE}, ${mf.RISK_NAME}, 
                         ${mf.RISK_ID ? parseInt(mf.RISK_ID) : null}, ${mf.NAV ? parseFloat(mf.NAV) : null},
                         ${navDate}, ${mf.PURCHASE_ALLOWED === "Y"}, ${mf.SIP_ALLOWED === "Y"}, 
                         ${mf.REDEMPTION_ALLOWED === "Y"}, ${mf.SWITCH_ALLOWED === "Y"}, NOW()

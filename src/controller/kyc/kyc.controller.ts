@@ -279,19 +279,18 @@ class KycControllerClass {
             }
 
             // Update KYC data and FATCA data via Finnsys in parallel
-            const [update_response, fatca_response] = await Promise.all([
-                kyc_finnsys_service.update_kyc_data(
-                    kyc_data,
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session?.mfKycSessions?.merchant_id!,
-                    `${inv_id}`
-                ),
-                kyc_finnsys_service.update_fatca_data(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session?.mfKycSessions?.merchant_id!,
-                    `${inv_id}`
-                )
-            ]);
+            const update_response = await kyc_finnsys_service.update_kyc_data(
+                kyc_data,
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                `${inv_id}`
+            )
+
+            const fatca_response = await kyc_finnsys_service.update_fatca_data(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                `${inv_id}`
+            )
 
             logger.debug("KYC data update response: ", update_response);
             logger.debug("FATCA data update response: ", fatca_response);

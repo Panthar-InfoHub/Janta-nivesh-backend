@@ -23,11 +23,12 @@ class MutualFundControllerClass {
 
             //Filters
             const sort_by = req.query.sort_by as string
+            const search = req.query.search as string
             const category = req.query.category as string
             const risk = parseInt(req.query.risk as string)
 
             logger.info(`Fetching mutual funds - Page: ${page}, Limit: ${limit}`);
-            const { query, order } = get_mf_search_query({ category, risk, sort_by });
+            const { query, order } = get_mf_search_query({ category, risk, sort_by, search });
 
             const result = await mututal_funds_service.get_mutual_funds({
                 pagination: { page, limit },

@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import { user_service } from "../services/user.service.js";
 import AppError from "../middleware/error.middleware.js";
+import { fire_report_service } from "../services/fire.report.service.js";
 
 class UserFinanceControllerClass {
     async onboarding_create(req: Request) {
@@ -15,7 +16,7 @@ class UserFinanceControllerClass {
     }
 
 
-    async get_user(req: Request, res: Response, next: NextFunction) {
+    get_user = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
             const user_id: string = req.user!.id;
@@ -26,15 +27,28 @@ class UserFinanceControllerClass {
                 user_insurance: true,
                 user_loan: true,
                 user_assets: true,
-                user_finance: true
+                user_finance: true,
+                kyc_types: true
             });
 
             logger.debug(`User data fetched successfully ==> `, data);
 
+            const { fire_number, net_worth, total_expenses } = await fire_report_service.get_current_fire_number(user_id);
+
+            // const fire_number_inc = (total_expenses_inc + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+
             res.status(200).json({
                 code: 200,
                 message: "User data fetched successfully",
-                data
+                data: {
+                    ...data,
+                    kyc_progress: this.calculate_kyc_progress(data?.kyc_types || []),
+                    user_home_data: {
+                        fire_number,
+                        net_worth,
+                        total_expenses
+                    }
+                }
             });
             return;
 
@@ -154,6 +168,12 @@ class UserFinanceControllerClass {
         })
         return { sip_items, lump_sum_items };
     }
-}
 
+
+    private calculate_kyc_progress = (kyc_types: { status: string, kyc_type: string }[]): number => {
+        const total = kyc_types.length;
+        const completed = kyc_types.filter((kyc) => kyc.status === "verified").length;
+        return total > 0 ? Math.round((completed / total) * 100) : 0;
+    }
+}
 export const user_controller = new UserFinanceControllerClass();

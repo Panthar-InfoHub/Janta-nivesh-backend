@@ -9,11 +9,13 @@ import AppError from "../../middleware/error.middleware.js";
 import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.service.js";
 import { kyc_finnsys_service } from "../../services/kyc/kyc.finnsys.service.js";
 import { nse_service } from "../../services/nse.service.js";
+import { user_finnsys_service } from "../../services/user.finnsys.service.js";
 
 class TradingAccountControllerClass {
     create_trading_account = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            logger.info("Creating trading account for user id ==> ", req.user?.id);
+            const user = req.user!;
+            logger.info("Creating trading account for user id ==> ", user?.id);
 
             // 1. Mark KYC status as initiated
             await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "initiated");
@@ -54,6 +56,12 @@ class TradingAccountControllerClass {
              * 
              * Note: Client code activation is a separate step that user needs to do by clicking on the short URL sent in response. We are not automating that step as it requires user interaction and consent.
              */
+            const user_finnsys_res = await user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
+                invpan: (result.data.primary_holder_pan as string) ?? undefined
+            })
+
+            logger.debug("User Finnsys update response ==> ", user_finnsys_res);
+
             const data = await trading_account_service.client_registration(req.user!.id, result.data);
             const [_user, short_url_res] = await Promise.all([
                 user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
