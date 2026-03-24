@@ -8,6 +8,7 @@ export const env = {
     MF_LATEST_URL: process.env.MF_LATEST_URL!,
     KYC_BASE_URL: process.env.KYC_BASE_URL!,
     ARN: process.env.ARN!,
+    EUIN: process.env.EUIN!,
     FINNSYS_MASTER_URL: process.env.FINNSYS_MASTER_URL!,
     FINNSYS_USERNAME: process.env.FINNSYS_USERNAME!,
     FINNSYS_PASSWORD: process.env.FINNSYS_PASSWORD!,

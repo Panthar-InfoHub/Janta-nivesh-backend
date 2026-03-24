@@ -56,12 +56,6 @@ class TradingAccountControllerClass {
              * 
              * Note: Client code activation is a separate step that user needs to do by clicking on the short URL sent in response. We are not automating that step as it requires user interaction and consent.
              */
-            const user_finnsys_res = await user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
-                invpan: (result.data.primary_holder_pan as string) ?? undefined
-            })
-
-            logger.debug("User Finnsys update response ==> ", user_finnsys_res);
-
             const data = await trading_account_service.client_registration(req.user!.id, result.data);
             const [_user, short_url_res] = await Promise.all([
                 user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
@@ -77,7 +71,13 @@ class TradingAccountControllerClass {
             }
 
             // 5. Update KYC status to in_progress
-            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "in_progress");
+            const [_kyc_type_res, _user_finnsys_update_res] = await Promise.all([
+                kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "in_progress"),
+                user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
+                    invpan: (result.data.primary_holder_pan as string) ?? undefined
+                })
+            ])
+
 
             res.status(200).json({
                 success: true,

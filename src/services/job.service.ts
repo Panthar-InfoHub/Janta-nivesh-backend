@@ -170,7 +170,7 @@ class JobServiceClass {
 
         const api_res = await axios.get(`${env.BLOSTEM_MASTER_URL}/core/v1/dashboard/fixed-deposit/templates/list`, {
             headers: {
-                'Authorization': `Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOnsiaWQiOiI0YzJiNjlhNi1mZjk5LTQyODgtOGQzYy1hNWRlY2I3MzI5ZjEiLCJwYXJ0bmVySWQiOiI5N2M4YjQ4Zi1jN2EyLTQ5NWEtODk3Zi0yYTViYWY1OWY1NDgifSwiaWF0IjoxNzc0MDM1MDIyLCJleHAiOjE3NzQwNTMwMjIsInR5cGUiOiJhY2Nlc3MifQ.V5ZZKMSun8DEyyBLZA79dVRLWGCOuMWh1HGIJ1-re-z68OjahBVAy4gFQWnXpBFDLWX5McKS9lqI9E0g1hG4nw`, // Force trim
+                'Authorization': `Bearer ${token}`, // Force trim
             },
             params: {
                 ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST100" })

@@ -12,6 +12,8 @@ import { gzip, gunzip } from "zlib";
 import { promisify } from "util";
 import { user_service } from "./user.service.js";
 import { generate_unique_code } from "../helpers/unique.code.js";
+import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
+import { nse_service } from "./nse.service.js";
 const gzipAsync = promisify(gzip);
 
 export type pagination = {
@@ -224,7 +226,7 @@ class MututalFundServiceClass {
                 remarks: "Velvet Invest App",
                 kyc_flag: "Y",
                 sub_broker_code: "",
-                euin_number: "", // TODO: Add EUIN if available
+                euin_number: env.EUIN, // TODO: Add EUIN if available
                 euin_declaration: "Y",
                 min_redemption_flag: "N",
                 dpc_flag: "Y",
@@ -280,21 +282,17 @@ class MututalFundServiceClass {
 
         logger.info(`Executing Lumpsum Purchase for User ${user_id}. Payload: ${JSON.stringify(payload)}`);
 
-        // TODO: Replace with actual endpoint provided by user or discovered
-        // Assuming /purchase-lumpsum based on user request, but likely needs to be confirmed against Finnsys docs
-        // For now, using the structure the user validated
+        // 6. Submit to Finnsys API
+        const finnsys_response = await mutual_fund_finnsys_service.purchase_lumpsum_finnsys(payload);
+        const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
 
-        // MOCKING the call for now as I don't have the exact upstream URL confirmed beyond "purchase-redem api"
-        // In a real scenario:
-        // const response = await axios.post(`${this.finnsys_base_url}/purchase-lumpsum`, payload);
-        // return response.data;
 
-        // Simulating success for the structure implementation
-        return {
-            success: true,
-            message: "Lumpsum purchase initiated successfully",
-            details: payload
-        };
+        if (short_url.code != 1) {
+            logger.warn("Failed to generate short URL for lumpsum purchase. Response from NSE ==> ", short_url);
+            throw new AppError("Lumpsum purchase initiated but failed to generate short URL, Check your registered mail for order confirmation", 500, "SHORT_URL_ERROR");
+        }
+
+        return short_url.data.firstHolderLink;
     }
 
     execute_sip_purchase = async (user_id: string, user_log: string, user_pwd: string) => {
@@ -328,12 +326,16 @@ class MututalFundServiceClass {
 
         logger.info(`Executing SIP Purchase for User ${user_id}. Payload: ${JSON.stringify(payload)}`);
 
-        // MOCKING the call
-        return {
-            success: true,
-            message: "SIP purchase initiated successfully",
-            details: payload
-        };
+        const finnsys_response = await mutual_fund_finnsys_service.purchase_lumpsum_finnsys(payload);
+        const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
+
+
+        if (short_url.code != 1) {
+            logger.warn("Failed to generate short URL for lumpsum purchase. Response from NSE ==> ", short_url);
+            throw new AppError("Lumpsum purchase initiated but failed to generate short URL, Check your registered mail for order confirmation", 500, "SHORT_URL_ERROR");
+        }
+
+        return short_url.data.firstHolderLink;
     }
 
 }
