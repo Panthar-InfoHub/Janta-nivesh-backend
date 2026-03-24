@@ -10,6 +10,7 @@ import logger from "../middleware/logger.js";
 class OnboardingServiceClass {
 
     complete_onboarding = async (user: any, data: CompleteOnboardingInput) => {
+        let synced_db_goals: Array<{ id: string; goal_type_id: number; }> = [];
 
         // Phase 1: All DB writes in a single transaction.
         // If anything fails here the whole thing rolls back cleanly.
@@ -29,7 +30,7 @@ class OnboardingServiceClass {
             await user_assets_service.create(user.id, data.assets, tx);
             await user_insurance_service.create(user.id, data.insurance, tx);
             await user_loan_service.sync(user.id, data.loans, tx);
-            await user_goal_service.sync_db(user.id, data.goals, tx);
+            synced_db_goals = await user_goal_service.sync_db(user.id, data.goals, tx);
         });
 
         logger.debug(`DB transaction committed for onboarding user: ${user.id}`);
@@ -39,7 +40,7 @@ class OnboardingServiceClass {
         // goal_id will be populated if FinSys responds; otherwise it stays null and can be retried.
         if (data.goals.length > 0) {
             logger.debug(`Starting FinSys goal sync for user: ${user.id} (${data.goals.length} goals)`);
-            await user_goal_service.sync_finsys(user, data.goals);
+            await user_goal_service.sync_finsys(user, data.goals, synced_db_goals);
         }
 
         return {

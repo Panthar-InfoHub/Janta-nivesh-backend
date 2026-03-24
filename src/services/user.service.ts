@@ -73,8 +73,15 @@ class UserServiceClass {
 
     async get_user_by_phone(phone_no: string) {
         return await db.user.findUnique({
-            where: {
-                phone_no: phone_no
+            where: { phone_no: phone_no },
+            include: {
+                user_bank_details: {
+                    orderBy: [
+                        { is_primary: 'desc' },
+                        { updatedAt: 'desc' }
+                    ]
+                },
+                mfKycIdentities: true,
             }
         });
     }

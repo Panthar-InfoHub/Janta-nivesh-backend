@@ -6,7 +6,7 @@ import AppError from "../middleware/error.middleware.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
 
 class UserGoalControllerClass {
-    async onboarding_create(req: Request) {
+    onboarding_create = async (req: Request) => {
         const user = req.user!;
         const data = req.body;
 
@@ -14,12 +14,16 @@ class UserGoalControllerClass {
 
         // verify goal data here using zod schema
         const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
-        return await user_goal_service.createGoal(user, user_goal_data);
+        return await user_goal_service.createGoalOnboarding(user, user_goal_data);
     }
 
-    async create(req: Request, res: Response, next: NextFunction) {
+    create = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const result = await this.onboarding_create(req);
+            const user = req.user!;
+            const data = req.body;
+
+            const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
+            const result = await user_goal_service.createGoal(user, user_goal_data);
 
             res.status(200).json({
                 success: true,
@@ -36,23 +40,20 @@ class UserGoalControllerClass {
         }
     }
 
-    async update(req: Request, res: Response, next: NextFunction) {
+    update = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const goal_id = req.params.goal_id as string;
+            const goal_record_id = req.params.goal_id as string;
             const data = req.body;
 
-            if (!data.goal_type_id || !goal_id) {
-                throw new AppError("goal_type_id and goal_id are required for updating a goal", 400);
+            if (!goal_record_id) {
+                throw new AppError("goal_id is required for updating a goal", 400, "GOAL_ID_REQUIRED");
             }
-
-            // In this project we verify goal_id manually as it comes from params
-            const gid = parseInt(goal_id);
 
             // verify goal data using existing zod schema
             const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
 
-            const result = await user_goal_service.updateGoal(user, gid, user_goal_data);
+            const result = await user_goal_service.updateGoal(user, goal_record_id, user_goal_data);
 
             res.status(200).json({
                 success: true,
@@ -71,25 +72,26 @@ class UserGoalControllerClass {
     delete_goal = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const goal_id = req.params.goal_id as string;
-            logger.info(`Received request to delete goal for User ID: ${user.id} with goal_id: ${goal_id}`);
+            const goal_record_id = req.params.goal_id as string;
+            logger.info(`Received request to delete goal for User ID: ${user.id} with goal_id: ${goal_record_id}`);
 
-            if (!goal_id) {
+            if (!goal_record_id) {
                 logger.warn("goal_id is missing in delete_goal request");
                 throw new AppError("goal_id is required for deleting a goal", 400);
             }
 
-            const result = await user_goal_service.delete_goal(user, goal_id);
+            const result = await user_goal_service.delete_goal(user, goal_record_id);
 
             const finnsys_goal_id = result?.goal_id;
 
-            const finnsys_res = await user_finnsys_service.delete_user_finnsys_goal(user.log!, user.pwd!, finnsys_goal_id!);
-            logger.debug(`FinSys delete goal response for goal_id ${goal_id} ==> `, finnsys_res);
+            if (finnsys_goal_id) {
+                const finnsys_res = await user_finnsys_service.delete_user_finnsys_goal(user.log!, user.pwd!, finnsys_goal_id);
+                logger.debug(`FinSys delete goal response for goal_id ${goal_record_id} ==> `, finnsys_res);
 
-
-            if (finnsys_res.code != "1") {
-                logger.warn(`FinSys failed to delete goal with goal_id ${goal_id}. Response ==> `, finnsys_res);
-                throw new AppError("Failed to delete goal from FinSys", 500, "FINNSYS_DELETE_GOAL_FAILED");
+                if (String(finnsys_res.code) !== "1") {
+                    logger.warn(`FinSys failed to delete goal with goal_id ${goal_record_id}. Response ==> `, finnsys_res);
+                    throw new AppError("Failed to delete goal from FinSys", 500, "FINNSYS_DELETE_GOAL_FAILED");
+                }
             }
 
             res.status(200).json({

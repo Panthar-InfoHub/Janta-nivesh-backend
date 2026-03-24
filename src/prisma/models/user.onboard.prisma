@@ -113,5 +113,5 @@ model UserGoals {
     // Relations
     user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-    @@unique([user_id, goal_type_id], name: "user_goal_type_idx")
+    @@index([user_id, goal_type_id], name: "user_goal_type_idx")
 }

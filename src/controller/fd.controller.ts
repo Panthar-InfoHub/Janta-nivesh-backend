@@ -17,6 +17,48 @@ import {
 
 class FdControllerClass {
 
+    private to_dd_mm_yyyy = (date_value?: Date | string | null): string | undefined => {
+        if (!date_value) return undefined;
+
+        if (typeof date_value === "string") {
+            return date_value;
+        }
+
+        const day = String(date_value.getDate()).padStart(2, "0");
+        const month = String(date_value.getMonth() + 1).padStart(2, "0");
+        const year = date_value.getFullYear();
+
+        return `${day}/${month}/${year}`;
+    }
+
+    private omit_empty = <T>(obj: T): T => {
+        if (Array.isArray(obj)) {
+            return obj
+                .map((item) => this.omit_empty(item))
+                .filter((item) => item !== undefined && item !== null) as T;
+        }
+
+        if (obj && typeof obj === "object") {
+            const cleaned = Object.entries(obj as Record<string, unknown>)
+                .map(([key, value]) => {
+                    if (value === undefined || value === null) return [key, undefined] as const;
+                    if (value === "") return [key, undefined] as const;
+
+                    const nested = this.omit_empty(value);
+                    if (typeof nested === "object" && nested !== null && !Array.isArray(nested) && Object.keys(nested as Record<string, unknown>).length === 0) {
+                        return [key, undefined] as const;
+                    }
+
+                    return [key, nested] as const;
+                })
+                .filter(([, value]) => value !== undefined);
+
+            return Object.fromEntries(cleaned) as T;
+        }
+
+        return obj;
+    }
+
     private normalize_payout_frequency = (value?: string): FdPayoutFrequency => {
         const normalized = String(value ?? FdPayoutFrequency.CUMULATIVE).toUpperCase();
         return Object.values(FdPayoutFrequency).includes(normalized as FdPayoutFrequency)
@@ -161,6 +203,85 @@ class FdControllerClass {
 
         } catch (error) {
             logger.error("Error in get_user_fd_transaction_by_id: ", error);
+            next(error);
+            return;
+        }
+    }
+
+    get_customer_details = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const mobile = String(req.query.mobile ?? "").trim();
+
+            if (!mobile) {
+                throw new AppError("mobile query param is required", 400, "MOBILE_REQUIRED");
+            }
+
+            const user = await user_service.get_user_by_phone(mobile);
+
+            if (!user) {
+                throw new AppError("User not found", 404, "USER_NOT_FOUND");
+            }
+
+            const primary_bank = user.user_bank_details?.find((bank) => bank.is_primary) || user.user_bank_details?.[0];
+            const kyc_identity = user.mfKycIdentities;
+
+            const bank_payload = this.omit_empty({
+                user: {
+                    name: user.full_name,
+                    mobileNumber: user.phone_no,
+                }
+            });
+
+            const nbfc_payload = this.omit_empty({
+                user: {
+                    name: user.full_name,
+                    fatherName: kyc_identity?.father_name,
+                    email: user.email || kyc_identity?.email_id,
+                    mobileNumber: user.phone_no,
+                    pan: kyc_identity?.pan_no,
+                    dob: this.to_dd_mm_yyyy(user.dob) || kyc_identity?.dob,
+                },
+                personalDetails: {
+                    maritalStatus: kyc_identity?.marital_status,
+                    gender: kyc_identity?.gender,
+                    // TODO: salutation is not stored in current DB models; will map once source is available.
+                    salutation: undefined,
+                },
+                bankAccount: {
+                    accountNo: primary_bank?.account_no,
+                    ifscCode: primary_bank?.ifsc_code,
+                    bankName: primary_bank?.bank_name,
+                    // TODO: branchName is not stored in current DB models; will map once source is available.
+                    branchName: undefined,
+                },
+                kyc: {
+                    timestamp: kyc_identity?.updatedAt?.getTime(),
+                    uid: kyc_identity?.uid,
+                    name: kyc_identity?.full_name,
+                    photoUrl: kyc_identity?.digilocker_photo_url,
+                    dob: kyc_identity?.dob,
+                    gender: kyc_identity?.gender,
+                    addressLine1: kyc_identity?.address_line,
+                    addressLine2: kyc_identity?.full_address,
+                    city: kyc_identity?.city,
+                    state: kyc_identity?.state,
+                    pincode: kyc_identity?.pincode,
+                    locality: kyc_identity?.district,
+                    landmark: kyc_identity?.land_mark,
+                }
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "Customer details fetched successfully",
+                data: {
+                    bank: bank_payload,
+                    nbfc: nbfc_payload,
+                }
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in get_customer_details: ", error);
             next(error);
             return;
         }

@@ -15,9 +15,9 @@ class FDTransactionServiceClass {
 
     create_transaction_with_purchase_url = async ({ issuer_id, jid, investment_amount, payout_frequency, investment_period, encrypted_text }: any) => {
         try {
-            const blostem_url = `https://${env.BLOSTEM_URL}/purchase/${issuer_id}?sso=${encrypted_text}&jid=${jid}&investmentAmount=${investment_amount}&payoutFrequency=${payout_frequency}&investmentPeriod=${investment_period}`;
-            const res = await axios.get(blostem_url);
-            return res.data;
+            const blostem_url = `${env.BLOSTEM_URL}/purchase/${issuer_id}?sso=${encrypted_text}&jid=${jid}&investmentAmount=${investment_amount}&payoutFrequency=${payout_frequency}&investmentPeriod=${investment_period}`;
+
+            return blostem_url;
 
         } catch (error) {
             logger.error("Error creating purchase URL with Blostem: ", error);

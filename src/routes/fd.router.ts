@@ -5,6 +5,7 @@ import { fd_controller } from "../controller/fd.controller.js";
 export const fd_router = Router();
 
 fd_router.get("/", fd_controller.get_fds)
+fd_router.get("/customer-details", fd_controller.get_customer_details)
 
 
 fd_router.post("/purchase-url", [login_require], fd_controller.create_purchase_url)
