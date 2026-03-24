@@ -108,8 +108,8 @@ class KycFinnsysServiceClass {
             });
         } catch (error: any) {
             console.log("Error in updating POA data ==> ", error?.response);
-        // logger.error("Error in updating POA data ==> ", error?.response);
-        // throw error;
+            // logger.error("Error in updating POA data ==> ", error?.response);
+            // throw error;
         }
     }
 
@@ -146,17 +146,29 @@ class KycFinnsysServiceClass {
     }
 
     update_signature = async (signature_url: string, kyc_access_token: string, merchant_id: string, inv_id: string) => {
-        return this.update_form(kyc_access_token, merchant_id, inv_id, "signature", {
-            type: "signature",
-            signatureImageUrl: signature_url,
-            consent: "true"
-        });
+        try {
+            return this.update_form(kyc_access_token, merchant_id, inv_id, "signature", {
+                type: "signature",
+                signatureImageUrl: signature_url,
+                consent: "true"
+            });
+        } catch (error) {
+            logger.error("Error in updating user signature ==> ", error);
+            throw new AppError("Failed to update user signature. Please try again later.", 500);
+        }
+
     }
 
     update_photo = async (photo_url: string, kyc_access_token: string, merchant_id: string, inv_id: string) => {
-        return this.update_form(kyc_access_token, merchant_id, inv_id, "userPhoto", {
-            photoUrl: photo_url
-        });
+        try {
+            return this.update_form(kyc_access_token, merchant_id, inv_id, "userPhoto", {
+                photoUrl: photo_url
+            });
+        } catch (error) {
+            logger.error("Error in updating user photo ==> ", error);
+            throw new AppError("Failed to update user photo. Please try again later.", 500);
+        }
+
     }
 
     private execute_onboarding = async (kyc_access_token: string, merchant_id: string, inv_id: string, inputData: object) => {

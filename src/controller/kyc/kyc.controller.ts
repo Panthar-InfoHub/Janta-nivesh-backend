@@ -326,7 +326,8 @@ class KycControllerClass {
     update_doc = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user.id!;
             logger.info("Updating KYC document for user ID: ", user_id);
 
             const { img_url, type }: { img_url: string, type: "photo" | "signature" } = req.body;
@@ -345,8 +346,8 @@ class KycControllerClass {
 
 
             // Finnsys call :
-            type === "photo" ? await kyc_finnsys_service.update_photo(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user_id) :
-                await kyc_finnsys_service.update_signature(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user_id);
+            type === "photo" ? await kyc_finnsys_service.update_photo(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user.inv_id!.toString()) :
+                await kyc_finnsys_service.update_signature(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user.inv_id!.toString());
 
             // Update the document URL in the KYC session
             await mfkyc_identity_service.update_identity(user_id, {

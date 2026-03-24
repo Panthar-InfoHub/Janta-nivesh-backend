@@ -11,11 +11,17 @@ class JobControllerClass {
         try {
 
             logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
-            logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`);
+            logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`);
             const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`, {
                 email: env.BLOSTEM_USERNAME,
                 password: env.BLOSTEM_PASSWORD,
-            });
+            },
+                {
+                    params: {
+                        ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST10" })
+                    }
+                }
+            );
 
             logger.debug("Blostem login response: ", res.data);
             return res.data.data.access.token;
