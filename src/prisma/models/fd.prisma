@@ -82,6 +82,8 @@ model FdProduct {
   issuer         FdIssuer         @relation(fields: [issuer_id], references: [id], onDelete: Cascade)
   interest_rates FdInterestRate[]
   fdTransactions FdTransaction[]
+
+  @@unique([issuer_id, type])
 }
 
 model FdInterestRate {
@@ -102,6 +104,8 @@ model FdInterestRate {
 
   // Relations
   product FdProduct @relation(fields: [fd_product_id], references: [id], onDelete: Cascade)
+
+  @@unique([fd_product_id, payout_frequency, tenure_days, customer_type])
 }
 
 model FdTransaction {

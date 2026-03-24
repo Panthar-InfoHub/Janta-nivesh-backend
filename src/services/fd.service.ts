@@ -46,6 +46,10 @@ class FdServiceClass {
                             is_default_selection: true,
                             customer_type: true,
                         },
+                        orderBy: [
+                            { is_default_selection: 'desc' }, // Use it if it exists
+                            { interest_rate: 'desc' }        // Otherwise, show the best rate
+                        ],
                         take: 1,
                     }
                 },

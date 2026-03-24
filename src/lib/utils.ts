@@ -94,7 +94,7 @@ const build_fd_interest_rate_filter = (params: RawFdParams): FdInterestRateWhere
     return {
         tenure_days: { in: tenure_days },
         payout_frequency,
-        is_default_selection: true,
+        // is_default_selection: true,
     };
 }
 

@@ -175,8 +175,12 @@ class FdControllerClass {
             const raw_query = req.query as Record<string, unknown>;
             const { query, order, pagination, interest_rate_filter } = get_fd_search_query(raw_query);
 
+
             const should_use_cache = pagination.page === 1;
+            logger.debug(`FD products request - Page: ${pagination.page}, Limit: ${pagination.limit}, Using Cache: ${should_use_cache}`);
             const cache_key = should_use_cache ? build_fd_list_cache_key(raw_query) : "";
+
+            logger.debug("Cache key for FD products: ", cache_key);
 
             if (should_use_cache) {
                 const cached = await redis_buffer_client.get(cache_key);
@@ -185,6 +189,8 @@ class FdControllerClass {
                     logger.debug(`FD products cache hit for key: ${cache_key}`);
                     const cached_data = await decompress_json<any>(cached as Buffer);
 
+
+                    logger.debug("Cached FD products data: ", cached_data);
                     res.status(200).json({
                         success: true,
                         message: "FD products fetched successfully",
@@ -198,6 +204,7 @@ class FdControllerClass {
                 logger.debug(`FD products cache bypass for page: ${pagination.page}`);
             }
 
+            logger.debug("FD products search query - ", { query, order, pagination, interest_rate_filter });
             const data = await fd_service.get_fd_products({ pagination, order, query, interest_rate_filter });
 
             if (should_use_cache) {

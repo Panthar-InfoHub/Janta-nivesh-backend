@@ -1,5 +1,5 @@
 import { env } from "../lib/config-env.js";
-import { FdCustomerType, Prisma } from "../prisma/generated/prisma/client.js";
+import { FdCustomerType, FdPayoutFrequency, Prisma } from "../prisma/generated/prisma/client.js";
 import { chunkArray, logMemoryUsage, map_mf_asset_type } from "../lib/utils.js";
 import { v4 as uuidv4 } from 'uuid';
 import axios from "axios";
@@ -165,151 +165,135 @@ class JobServiceClass {
 
 
     daily_fd_job = async (token: string) => {
+        try {
+            const api_res = await axios.get(`${env.BLOSTEM_MASTER_URL}/binvestt/portal/fixed-deposit/templates`, {
+                headers: { 'x-partner-token': token },
+                params: {
+                    ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST100" })
+                }
+            }).then(res => res.data);
 
-        logMemoryUsage("START OF FD JOB");
+            const api_data: any[] = api_res.data?.data ?? [];
 
-        const api_res = await axios.get(`${env.BLOSTEM_MASTER_URL}/core/v1/dashboard/fixed-deposit/templates/list`, {
-            headers: {
-                'Authorization': `Bearer ${token}`, // Force trim
-            },
-            params: {
-                ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST100" })
-            }
-        }).then(res => res.data);
+            // 1. Frequency Mapper to handle API typos like "ANNUALY"
+            const frequencyMap: Record<string, FdPayoutFrequency> = {
+                'ANNUALY': 'YEARLY',
+                'ANNUALLY': 'YEARLY',
+                'YEARLY': 'YEARLY',
+                'MONTHLY': 'MONTHLY',
+                'QUARTERLY': 'QUARTERLY',
+                'HALF_YEARLY': 'HALF_YEARLY',
+                'HALFYEARLY': 'HALF_YEARLY',
+                'CUMULATIVE': 'CUMULATIVE',
+                'ON_MATURITY': 'ON_MATURITY'
+            };
 
-        const api_data: any[] = api_res.data ?? [];
-        if (api_data.length === 0) {
-            logger.warn("No FD data received from Blostem API.");
-            return;
-        }
+            const batches = chunkArray(api_data, 25);
+            let totalSynced = 0;
 
-
-        const batches = chunkArray(api_data, 100);
-
-
-        await db.$transaction(async (tx) => {
             for (const batch of batches) {
+                try {
+                    await db.$transaction(async (tx) => {
+                        // --- STEP A: UPSERT ISSUERS ---
+                        const issuerValues = batch.map(fd => Prisma.sql`(
+                        ${fd.issuerId}, 
+                        ${fd.organization?.fullName || fd.displayName}, 
+                        ${fd.displayName}, 
+                        ${fd.issuerType}, 
+                        ${fd.organization?.logo || ''}, 
+                        ${fd.aboutIssuer?.banner || ''}, 
+                        ${fd.aboutIssuer?.rating || ''}, 
+                        ${fd.aboutIssuer?.customerServed || ''}, 
+                        ${fd.aboutIssuer?.operatingSince || ''}, 
+                        ${fd.aboutIssuer?.about?.description || ''}, 
+                        '', '', NOW()
+                    )`);
 
-                // 1. UPSERT ISSUERS (Using id as jid)
-                const issuerValues = batch.map(fd => Prisma.sql`(
-                    ${fd.issuerId}, 
-                    ${fd.organization?.fullName || fd.displayName}, 
-                    ${fd.displayName}, 
-                    ${fd.issuerType}, 
-                    ${fd.organization?.logo || ''}, 
-                    ${fd.aboutIssuer?.banner || ''}, 
-                    ${fd.aboutIssuer?.rating || ''}, 
-                    ${fd.aboutIssuer?.customerServed || ''}, 
-                    ${fd.aboutIssuer?.operatingSince || ''}, 
-                    ${fd.aboutIssuer?.about?.description || ''}, 
-                    '', '', NOW()
-                )`);
+                        await tx.$executeRaw`
+                        INSERT INTO "FdIssuer" (id, full_name, display_name, issuer_type, logo_url, banner_url, rating_text, customer_served, operating_since, about_description, support_email, support_phone, "updatedAt")
+                        VALUES ${Prisma.join(issuerValues)}
+                        ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, "updatedAt" = NOW();
+                    `;
 
-                await tx.$executeRaw`
-                    INSERT INTO "FdIssuer" (
-                        id, full_name, display_name, issuer_type, logo_url, banner_url, 
-                        rating_text, customer_served, operating_since, about_description, 
-                        support_email, support_phone, "updatedAt"
-                    )
-                    VALUES ${Prisma.join(issuerValues)}
-                    ON CONFLICT (id) DO UPDATE SET 
-                        display_name = EXCLUDED.display_name,
-                        rating_text = EXCLUDED.rating_text,
-                        "updatedAt" = NOW();
-                `;
+                        // --- STEP B: UPSERT PRODUCTS ---
+                        const productValues = batch.map(fd => Prisma.sql`(
+                        ${uuidv4()}, ${fd.issuerId}, ${fd.type}, 
+                        ${parseFloat(fd.minimumDeposit || 0)}, ${parseFloat(fd.maximumDeposit || 0)},
+                        ${parseInt(fd.minimumTenure || 0)}, ${parseInt(fd.maximumTenure || 0)},
+                        ${fd.aboutIssuer?.lockInDetails?.period || 0}, ${fd.aboutIssuer?.lockInDetails?.message || ''}, 
+                        1.0, ${!!fd.aboutIssuer?.vkyc}, ${parseFloat(fd.aboutIssuer?.vkyc?.minAmountForVkyc || 0)},
+                        ${JSON.stringify(fd.aboutIssuer?.usp || [])}::jsonb,
+                        ${JSON.stringify(fd.aboutIssuer?.questions?.content || [])}::jsonb,
+                        ${JSON.stringify(fd.tags || [])}::jsonb, NOW()
+                    )`);
 
-                // 2. UPSERT PRODUCTS (Mapped to issuer_id)
-                const productValues = batch.map(fd => Prisma.sql`(
-                    ${uuidv4()}, ${fd.issuerId}, ${fd.type}, 
-                    ${parseFloat(fd.minimumDeposit || 0)}, ${parseFloat(fd.maximumDeposit || 0)},
-                    ${parseInt(fd.minimumTenure || 0)}, ${parseInt(fd.maximumTenure || 0)},
-                    ${fd.aboutIssuer?.lockInDetails?.period || 0}, 
-                    ${fd.aboutIssuer?.lockInDetails?.message || ''}, 
-                    1.0, 
-                    ${fd.aboutIssuer?.vkyc ? true : false},
-                    ${parseFloat(fd.aboutIssuer?.vkyc?.minAmountForVkyc || 0)},
-                    ${JSON.stringify(fd.aboutIssuer?.usp || [])}::jsonb,
-                    ${JSON.stringify(fd.aboutIssuer?.questions?.content || [])}::jsonb,
-                    ${JSON.stringify(fd.tags || [])}::jsonb,
-                    NOW()
-                )`);
+                        await tx.$executeRaw`
+                        INSERT INTO "FdProduct" (id, issuer_id, type, min_deposit, max_deposit, min_tenure_days, max_tenure_days, lock_in_period_days, withdrawal_message, premature_penalty_percent, is_vkyc_required, min_amount_for_vkyc, usps, faqs, tags, "updatedAt")
+                        VALUES ${Prisma.join(productValues)}
+                        ON CONFLICT (issuer_id, type) DO UPDATE SET min_deposit = EXCLUDED.min_deposit, max_deposit = EXCLUDED.max_deposit, "updatedAt" = NOW();
+                    `;
 
-                await tx.$executeRaw`
-                    INSERT INTO "FdProduct" (
-                        id, issuer_id, type, min_deposit, max_deposit, 
-                        min_tenure_days, max_tenure_days, lock_in_period_days, 
-                        withdrawal_message, premature_penalty_percent, is_vkyc_required, 
-                        min_amount_for_vkyc, usps, faqs, tags, "updatedAt"
-                    )
-                    VALUES ${Prisma.join(productValues)}
-                    ON CONFLICT (issuer_id, type) DO UPDATE SET
-                        min_deposit = EXCLUDED.min_deposit,
-                        max_deposit = EXCLUDED.max_deposit,
-                        "updatedAt" = NOW();
-                `;
+                        // --- STEP C: MAP IDS FOR RATES ---
+                        const currentProducts = await tx.fdProduct.findMany({
+                            where: { issuer_id: { in: batch.map(b => b.issuerId) } },
+                            select: { id: true, issuer_id: true, type: true }
+                        });
+                        const productMap = new Map(currentProducts.map(p => [`${p.issuer_id}-${p.type}`, p.id]));
 
-                // 3. MAP PRODUCT IDs for Rate Insertion
-                const currentProducts = await tx.fdProduct.findMany({
-                    where: { issuer_id: { in: batch.map(b => b.issuerId) } },
-                    select: { id: true, issuer_id: true, type: true }
-                });
-                const productMap = new Map(currentProducts.map(p => [`${p.issuer_id}-${p.type}`, p.id]));
+                        // --- STEP D: UPSERT INTEREST RATES ---
+                        const rateValues: Prisma.Sql[] = [];
+                        for (const fd of batch) {
+                            const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
+                            if (!pId) continue;
 
-                // 4. UPSERT INTEREST RATES (Including Senior Female combinations)
-                const rateValues: Prisma.Sql[] = [];
+                            fd.frequencyTenureMapping?.forEach((freqGroup: any) => {
+                                // Map the API frequency to your Enum
+                                const apiFreq = freqGroup.frequency?.toUpperCase();
+                                const mappedFreq = frequencyMap[apiFreq] || 'CUMULATIVE';
 
-                for (const fd of batch) {
-                    const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
-                    if (!pId) continue;
+                                let customerType: FdCustomerType = "STANDARD";
+                                if (freqGroup.isSeniorCitizen && freqGroup.isFemale) customerType = "SENIOR_CITIZEN_FEMALE";
+                                else if (freqGroup.isSeniorCitizen) customerType = "SENIOR_CITIZEN";
+                                else if (freqGroup.isFemale) customerType = "FEMALE";
 
-                    fd.frequencyTenureMapping?.forEach((freqGroup: any) => {
-                        let customerType: FdCustomerType = "STANDARD";
-
-                        if (freqGroup.isSeniorCitizen && freqGroup.isFemale) {
-                            customerType = "SENIOR_CITIZEN_FEMALE";
-                        } else if (freqGroup.isSeniorCitizen) {
-                            customerType = "SENIOR_CITIZEN";
-                        } else if (freqGroup.isFemale) {
-                            customerType = "FEMALE";
+                                freqGroup.tenure_mapping?.forEach((tm: any) => {
+                                    rateValues.push(Prisma.sql`(
+                                    ${uuidv4()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
+                                    ${tm.tenure}, ${tm.year || tm.display}, ${parseFloat(tm.rates.replace('%', ''))}, 
+                                    ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
+                                    ${tm.default === true}, ${tm.taxSaver === true}, NOW()
+                                )`);
+                                });
+                            });
                         }
 
-                        freqGroup.tenure_mapping?.forEach((tm: any) => {
-                            rateValues.push(Prisma.sql`(
-                                ${uuidv4()}, 
-                                ${pId}, 
-                                ${freqGroup.frequency}, 
-                                ${customerType}, 
-                                ${tm.tenure}, 
-                                ${tm.year || tm.display}, 
-                                ${parseFloat(tm.rates.replace('%', ''))}, 
-                                ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
-                                ${tm.default === true}, 
-                                ${tm.taxSaver === true},
-                                NOW()
-                            )`);
-                        });
-                    });
-                }
+                        if (rateValues.length > 0) {
+                            await tx.$executeRaw`
+                            INSERT INTO "FdInterestRate" (
+                                id, fd_product_id, payout_frequency, customer_type, 
+                                tenure_days, tenure_label, interest_rate, annualized_yield, 
+                                is_default_selection, is_tax_saver, "updatedAt"
+                            )
+                            VALUES ${Prisma.join(rateValues)}
+                            ON CONFLICT (fd_product_id, payout_frequency, tenure_days, customer_type) 
+                            DO UPDATE SET 
+                                interest_rate = EXCLUDED.interest_rate,
+                                annualized_yield = EXCLUDED.annualized_yield, 
+                                "updatedAt" = NOW();
+                        `;
+                        }
+                    }, { timeout: 30000 });
 
-                if (rateValues.length > 0) {
-                    await tx.$executeRaw`
-                        INSERT INTO "FdInterestRate" (
-                            id, fd_product_id, payout_frequency, customer_type, 
-                            tenure_days, tenure_label, interest_rate, annualized_yield,
-                            is_default_selection, is_tax_saver, "updatedAt"
-                        )
-                        VALUES ${Prisma.join(rateValues)}
-                        ON CONFLICT (fd_product_id, payout_frequency, tenure_days, customer_type) 
-                        DO UPDATE SET
-                            interest_rate = EXCLUDED.interest_rate,
-                            annualized_yield = EXCLUDED.annualized_yield,
-                            "updatedAt" = NOW();
-                    `;
+                    totalSynced += batch.length;
+                    logger.info(`Batch Sync Successful: ${totalSynced}/${api_data.length}`);
+                } catch (batchError) {
+                    logger.error("Batch failed, skipping to next...", batchError);
                 }
             }
-        }, { timeout: 90000 });
-
-    }
+        } catch (error: any) {
+            logger.error("FATAL: FD Sync Job Failed.", error.message);
+        }
+    };
 
 
 
