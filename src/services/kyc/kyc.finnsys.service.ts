@@ -178,6 +178,8 @@ class KycFinnsysServiceClass {
             merchantId: merchant_id,
             inputData
         };
+
+        logger.debug("Payload for executing onboarding task ==> ", payload);
         const response = await axios.post(`${this.kyc_base_url}/onboardings/execute`, payload, {
             headers: { "Authorization": `${kyc_access_token}` }
         });

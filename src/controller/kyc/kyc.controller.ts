@@ -370,10 +370,11 @@ class KycControllerClass {
 
     create_contract = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user?.id!;
             logger.info("Creating contract PDF for user ID: ", user_id);
 
-            const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_kyc_session = await kyc_type_service.get_kyc_query(user.inv_id!.toString(), { kyc_type: "mf" });
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
@@ -410,8 +411,8 @@ class KycControllerClass {
 
     verify_kyc = async (req: Request, res: Response, next: NextFunction) => {
         try {
-
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user?.id!;
             logger.info("Verifying KYC for user ID: ", user_id);
 
             const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
@@ -426,12 +427,12 @@ class KycControllerClass {
                 kyc_finnsys_service.save_esign_pdf(
                     user_kyc_session.mfKycSessions.kyc_access_token,
                     user_kyc_session?.mfKycSessions?.merchant_id!,
-                    user_id
+                    user.inv_id!.toString()
                 ),
                 kyc_finnsys_service.execute_verification(
                     user_kyc_session.mfKycSessions.kyc_access_token,
                     user_kyc_session?.mfKycSessions?.merchant_id!,
-                    user_id
+                    user.inv_id!.toString()
                 )
             ]);
 

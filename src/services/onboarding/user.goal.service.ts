@@ -51,41 +51,6 @@ class UserGoalServiceClass {
         return params;
     }
 
-    createGoalOnboarding = async (user: any, data: UserGoalInput) => {
-        const user_goal = await db.userGoals.upsert({
-            where: {
-                user_goal_type_idx: {
-                    user_id: user.id,
-                    goal_type_id: data.goal_type_id
-                }
-            },
-            update: {
-                ...data
-            },
-            create: {
-                user_id: user.id,
-                ...data
-            }
-        });
-
-        const params = this.extract_params(user, data);
-        const res = await axios.get(this.finsys_api, { params });
-
-        logger.debug("Finsys goal res ==> ", res.data);
-
-        if (res.data.results?.[0]?.gid) {
-            await db.userGoals.update({
-                where: {
-                    id: user_goal.id
-                },
-                data: {
-                    goal_id: parseInt(res.data.results[0]?.gid)
-                }
-            });
-        }
-        return res.data;
-    }
-
     createGoal = async (user: any, data: UserGoalInput) => {
         const user_goal = await db.userGoals.create({
             data: {

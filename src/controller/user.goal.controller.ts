@@ -14,7 +14,7 @@ class UserGoalControllerClass {
 
         // verify goal data here using zod schema
         const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
-        return await user_goal_service.createGoalOnboarding(user, user_goal_data);
+        return await user_goal_service.createGoal(user, user_goal_data);
     }
 
     create = async (req: Request, res: Response, next: NextFunction) => {
