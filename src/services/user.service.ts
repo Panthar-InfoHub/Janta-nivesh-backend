@@ -86,6 +86,14 @@ class UserServiceClass {
         });
     }
 
+    get_user_by_refresh_token(refresh_token: string) {
+        return db.user.findFirst({
+            where: {
+                refresh_token: refresh_token
+            }
+        });
+    }
+
     async get_user_by_invId(inv_id: number) {
         return await db.user.findUnique({
             where: {

@@ -4,6 +4,7 @@ import { auth_service } from "../services/auth.service.js";
 import AppError from "../middleware/error.middleware.js";
 import { user_service } from "../services/user.service.js";
 import { generate_JWT } from "../middleware/jwt.js";
+import { User } from "../prisma/generated/prisma/client.js";
 
 class AuthControllerClass {
 
@@ -95,14 +96,17 @@ class AuthControllerClass {
                 throw new AppError("OTP validation failed", 401, "OTP_VALIDATION_FAILED");
             }
 
+            const refresh_token = generate_JWT(user, "30d");
+
             const updated_user = await user_service.update_user(user.id, {
                 usr: auth_res.results[0].usr,
                 pwd: auth_res.results[0].pwd,
-                inv_id: auth_res.results[0].invid
+                inv_id: auth_res.results[0].invid,
+                refresh_token: refresh_token
             });
 
+
             const token = generate_JWT(updated_user);
-            const refresh_token = generate_JWT(updated_user, "30d");
 
             res.status(200).json({
                 success: true,
@@ -239,6 +243,49 @@ class AuthControllerClass {
 
         } catch (error) {
             logger.error("Error in auth_login_creds:", error);
+            next(error);
+            return;
+        }
+    }
+
+
+    refresh_token = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const old_token = req.body.token as string;
+            if (!old_token) {
+                logger.error("Refresh token is required");
+                throw new AppError("Refresh token is required", 400, "NOT_REFRESH_TOKEN_PROVIDED");
+            }
+
+            const user: User | null = await user_service.get_user_by_refresh_token(old_token);
+
+            if (!user) {
+                logger.error("Invalid refresh token provided");
+                throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
+            }
+
+            logger.info(`Refreshing token for User ID: ${user.id}`);
+
+            const access_token = generate_JWT(user);
+            const refresh_token = generate_JWT(user, "30d");
+
+            await user_service.update_user(user.id, {
+                refresh_token: refresh_token
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "Token refreshed successfully",
+                data: {
+                    token: access_token,
+                    refresh_token: refresh_token
+                }
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in refresh_token:", error);
             next(error);
             return;
         }

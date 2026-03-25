@@ -1,12 +1,10 @@
 import { NextFunction, Request, Response } from "express";
-import { promisify } from "util";
-import { gzip, gunzip } from "zlib";
+import { redis } from "../lib/redis.js";
+import { sip_cart_zod_schema } from "../lib/types.js";
+import { get_mf_search_query } from "../lib/utils.js";
+import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import { mututal_funds_service } from "../services/mutual-fund.service.js";
-import { redis, redis_buffer_client } from "../lib/redis.js";
-import { decompressAndFilter, get_mf_search_query } from "../lib/utils.js";
-import AppError from "../middleware/error.middleware.js";
-import { lumpsum_cart_zod_schema, sip_cart_zod_schema } from "../lib/types.js";
 
 
 

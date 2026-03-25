@@ -3,6 +3,7 @@ import logger from "../middleware/logger.js";
 import { user_service } from "../services/user.service.js";
 import AppError from "../middleware/error.middleware.js";
 import { fire_report_service } from "../services/fire.report.service.js";
+import { user_finnsys_service } from "../services/user.finnsys.service.js";
 
 class UserFinanceControllerClass {
     async onboarding_create(req: Request) {
@@ -142,7 +143,36 @@ class UserFinanceControllerClass {
         }
     }
 
+    get_user_iin = async (req: Request, res: Response, next: NextFunction) => {
+        try {
 
+            const user = req.user!;
+            logger.info(`Fetching user iin for User ID: ${user.id}`);
+
+            const user_iin_finnsys_res = await user_finnsys_service.get_user_iin_finnsys(user.log!, user.pwd!)
+
+            logger.debug(`User iin fetched from Finnsys successfully ==> `, user_iin_finnsys_res);
+
+            if (user_iin_finnsys_res.code != 1) {
+                logger.warn(`Failed to fetch user iin from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_iin_finnsys_res.code}`);
+                throw new AppError("Failed to fetch user iin from Finnsys", 502, "FINNSYS_IIN_FETCH_FAILED");
+            }
+
+            const iin_data = user_iin_finnsys_res.results[0].INV_IIN_LIST || [];
+
+            res.status(200).json({
+                code: 200,
+                message: "User iin fetched successfully",
+                data: iin_data
+            });
+            return;
+
+        } catch (error) {
+            logger.error(`Error in getting user iin: `, error);
+            next(error);
+            return;
+        }
+    }
 
 
 
