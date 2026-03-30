@@ -374,7 +374,7 @@ class KycControllerClass {
             const user_id = user?.id!;
             logger.info("Creating contract PDF for user ID: ", user_id);
 
-            const user_kyc_session = await kyc_type_service.get_kyc_query(user.inv_id!.toString(), { kyc_type: "mf" });
+            const user_kyc_session = await kyc_type_service.get_kyc_query(user_id, { kyc_type: "mf" });
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
@@ -384,7 +384,7 @@ class KycControllerClass {
             const contract_response = await kyc_finnsys_service.create_contract_pdf(
                 user_kyc_session.mfKycSessions.kyc_access_token,
                 user_kyc_session?.mfKycSessions?.merchant_id!,
-                user_id
+                user.inv_id!.toString()
             );
 
             logger.debug("Contract PDF creation response: ", contract_response);
