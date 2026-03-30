@@ -196,19 +196,29 @@ class KycFinnsysServiceClass {
     }
 
     save_esign_pdf = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
-        return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
-            service: "esign",
-            type: "",
-            task: "getEsignData",
-            data: {}
-        });
+        try {
+            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+                service: "esign",
+                type: "",
+                task: "getEsignData",
+                data: {}
+            });
+        } catch (error) {
+            logger.error("Error in saving esign pdf data ==> ", error);
+            throw error;
+        }
     }
 
     execute_verification = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
-        return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
-            service: "verificationEngine",
-            merchantId: merchant_id
-        });
+        try {
+            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+                service: "verificationEngine",
+                merchantId: merchant_id
+            });
+        } catch (error) {
+            logger.error("Error in executing verification ==> ", error);
+            throw error;
+        }
     }
 
 

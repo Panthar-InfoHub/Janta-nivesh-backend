@@ -423,27 +423,25 @@ class KycControllerClass {
             }
 
             // Save esign pdf and exxecute verification in parallel
-            const [esign_response, verification_response] = await Promise.allSettled([
-                kyc_finnsys_service.save_esign_pdf(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session?.mfKycSessions?.merchant_id!,
-                    user.inv_id!.toString()
-                ),
-                kyc_finnsys_service.execute_verification(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session?.mfKycSessions?.merchant_id!,
-                    user.inv_id!.toString()
-                )
-            ]);
+            const esign_response = await kyc_finnsys_service.save_esign_pdf(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString()
+            )
 
-            if (esign_response.status === "rejected" || verification_response.status === "rejected") {
-                logger.warn("Failed to verify KYC for user ID: ", user_id);
-                throw new AppError("Failed to verify KYC from finnsys end", 424, "KYC_VERIFICATION_FAILED");
-            }
+            const verification_response = await kyc_finnsys_service.execute_verification(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString()
+            )
 
-            logger.debug("Esign PDF response: ", esign_response.value);
-            logger.debug("KYC verification response: ", verification_response.value);
+            logger.debug("Esign PDF save response: ", esign_response);
+            logger.debug("KYC verification response: ", verification_response);
 
+            // if (esign_response.status === "rejected" || verification_response.status === "rejected") {
+            //     logger.warn("Failed to verify KYC for user ID: ", user_id);
+            //     throw new AppError("Failed to verify KYC from finnsys end", 424, "KYC_VERIFICATION_FAILED");
+            // }
             // Update KYC status to completed
             await Promise.all([
                 kyc_type_service.create_kyc_type({
