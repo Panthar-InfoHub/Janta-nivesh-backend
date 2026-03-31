@@ -7,7 +7,7 @@ import { job_service } from "../services/job.service.js";
 
 class JobControllerClass {
 
-    private get_blostem_token = async () => {
+    get_blostem_token = async () => {
         try {
 
             logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
@@ -16,11 +16,6 @@ class JobControllerClass {
                 email: env.BLOSTEM_USERNAME,
                 password: env.BLOSTEM_PASSWORD,
             },
-                {
-                    params: {
-                        ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST10" })
-                    }
-                }
             );
 
             logger.debug("Blostem login response: ", res.data);

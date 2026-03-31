@@ -34,7 +34,7 @@ class UserFinanceControllerClass {
 
             logger.debug(`User data fetched successfully ==> `, data);
 
-            const { fire_number, net_worth, total_expenses } = await fire_report_service.get_current_fire_number(user_id);
+            const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
             // const fire_number_inc = (total_expenses_inc + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
 
@@ -43,11 +43,18 @@ class UserFinanceControllerClass {
                 message: "User data fetched successfully",
                 data: {
                     ...data,
+                    kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
+                        acc[kyc.kyc_type] = {
+                            status: kyc.status
+                        };
+                        return acc;
+                    }, {}) || {},
                     kyc_progress: this.calculate_kyc_progress(data?.kyc_types || []),
                     user_home_data: {
                         fire_number,
                         net_worth,
-                        total_expenses
+                        total_expenses,
+                        fire_percentage
                     }
                 }
             });
@@ -174,6 +181,76 @@ class UserFinanceControllerClass {
         }
     }
 
+
+    get_user_portfolio = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            logger.info(`Fetching user portfolio for User ID: ${user.id}`);
+
+            const user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!)
+
+            logger.debug(`User portfolio fetched from Finnsys successfully ==> `, user_portfolio_finnsys_res);
+
+            if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
+                logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res.code}`);
+                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+            }
+
+            const user_mf_data = user_portfolio_finnsys_res.results || []
+
+            const investment_data = user_mf_data.length > 0 ? user_mf_data.reduce((acc: any, item: any) => {
+                // Clean purcost (string with commas)
+                const invested = parseFloat(item.purcost.replace(/,/g, ""));
+
+                // currval is already numeric string/number
+                const current = parseFloat(item.currval);
+
+                acc.invested_amount += invested;
+                acc.current_value += current;
+                return acc;
+            }, {
+                current_value: 0,
+                invested_amount: 0,
+                total_returns: 0,
+            }) : {
+                current_value: 0,
+                invested_amount: 0,
+                total_returns: 0,
+            };
+
+            investment_data.total_returns = investment_data.current_value - investment_data.invested_amount
+
+            logger.debug(`Calculated user investment data ==> `, investment_data);
+
+            const mf_investment_items = user_mf_data.length > 0 ? user_mf_data.map((item: any) => ({
+                id: item.schemeid,
+                title: item.schemename,
+                category: item.schemetype,
+                amount: Number(item.purcost.replace(/,/g, "")),
+                is_sip: item.sip,
+                next_due_date: null,
+            })) : [];
+
+            logger.debug("Mapped user mututal fund now proceeding to user fd transactions...");
+            const user_fd_transactions = await user_service.get_user_fd_data({ user_id: user.id, order: { fd_issued_at: 'desc' } });
+
+            res.status(200).json({
+                code: 200,
+                message: "User portfolio fetched successfully",
+                data: {
+                    investment_data,
+                    mutual_funs: mf_investment_items,
+                    user_fd: user_fd_transactions
+                }
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in getting user portfolio: `, error);
+            next(error);
+            return;
+        }
+    }
 
 
 

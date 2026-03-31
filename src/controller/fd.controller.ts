@@ -14,6 +14,7 @@ import {
     decompress_json,
     get_fd_search_query
 } from "../lib/utils.js";
+import { job_controller } from "./job.controller.js";
 
 class FdControllerClass {
 
@@ -123,7 +124,7 @@ class FdControllerClass {
             }
 
             const requested_tenure_days = Number(tenure ?? investment_period);
-            logger.debug(`Requested Tenure (days): ${requested_tenure_days}, Payout Frequency: ${payout_frequency}`);
+            logger.debug(`Requested Tenure (days): ${requested_tenure_days}, Payout Frequency: ${payout_frequency} for Product ID: ${product_id} and amount: ${investment_amount}`);
 
             if (!Number.isFinite(requested_tenure_days) || requested_tenure_days <= 0) {
                 throw new AppError("Invalid tenure/investment_period", 400, "INVALID_TENURE");
@@ -139,10 +140,10 @@ class FdControllerClass {
             }
 
 
-            const { issuer_id } = fd_product;
+            const { id } = fd_product;
             const fd_transaction = await fd_transaction_service.create_transaction({
                 user: { connect: { id: user_id } },
-                issuer_id: issuer_id,
+                issuer_id: fd_product.issuer_id,
                 product: { connect: { id: product_id } },
                 amount: investment_amount,
                 payout_frequency: payout_frequency as FdPayoutFrequency,
@@ -153,7 +154,7 @@ class FdControllerClass {
             const encrypted_text = this.create_encryption_text(user?.phone_no)
 
             const response = await fd_transaction_service.create_transaction_with_purchase_url({
-                issuer_id,
+                id,
                 jid: fd_transaction.id,
                 investment_amount,
                 payout_frequency,
@@ -173,6 +174,50 @@ class FdControllerClass {
 
         } catch (error) {
             logger.error("Error in create_purchase_url: ", error);
+            next(error);
+            return;
+        }
+    }
+
+
+    create_redirect_url = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user_id = req.user?.id! as string;
+            logger.info(`Creating purchase URL for User ID: ${user_id}...`);
+
+            const { fd_trans_id, event } = req.body;
+
+            const fd_transaction = await fd_transaction_service.get_user_fd_transaction_by_id(fd_trans_id, user_id);
+
+            if (!fd_transaction) {
+                logger.error(`FD Transaction with ID ${fd_trans_id} not found for User ID ${user_id}`);
+                throw new AppError("FD Transaction not found", 404, "FD_TRANSACTION_NOT_FOUND");
+            }
+            const token = await job_controller.get_blostem_token();
+
+            logger.info(`User phone number for FD Transaction ID ${fd_trans_id}: ${fd_transaction.user?.phone_no}`);
+            const encrypted_text = this.create_encryption_text(fd_transaction.user?.phone_no);
+
+            logger.debug(`Creating redirect URL for FD Transaction ID: ${fd_trans_id}, Event: ${event}, User ID: ${user_id} and token from job_controller: ${token} and the encrypted text: ${encrypted_text}`);
+
+            const redirect_res = await fd_transaction_service.create_redirect_url({
+                jid: fd_transaction.id,
+                event: event as 'VKYC' | 'PAYMENT',
+                encrypted_text,
+                token
+            });
+            logger.debug("Redirect URL response from Blostem: ", redirect_res);
+
+            res.status(200).json({
+                success: true,
+                message: "Redirect URL created successfully",
+                data: redirect_res
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in create_redirect_url: ", error);
             next(error);
             return;
         }

@@ -9,6 +9,7 @@ fd_router.get("/customer-details", fd_controller.get_customer_details)
 
 
 fd_router.post("/purchase-url", [login_require], fd_controller.create_purchase_url)
+fd_router.post("/redirect-url", [login_require], fd_controller.create_redirect_url)
 
 
 

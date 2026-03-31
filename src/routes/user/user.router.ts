@@ -6,6 +6,7 @@ export const user_router = Router();
 
 user_router.get("/", login_require, user_controller.get_user)
 user_router.patch("/discard-onboard", login_require, user_controller.discard_onboard)
+user_router.get("/portfolio", login_require, user_controller.get_user_portfolio)
 user_router.get("/iin", login_require, user_controller.get_user_iin)
 user_router.get("/cart", login_require, user_controller.get_user_cart)
 

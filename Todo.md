@@ -64,3 +64,61 @@
 34,₹10 Lakhs – ₹25 Lakhs
 35,₹25 Lakhs – ₹1 Crore
 36,Above ₹1 Crore
+
+
+```
+
+              "name": "15. NEW- Generate Aadhaar Esign URL",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "let body = JSON.parse(responseBody);",
+                      "",
+                      "pm.environment.set('aadharEsignUrl', body.object.result.url);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "{{onboardingAccessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"arn\": \"20943\",\r\n    \"investorId\": \"3342\",\r\n    \"merchantId\": \"{{onboardingPassword}}\",\r\n    \"inputData\": {\r\n        \"service\": \"esign\",\r\n        \"type\": \"\",\r\n        \"task\": \"createEsignUrl\",\r\n        \"data\": {\r\n            \"inputFile\": \"{{combinedPdfUrl}}\",\r\n            \"signatureType\": \"aadhaaresign\",\r\n            \"redirectUrl\": \"http://acmatics.com/kyc\"\r\n        }\r\n    }\r\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/kyc/v1/onboardings/execute",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "kyc",
+                    "v1",
+                    "onboardings",
+                    "execute"
+                  ]
+                }
+              },
+              "response": []
+            },
+            ```
+
+
+
+WEBHOOK : 

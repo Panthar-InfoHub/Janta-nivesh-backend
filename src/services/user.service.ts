@@ -16,7 +16,7 @@ import { pagination } from "./mutual-fund.service.js";
 
 
 type GetUserFdDataInput = {
-    pagination: pagination;
+    pagination?: pagination;
     user_id: string;
     order?: FdTransactionOrderByWithRelationInput | FdTransactionOrderByWithRelationInput[];
     query?: FdTransactionWhereInput;
@@ -188,7 +188,9 @@ class UserServiceClass {
 
 
     async get_user_fd_data({ pagination, user_id, order, query }: GetUserFdDataInput) {
-        const { page, limit } = pagination;
+        // const { page, limit } = pagination;
+        const page = pagination?.page ?? 1;
+        const limit = pagination?.limit ?? 50;
         const offset = (page - 1) * limit;
 
         const where: FdTransactionWhereInput = {

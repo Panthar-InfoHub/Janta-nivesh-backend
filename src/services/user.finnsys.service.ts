@@ -28,6 +28,25 @@ class UserFinnsysServiceClass {
     }
 
 
+
+    get_user_portfolio_finnsys = async (user_log: string, user_pwd: string) => {
+        try {
+            const res = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: "pandl",
+                    tojson: 1
+                }
+            });
+            return res.data;
+        } catch (error) {
+            logger.error(`Error fetching user portfolio from Finnsys ==> `, error)
+            throw error;
+        }
+    }
+
+
     get_user_iin_finnsys = async (user_log: string, user_pwd: string) => {
         try {
             const res = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {

@@ -217,7 +217,7 @@ class JobServiceClass {
 
                         // --- STEP B: UPSERT PRODUCTS ---
                         const productValues = batch.map(fd => Prisma.sql`(
-                        ${uuidv4()}, ${fd.issuerId}, ${fd.type}, 
+                        ${fd.id}, ${fd.issuerId}, ${fd.type}, 
                         ${parseFloat(fd.minimumDeposit || 0)}, ${parseFloat(fd.maximumDeposit || 0)},
                         ${parseInt(fd.minimumTenure || 0)}, ${parseInt(fd.maximumTenure || 0)},
                         ${fd.aboutIssuer?.lockInDetails?.period || 0}, ${fd.aboutIssuer?.lockInDetails?.message || ''}, 

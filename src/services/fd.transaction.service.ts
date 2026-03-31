@@ -13,9 +13,9 @@ class FDTransactionServiceClass {
         });
     }
 
-    create_transaction_with_purchase_url = async ({ issuer_id, jid, investment_amount, payout_frequency, investment_period, encrypted_text }: any) => {
+    create_transaction_with_purchase_url = async ({ id, jid, investment_amount, payout_frequency, investment_period, encrypted_text }: any) => {
         try {
-            const blostem_url = `${env.BLOSTEM_URL}/purchase/${issuer_id}?sso=${encrypted_text}&jid=${jid}&investmentAmount=${investment_amount}&payoutFrequency=${payout_frequency}&investmentPeriod=${investment_period}`;
+            const blostem_url = `${env.BLOSTEM_URL}/purchase/${id}?sso=${encrypted_text}&jid=${jid}&investmentAmount=${investment_amount}&payoutFrequency=${payout_frequency}&investmentPeriod=${investment_period}`;
 
             return blostem_url;
 
@@ -23,6 +23,48 @@ class FDTransactionServiceClass {
             logger.error("Error creating purchase URL with Blostem: ", error);
         }
 
+    }
+
+    create_redirect_url = async ({ jid, event, encrypted_text, token }: {
+        jid: string,
+        event: 'VKYC' | 'PAYMENT',
+        encrypted_text: string,
+        token: string
+    }) => {
+
+        try {
+
+            const response = await axios.post(`${env.BLOSTEM_MASTER_URL}/core/v1/asset/web/redirect`, {
+                tk: encrypted_text,
+                jid: jid,
+                event: event,
+                token: token
+            }, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Cookie": `token=${token}`
+                }
+            })
+            return response.data;
+
+        } catch (error: any) {
+            logger.error("Error creating purchase URL with Blostem: ", error.response?.data);
+            throw error;
+        }
+
+    }
+
+
+    get_user_fd_transaction_by_id = async (transaction_id: string, user_id: string) => {
+        return await db.fdTransaction.findFirst({
+            where: {
+                id: transaction_id,
+                user_id: user_id,
+            },
+            include: {
+                user: true
+            },
+        });
     }
     // const { product_id }
 

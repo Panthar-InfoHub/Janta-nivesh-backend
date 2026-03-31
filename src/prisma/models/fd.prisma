@@ -147,7 +147,7 @@ model FdTransaction {
 
   failure_reason    String? @db.Text // Captures Payment or VKYC failure reasons
   is_vkyc_initiated Boolean @default(false)
-  is_vkyc_pending   Boolean @default(false)
+  is_vkyc_pending   Boolean @default(true) // Initially true if VKYC is required, set to false on completion/failure
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
