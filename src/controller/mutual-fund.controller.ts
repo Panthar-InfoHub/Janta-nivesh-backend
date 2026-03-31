@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { redis } from "../lib/redis.js";
-import { sip_cart_zod_schema } from "../lib/types.js";
+import { sip_cart_zod_schema, redeem_request_zod_schema } from "../lib/types.js";
 import { get_mf_search_query } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
@@ -275,6 +275,34 @@ class MutualFundControllerClass {
         }
     }
 
+
+    // ─── Redemption ──────────────────────────────────────────────────────────────
+
+    redeem = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Redemption request for user: ${user.id}`);
+
+            const validation = redeem_request_zod_schema.safeParse(req.body);
+            if (!validation.success) {
+                logger.warn("Validation failed for redeem request body", { errors: validation.error.issues });
+                throw new AppError("Validation failed for redemption data", 400, "VALIDATION_ERROR", validation.error);
+            }
+
+            const result = await mututal_funds_service.execute_redemption(user.id, validation.data);
+
+            res.status(200).json({
+                success: true,
+                message: "Redemption initiated successfully",
+                data: { payment_link: result }
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in redeem controller ===> ", error);
+            next(error);
+            return;
+        }
+    }
 
 }
 

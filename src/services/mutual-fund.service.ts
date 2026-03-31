@@ -3,7 +3,7 @@ import logger from "../middleware/logger.js";
 import { db } from "../server.js";
 
 import type { MfNavHistoryCreateManyInput, MfProductOrderByWithRelationInput, MfProductWhereInput } from "../prisma/generated/prisma/models.js";
-import { Lumpsum_cart_data, Sip_cart_data } from "../lib/types.js";
+import { Lumpsum_cart_data, Sip_cart_data, Redeem_request_data } from "../lib/types.js";
 import { env } from "../lib/config-env.js";
 import AppError from "../middleware/error.middleware.js";
 import { redis_buffer_client } from "../lib/redis.js";
@@ -127,7 +127,7 @@ class MututalFundServiceClass {
     get_only_mf_product = async (id: string) => {
         return await db.mfProduct.findUnique({
             where: { id },
-            select: { id: true, scheme_id: true, scheme_name: true, mapping_code: true }
+            select: { id: true, scheme_id: true, scheme_name: true, mapping_code: true, platform_code: true, nse_scheme_code: true }
         });
     }
 
@@ -333,6 +333,94 @@ class MututalFundServiceClass {
         if (short_url.code != 1) {
             logger.warn("Failed to generate short URL for lumpsum purchase. Response from NSE ==> ", short_url);
             throw new AppError("Lumpsum purchase initiated but failed to generate short URL, Check your registered mail for order confirmation", 500, "SHORT_URL_ERROR");
+        }
+
+        return short_url.data.firstHolderLink;
+    }
+
+
+    // ─── Redemption ──────────────────────────────────────────────────────────────
+
+    private async construct_redeem_payload(prod_code: string, folio_no: string, user: any, redem_data: Redeem_request_data) {
+        const primary_bank = this.get_primary_bank_details(user);
+        const is_full = redem_data.redem_type === "FULL";
+
+        return {
+            order_ref_number: await generate_unique_code("RDM"),
+            scheme_code: prod_code,
+            trxn_type: "R",
+            buy_sell_type: "FRESH",  // TODO: verify exact value with Finnsys docs for redemptions
+            client_code: user.nse_client_code,
+            demat_physical: "P",
+            order_amount: is_full ? "" : String(redem_data.redemption_amount),
+            folio_no: folio_no,
+            remarks: "Velvet Invest App : Redeem reward",
+            kyc_flag: "Y",
+            sub_broker_code: "",
+            euin_number: env.EUIN,
+            euin_declaration: "Y",
+            min_redemption_flag: "N",
+            dpc_flag: "Y",
+            all_units: is_full ? "Y" : "N",
+            redemption_units: is_full ? "" : String(redem_data.redemption_units),
+            sub_broker_arn: "",
+            bank_ref_no: "",
+            account_no: primary_bank.account_no,
+            mobile_no: user.phone_no,
+            email: user.email,
+            mandate_id: "",
+        };
+    }
+
+    execute_redemption = async (user_id: string, redem_data: Redeem_request_data) => {
+        // 1. Fetch user with primary bank details
+        const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+
+        // 2. Resolve Finnsys prod_code depending on the data source
+        let prod_code: string;
+
+        if (redem_data.source === "transaction") {
+            // Frontend sent schemeid from holdings — look up platform_code in our DB
+            const mf_product = await this.get_mutual_fund_by_scheme_id(String(redem_data.scheme_id));
+            if (!mf_product) throw new AppError("Scheme not found for given scheme_id", 404, "SCHEME_NOT_FOUND");
+
+            const mf_detail = await this.get_only_mf_product(mf_product.id);
+            if (!mf_detail?.platform_code) throw new AppError("Scheme platform code not configured", 500, "PLATFORM_CODE_MISSING");
+
+            prod_code = mf_detail.nse_scheme_code as string;
+        } else {
+            // Frontend sent prod_code from cart — use it directly, no DB lookup needed
+            prod_code = redem_data.prod_code;
+        }
+
+        // 3. Build transaction payload
+        const transaction_detail = await this.construct_redeem_payload(
+            prod_code,
+            redem_data.folio_no,
+            user,
+            redem_data
+        );
+
+        const payload = { data: { transaction_details: [transaction_detail] } };
+        logger.info(`Executing Redemption for User ${user_id}. Source: ${redem_data.source}. Payload: ${JSON.stringify(payload)}`);
+
+        // 4. Submit to Finnsys (same endpoint as purchase, different trxn_type)
+        const finnsys_response = await mutual_fund_finnsys_service.redeem_finnsys(payload);
+
+        // 5. Get short URL for OTP / confirmation
+        const short_url = await nse_service.get_short_url(
+            "RED",
+            finnsys_response.data.transaction_details[0].trxn_order_id
+        );
+
+        if (short_url.code != 1) {
+            logger.warn("Failed to generate short URL for redemption ===> ", short_url);
+            throw new AppError(
+                "Redemption initiated but failed to generate short URL, check your registered mail for confirmation",
+                500,
+                "SHORT_URL_ERROR"
+            );
         }
 
         return short_url.data.firstHolderLink;

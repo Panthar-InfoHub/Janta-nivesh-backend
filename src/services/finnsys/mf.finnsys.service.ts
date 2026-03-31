@@ -82,5 +82,45 @@ class MutualFundFinnsysServiceClass {
         }
     }
 
+    /**
+     * Execute redemption order via Finnsys NSE API.
+     * Uses the same unified endpoint as purchase but with trxn_type "R".
+     */
+    redeem_finnsys = async (payload: PurchasePayload) => {
+        try {
+            logger.info(`Submitting redemption order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
+            logger.debug(`Redeem payload ==> `, payload);
+
+            const headers = nse_service.get_nse_headers();
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/transaction/purchase-redemption-order`,
+                payload,
+                { headers }
+            );
+
+            logger.info("Redemption order submitted to Finnsys successfully");
+            logger.debug(`Redeem response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error submitting redemption order to Finnsys: ", error);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to submit redemption order",
+                    error.response.status || 500,
+                    "REDEEM_ORDER_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to submit redemption order to Finnsys",
+                500,
+                "REDEEM_ORDER_ERROR"
+            );
+        }
+    }
+
 }
 export const mutual_fund_finnsys_service = new MutualFundFinnsysServiceClass();

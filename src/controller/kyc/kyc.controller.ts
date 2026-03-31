@@ -416,26 +416,38 @@ class KycControllerClass {
             logger.info("Verifying KYC for user ID: ", user_id);
 
             const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_data = await user_service.get_all_user_data(user_id, { mfKycIdentities: true });
+
+            // await mfkyc_identity_service.update_identity(user_id, {
+            //             contract_pdf_url: contract_response?.result?.pdfUrl || null
+            //         });
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
                 throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
+            const generate_esign = await kyc_finnsys_service.generate_esign_url(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString(),
+                user_data?.mfKycIdentities?.contract_pdf_url!,
+            )
+
+            logger.debug("Generate esign response ==> ", generate_esign)
             // Save esign pdf and exxecute verification in parallel
             const esign_response = await kyc_finnsys_service.save_esign_pdf(
                 user_kyc_session.mfKycSessions.kyc_access_token,
                 user_kyc_session?.mfKycSessions?.merchant_id!,
                 user.inv_id!.toString()
             )
+            logger.debug("Esign PDF save response ==> ", esign_response)
 
             const verification_response = await kyc_finnsys_service.execute_verification(
                 user_kyc_session.mfKycSessions.kyc_access_token,
                 user_kyc_session?.mfKycSessions?.merchant_id!,
                 user.inv_id!.toString()
             )
-
-            logger.debug("Esign PDF save response: ", esign_response);
             logger.debug("KYC verification response: ", verification_response);
 
             // if (esign_response.status === "rejected" || verification_response.status === "rejected") {

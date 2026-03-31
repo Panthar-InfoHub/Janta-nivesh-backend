@@ -195,6 +195,24 @@ class KycFinnsysServiceClass {
         });
     }
 
+    generate_esign_url = async (kyc_access_token: string, merchant_id: string, inv_id: string, pdf_url: string) => {
+        try {
+            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+                service: "esign",
+                type: "",
+                task: "createEsignUrl",
+                data: {
+                    "inputFile": pdf_url,
+                    "signatureType": "aadhaaresign"
+                    //   "redirectUrl": "http://acmatics.com/kyc"
+                }
+            });
+        } catch (error) {
+            logger.error("Error in saving esign pdf data ==> ", error);
+            throw error;
+        }
+    }
+
     save_esign_pdf = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
         try {
             return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {

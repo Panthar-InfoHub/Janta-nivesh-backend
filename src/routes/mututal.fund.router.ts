@@ -29,3 +29,9 @@ mututal_fund_router.post("/purchase-sip",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.purchase_sip
 );
+
+// Redeeming Mutualfunds
+mututal_fund_router.post("/redeem",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.redeem
+);

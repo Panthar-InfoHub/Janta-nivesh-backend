@@ -30,6 +30,7 @@ type GetAllUserDataOptions = {
     user_goals?: boolean;
     user_bank_details?: boolean;
     kyc_types?: boolean;
+    mfKycIdentities?: boolean;
 }
 
 
@@ -147,6 +148,7 @@ class UserServiceClass {
                         status: true,
                     }
                 } : false,
+                mfKycIdentities: options?.mfKycIdentities ?? false,
             }
         });
     }
