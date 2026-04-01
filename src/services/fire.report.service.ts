@@ -26,6 +26,8 @@ class FireReportServiceClass {
             user_finance: true,
             user_loan: true,
             user_goals: true,
+            user_assets: true,
+            user_insurance: true,
         });
 
         if (!data) {
@@ -159,6 +161,7 @@ class FireReportServiceClass {
         const total_liabilities = loans.reduce((sum, l) => sum + this.to_num(l.outstanding_amount), 0);
         const total_monthly_emi = loans.reduce((sum, l) => sum + this.to_num(l.monthly_emi), 0);
 
+        console.log("Total assest ==> ", total_assets)
         const net_worth = total_assets - total_liabilities;
         const monthly_income = annual_income / 12;
         const total_annual_expenses = expense_house + expense_food + expense_transportation + expense_others;

@@ -25,6 +25,30 @@ class JobControllerClass {
         }
     }
 
+
+
+    get_redirect_blostem_token = async () => {
+        try {
+
+            logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
+            logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`);
+            const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                email: env.BLOSTEM_USERNAME,
+                password: env.BLOSTEM_DASH_PASSWORD,
+            },
+            );
+
+            logger.debug("Blostem login response: ", res.data);
+            return res.data.data.access.token;
+        } catch (error: any) {
+            logger.error("Error getting Blostem token: ", error.response?.data ?? error.message);
+        }
+    }
+
+
+
+
+
     daily_mf_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
