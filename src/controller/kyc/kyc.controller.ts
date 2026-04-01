@@ -391,7 +391,7 @@ class KycControllerClass {
 
             // Save contract PDF URL to MfKycIdentity
             await mfkyc_identity_service.update_identity(user_id, {
-                contract_pdf_url: contract_response?.result?.pdfUrl || null
+                contract_pdf_url: contract_response?.object?.result?.combinedPdf || null
             });
             logger.info("Contract PDF URL updated in MfKycIdentity for user ID: ", user_id);
 
