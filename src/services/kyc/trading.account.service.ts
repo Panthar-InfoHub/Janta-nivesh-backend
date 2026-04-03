@@ -2,6 +2,7 @@ import axios from "axios";
 import logger from "../../middleware/logger.js";
 import { NSEServiceClass } from "../nse.service.js";
 import { user_finance_service } from "../onboarding/user.finance.service.js";
+import { env } from "../../lib/config-env.js";
 
 class TradingAccountServiceClass extends NSEServiceClass {
 
@@ -11,22 +12,22 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
 
     // Implement trading account related methods here
-    client_registration = async (user_id: string, data: any) => {
-
-        const headers = this.get_nse_headers();
+    client_registration = async (user_id: string, data: any, username: string, pwd: string) => {
 
         const response = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/client-registration`, {
+            arn: env.ARN,
+            username: username,
+            password: pwd,
             data: {
                 reg_details: [data]
             }
         }, {
             headers: {
-                ...headers,
                 "Content-Type": "application/json"
             }
         });
 
-        logger.debug("Client registration response from NSE API ==> ", response.data);
+        logger.debug("Client registration response from NSE API ==> ", response.data.code);
 
 
         if (response.data.code != 1) {
@@ -38,12 +39,15 @@ class TradingAccountServiceClass extends NSEServiceClass {
         // Call fatca registration API
         const fatca_data = await this.extract_fatca_data(user_id, data);
         const fatca_res = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/fatca-registration`, {
+            arn: env.ARN,
+            username: username,
+            password: pwd,
             data: {
                 reg_details: [fatca_data]
             }
         }, {
             headers: {
-                ...headers,
+                // ...headers,
                 "Content-Type": "application/json"
             }
         });

@@ -6,11 +6,13 @@ import { require_mfKyc } from "../middleware/kyc.middleware.js";
 
 export const kyc_router = Router();
 
+// Signzy KYC Routes
 kyc_router.post("/mf-initiate", login_require, kyc_controller.initiate_kyc)
 kyc_router.post("/mf-details", login_require, kyc_controller.user_digiliocker_data)
 kyc_router.post("/mf-update", login_require, kyc_controller.update_kyc_data)
 kyc_router.patch("/mf-doc", login_require, kyc_controller.update_doc)
 kyc_router.post("/mf-contract", login_require, kyc_controller.create_contract)
+kyc_router.get("/mf-esign", login_require, kyc_controller.get_aadhar_esign_url)
 kyc_router.get("/mf-verify", login_require, kyc_controller.verify_kyc)
 
 

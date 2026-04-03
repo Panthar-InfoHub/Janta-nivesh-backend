@@ -91,7 +91,6 @@ class KycFinnsysServiceClass {
     update_poi = async (poi_data: any, kyc_access_token: string, merchant_id: string, inv_id: string) => {
         try {
             return this.update_form(kyc_access_token, merchant_id, inv_id, "identityProof", {
-                type: "identityProof",
                 ...poi_data
             });
         } catch (error) {
@@ -103,7 +102,6 @@ class KycFinnsysServiceClass {
     update_poa = async (poa_data: any, kyc_access_token: string, merchant_id: string, inv_id: string) => {
         try {
             return this.update_form(kyc_access_token, merchant_id, inv_id, "addressProof", {
-                type: "aadhaarDigiLocker",
                 ...poa_data
             });
         } catch (error: any) {

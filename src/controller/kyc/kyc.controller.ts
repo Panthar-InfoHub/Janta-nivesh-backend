@@ -169,7 +169,7 @@ class KycControllerClass {
 
 
 
-
+            // Saving Finnsys session details in database to accesss in next apis
             const kyc_type_record = await kyc_type_service.create_kyc_type({
                 user_id: user_id,
                 kyc_type: kyc_type,
@@ -219,6 +219,7 @@ class KycControllerClass {
                 throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
+            // 4th Api : Finnsys KYC : Get user details after web kyc
             const digilocker_data = await kyc_finnsys_service.user_digilocker_data(
                 user_kyc_session?.mfKycSessions?.merchant_id!,
                 user_kyc_session?.mfKycSessions?.kyc_access_token!,
@@ -227,8 +228,8 @@ class KycControllerClass {
 
             logger.debug("Digilocker data response: ", digilocker_data);
 
+            // Save digilocker data in database
             const user_mf_kyc_identity = await mfkyc_identity_service.upsert_from_digilocker(user_id, digilocker_data.result.output);
-
             logger.info("Digilocker data upserted to MfKycIdentity for user ID: ", user_id);
 
             // hit finnsys POI, POA and Corr Address update APIs in sequence 
@@ -409,8 +410,10 @@ class KycControllerClass {
         }
     }
 
-    verify_kyc = async (req: Request, res: Response, next: NextFunction) => {
+
+    get_aadhar_esign_url = async (req: Request, res: Response, next: NextFunction) => {
         try {
+
             const user = req.user!;
             const user_id = user?.id!;
             logger.info("Verifying KYC for user ID: ", user_id);
@@ -418,9 +421,6 @@ class KycControllerClass {
             const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
             const user_data = await user_service.get_all_user_data(user_id, { mfKycIdentities: true });
 
-            // await mfkyc_identity_service.update_identity(user_id, {
-            //             contract_pdf_url: contract_response?.result?.pdfUrl || null
-            //         });
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
@@ -435,7 +435,37 @@ class KycControllerClass {
             )
 
             logger.debug("Generate esign response ==> ", generate_esign)
-            // Save esign pdf and exxecute verification in parallel
+
+            res.status(200).json({
+                success: true,
+                message: "Aadhar esign url generated successfully",
+                data: generate_esign.object.result.url
+            })
+            return;
+
+        } catch (error) {
+            logger.error("Error while generating aadhar esign url ===> ", error)
+            next(error);
+            return;
+        }
+    }
+
+    verify_kyc = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const user_id = user?.id!;
+            logger.info("Verifying KYC for user ID: ", user_id);
+
+            const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_data = await user_service.get_all_user_data(user_id, { mfKycIdentities: true });
+
+
+            if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
+                logger.warn("No KYC session found for user ID: ", req.user?.id);
+                throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
+            }
+
+    // Save esign pdf and exxecute verification in sequence
             const esign_response = await kyc_finnsys_service.save_esign_pdf(
                 user_kyc_session.mfKycSessions.kyc_access_token,
                 user_kyc_session?.mfKycSessions?.merchant_id!,
@@ -450,10 +480,6 @@ class KycControllerClass {
             )
             logger.debug("KYC verification response: ", verification_response);
 
-            // if (esign_response.status === "rejected" || verification_response.status === "rejected") {
-            //     logger.warn("Failed to verify KYC for user ID: ", user_id);
-            //     throw new AppError("Failed to verify KYC from finnsys end", 424, "KYC_VERIFICATION_FAILED");
-            // }
             // Update KYC status to completed
             await Promise.all([
                 kyc_type_service.create_kyc_type({

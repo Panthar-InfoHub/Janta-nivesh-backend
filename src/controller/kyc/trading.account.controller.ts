@@ -39,12 +39,20 @@ class TradingAccountControllerClass {
 
             // Store bank details if provided in current registration flow
             if (result.data.account_no_1 && result.data.ifsc_code_1) {
-                await mfkyc_identity_service.upsert_bank_details(req.user!.id, {
-                    account_no: result.data.account_no_1,
-                    ifsc_code: result.data.ifsc_code_1,
-                    account_type: result.data.account_type_1 || "SB",
-                    is_primary: result.data.default_bank_flag_1 === "Y"
-                });
+
+                logger.info("Updating user bank details...")
+                logger.info(`Updating user finnsys details with pan ==> ${result.data.primary_holder_pan} of username ==> ${user.log}`)
+                const [_, __] = await Promise.all([
+                    mfkyc_identity_service.upsert_bank_details(req.user!.id, {
+                        account_no: result.data.account_no_1,
+                        ifsc_code: result.data.ifsc_code_1,
+                        account_type: result.data.account_type_1 || "SB",
+                        is_primary: result.data.default_bank_flag_1 === "Y"
+                    }),
+                    user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
+                        invpan: (result.data.primary_holder_pan as string) ?? undefined
+                    })
+                ]);
             }
 
             /**
@@ -56,7 +64,7 @@ class TradingAccountControllerClass {
              * 
              * Note: Client code activation is a separate step that user needs to do by clicking on the short URL sent in response. We are not automating that step as it requires user interaction and consent.
              */
-            const data = await trading_account_service.client_registration(req.user!.id, result.data);
+            await trading_account_service.client_registration(req.user!.id, result.data, user.log!, user.pwd!);
             const [_user, short_url_res] = await Promise.all([
                 user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
                 nse_service.get_short_url("CL_ACT", raw_payload.client_code)
@@ -71,12 +79,7 @@ class TradingAccountControllerClass {
             }
 
             // 5. Update KYC status to in_progress
-            const [_kyc_type_res, _user_finnsys_update_res] = await Promise.all([
-                kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "in_progress"),
-                user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
-                    invpan: (result.data.primary_holder_pan as string) ?? undefined
-                })
-            ])
+            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "in_progress");
 
 
             res.status(200).json({
