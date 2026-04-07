@@ -142,24 +142,28 @@ class UserGoalServiceClass {
         return user_goal;
     }
 
-    sync_db = async (user_id: string, goals: UserGoalInput[], tx: TxClient | typeof db = db) => {
+    sync_db = async (user_id: string, goals: UserGoalInput[] | undefined, tx: TxClient | typeof db = db) => {
         const created_goals: Array<{ id: string; goal_type_id: number; }> = [];
 
         await tx.userGoals.deleteMany({ where: { user_id } });
 
-        for (const goal of goals) {
-            const created_goal = await tx.userGoals.create({
-                data: { user_id, ...goal },
-                select: { id: true, goal_type_id: true },
-            });
+        if (goals) {
+            for (const goal of goals) {
+                const created_goal = await tx.userGoals.create({
+                    data: { user_id, ...goal },
+                    select: { id: true, goal_type_id: true },
+                });
 
-            created_goals.push(created_goal);
+                created_goals.push(created_goal);
+            }
         }
 
         return created_goals;
     }
 
-    sync_finsys = async (user: any, goals: UserGoalInput[], db_goals?: Array<{ id: string; goal_type_id: number; }>) => {
+    sync_finsys = async (user: any, goals: UserGoalInput[] | undefined, db_goals?: Array<{ id: string; goal_type_id: number; }> | any) => {
+        if (!goals || goals.length === 0) return;
+
         const fallback_db_goals = db_goals ?? await db.userGoals.findMany({
             where: { user_id: user.id },
             select: { id: true, goal_type_id: true },
@@ -167,7 +171,7 @@ class UserGoalServiceClass {
         });
 
         await Promise.all(goals.map(async (goal, index) => {
-            const db_goal = fallback_db_goals[index] ?? fallback_db_goals.find((g) => g.goal_type_id === goal.goal_type_id);
+            const db_goal = fallback_db_goals[index] ?? fallback_db_goals.find((g: any) => g.goal_type_id === goal.goal_type_id);
             if (!db_goal) {
                 logger.warn(`No matching DB goal found while syncing goal_type_id ${goal.goal_type_id}`);
                 return;

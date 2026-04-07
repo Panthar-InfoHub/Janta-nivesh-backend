@@ -18,7 +18,7 @@ class OnboardingServiceClass {
             await tx.user.update({
                 where: { id: user.id },
                 data: {
-                    ...data.profile,
+                    ...(data.profile ?? {}),
                     meta_data: {
                         onboarding_stage: 6,
                         is_onboarding_completed: true,
@@ -26,11 +26,17 @@ class OnboardingServiceClass {
                 },
             });
 
-            await user_finance_service.create(user.id, data.finance, tx);
-            await user_assets_service.create(user.id, data.assets, tx);
-            await user_insurance_service.create(user.id, data.insurance, tx);
-            await user_loan_service.sync(user.id, data.loans, tx);
-            synced_db_goals = await user_goal_service.sync_db(user.id, data.goals, tx);
+            if (data.finance) {
+                await user_finance_service.create(user.id, data.finance, tx);
+            }
+            if (data.assets) {
+                await user_assets_service.create(user.id, data.assets, tx);
+            }
+            if (data.insurance) {
+                await user_insurance_service.create(user.id, data.insurance, tx);
+            }
+            await user_loan_service.sync(user.id, data.loans ?? [], tx);
+            synced_db_goals = await user_goal_service.sync_db(user.id, data.goals ?? [], tx);
         });
 
         logger.debug(`DB transaction committed for onboarding user: ${user.id}`);
@@ -38,7 +44,7 @@ class OnboardingServiceClass {
         // Phase 2: FinSys API calls — outside the transaction, best-effort.
         // DB data is already committed so a FinSys failure does not affect stored user data.
         // goal_id will be populated if FinSys responds; otherwise it stays null and can be retried.
-        if (data.goals.length > 0) {
+        if (data.goals && data.goals.length > 0) {
             logger.debug(`Starting FinSys goal sync for user: ${user.id} (${data.goals.length} goals)`);
             await user_goal_service.sync_finsys(user, data.goals, synced_db_goals);
         }
@@ -46,8 +52,8 @@ class OnboardingServiceClass {
         return {
             onboarding_stage: 6,
             is_onboarding_completed: true,
-            loans_count: data.loans.length,
-            goals_count: data.goals.length,
+            loans_count: data.loans?.length ?? 0,
+            goals_count: data.goals?.length ?? 0,
         };
     }
 }

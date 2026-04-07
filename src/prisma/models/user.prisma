@@ -16,6 +16,7 @@ model User {
     phone_no  String?   @unique
     city      String?
     dob       DateTime?
+    mpin      String?
     fcm_token String?   @db.Text
     meta_data Json?
 

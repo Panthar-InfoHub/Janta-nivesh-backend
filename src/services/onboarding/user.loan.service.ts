@@ -90,9 +90,9 @@ class UserLoanServiceClass {
     }
 
 
-    async sync(user_id: string, loans: any[], tx: TxClient | typeof db = db) {
+    async sync(user_id: string, loans: any[] | undefined, tx: TxClient | typeof db = db) {
         await tx.userLoan.deleteMany({ where: { user_id } });
-        if (loans.length > 0) {
+        if (loans && loans.length > 0) {
             await tx.userLoan.createMany({
                 data: loans.map((loan) => ({ user_id, ...loan })),
             });
