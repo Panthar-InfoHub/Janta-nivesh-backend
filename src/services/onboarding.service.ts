@@ -35,8 +35,14 @@ class OnboardingServiceClass {
             if (data.insurance) {
                 await user_insurance_service.create(user.id, data.insurance, tx);
             }
-            await user_loan_service.sync(user.id, data.loans ?? [], tx);
-            synced_db_goals = await user_goal_service.sync_db(user.id, data.goals ?? [], tx);
+
+            if (data.loans && data.loans.length > 0) {
+                await user_loan_service.sync(user.id, data.loans, tx);
+            }
+
+            if (data.goals && data.goals.length > 0) {
+                synced_db_goals = await user_goal_service.sync_db(user.id, data.goals, tx);
+            }
         });
 
         logger.debug(`DB transaction committed for onboarding user: ${user.id}`);
