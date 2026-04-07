@@ -275,12 +275,15 @@ class MututalFundServiceClass {
 
         // 5. Call Upstream API
         const payload = {
+            arn: env.ARN,
+            username: user.usr,
+            password: user.pwd,
             data: {
                 transaction_details
             }
         };
 
-        logger.info(`Executing Lumpsum Purchase for User ${user_id}. Payload: ${JSON.stringify(payload)}`);
+        logger.info(`Executing Lumpsum Purchase for User ${user_id}. Payload ==> `, payload);
 
         // 6. Submit to Finnsys API
         const finnsys_response = await mutual_fund_finnsys_service.purchase_lumpsum_finnsys(payload);
@@ -319,6 +322,9 @@ class MututalFundServiceClass {
 
         // 5. Call Upstream API
         const payload = {
+            arn: env.ARN,
+            username: user.usr,
+            password: user.pwd,
             data: {
                 transaction_details
             }
@@ -402,7 +408,12 @@ class MututalFundServiceClass {
             redem_data
         );
 
-        const payload = { data: { transaction_details: [transaction_detail] } };
+        const payload = {
+            arn: env.ARN,
+            username: user.usr,
+            password: user.pwd,
+            data: { transaction_details: [transaction_detail] }
+        };
         logger.info(`Executing Redemption for User ${user_id}. Source: ${redem_data.source}. Payload: ${JSON.stringify(payload)}`);
 
         // 4. Submit to Finnsys (same endpoint as purchase, different trxn_type)

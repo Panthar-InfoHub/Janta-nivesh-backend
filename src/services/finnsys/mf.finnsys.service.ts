@@ -51,12 +51,9 @@ class MutualFundFinnsysServiceClass {
             logger.info(`Submitting lumpsum purchase order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
             logger.debug(`Purchase payload ==> `, payload);
 
-            const headers = nse_service.get_nse_headers();
-
             const response = await axios.post(
                 `${this.FINNSYS_BASE_URL}/nse/v2/transaction/purchase-redemption-order`,
                 payload,
-                { headers }
             );
 
             logger.info("Lumpsum purchase order submitted successfully");
@@ -91,12 +88,10 @@ class MutualFundFinnsysServiceClass {
             logger.info(`Submitting redemption order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
             logger.debug(`Redeem payload ==> `, payload);
 
-            const headers = nse_service.get_nse_headers();
 
             const response = await axios.post(
                 `${this.FINNSYS_BASE_URL}/nse/v2/transaction/purchase-redemption-order`,
                 payload,
-                { headers }
             );
 
             logger.info("Redemption order submitted to Finnsys successfully");

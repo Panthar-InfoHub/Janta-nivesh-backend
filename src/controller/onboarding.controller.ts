@@ -35,9 +35,9 @@ class OnBoardingControllerClass {
             const [result, finnsys_res] = await Promise.all([
                 onboarding_service.complete_onboarding(user, validation_result.data),
                 user_finnsys_service.update_user_finnsys_details(user.log!, user.pwd!, {
-                    invname: validation_result.data.profile.full_name,
-                    invemail: validation_result.data.profile.email,
-                    invdob: this.formatDOB(validation_result.data.profile.dob),
+                    invname: validation_result.data.profile?.full_name,
+                    invemail: validation_result.data.profile?.email,
+                    invdob: this.formatDOB(validation_result.data.profile?.dob),
                 })
             ])
 

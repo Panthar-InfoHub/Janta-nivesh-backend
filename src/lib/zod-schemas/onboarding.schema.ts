@@ -58,12 +58,12 @@ const onboarding_goals_schema = z.array(user_goal_zod_schema).superRefine((goals
 });
 
 export const complete_onboarding_zod_schema = z.object({
-    profile: onboarding_profile_schema,
-    finance: onboarding_finance_schema,
-    assets: onboarding_assets_schema,
-    insurance: onboarding_insurance_schema,
-    loans: onboarding_loans_schema,
-    goals: onboarding_goals_schema,
+    profile: onboarding_profile_schema.optional(),
+    finance: onboarding_finance_schema.optional(),
+    assets: onboarding_assets_schema.optional(),
+    insurance: onboarding_insurance_schema.optional(),
+    loans: onboarding_loans_schema.optional(),
+    goals: onboarding_goals_schema.optional(),
 });
 
 export type CompleteOnboardingInput = z.infer<typeof complete_onboarding_zod_schema>;

@@ -14,14 +14,18 @@ class TradingAccountServiceClass extends NSEServiceClass {
     // Implement trading account related methods here
     client_registration = async (user_id: string, data: any, username: string, pwd: string) => {
 
-        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/client-registration`, {
+        const payload = {
             arn: env.ARN,
             username: username,
             password: pwd,
             data: {
                 reg_details: [data]
             }
-        }, {
+        };
+
+        logger.debug(`Client Registration Payload (NSE API) ==> \n${JSON.stringify(payload, null, 2)}`);
+
+        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/client-registration`, payload, {
             headers: {
                 "Content-Type": "application/json"
             }
