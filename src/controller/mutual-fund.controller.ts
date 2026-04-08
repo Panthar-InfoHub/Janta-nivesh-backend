@@ -66,7 +66,7 @@ class MutualFundControllerClass {
                 res.status(200).json({
                     success: true,
                     message: "Mutual fund fetched successfully (from cache)",
-                    data: JSON.parse(cached_details)
+                    data: JSON.parse(cached_details as string)
                 });
                 return;
             }

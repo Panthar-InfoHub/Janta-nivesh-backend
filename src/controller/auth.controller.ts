@@ -5,6 +5,7 @@ import AppError from "../middleware/error.middleware.js";
 import { user_service } from "../services/user.service.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import { User } from "../prisma/generated/prisma/client.js";
+import { env } from "../lib/config-env.js";
 
 class AuthControllerClass {
 
@@ -38,6 +39,26 @@ class AuthControllerClass {
             }
 
             logger.info(`OTP Request for Mobile: ${mob}, Device: ${device_params.did}`);
+
+            // Test environment
+
+            if (mob === "9876543210" && env.ENVIRONMENT === "dev") {
+                logger.info(`Test environment: Skipping OTP request for mobile number ${mob}`)
+                const user = await user_service.create_user({
+                    phone_no: mob
+                })
+
+                res.status(200).json({
+                    success: true,
+                    message: "Test environment: OTP requested successfully",
+                    data: {
+                        user_id: user.id,
+                        phone_no: user.phone_no
+                    }
+                });
+            }
+
+
             const auth_res: { code: number } = await auth_service.req_otp(mob, device_params);
 
             if (auth_res.code !== 1) {
@@ -87,6 +108,41 @@ class AuthControllerClass {
                 logger.error("User not found for mobile number during OTP validation");
                 throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
             }
+
+            if (mob === "9876543210" && otp === "000000" && env.ENVIRONMENT === "dev") {
+                logger.info(`Test environment: OTP validation started for mobile number ${mob}`)
+
+                const refresh_token = generate_JWT(user, "30d");
+
+                const updated_user = await user_service.update_user(user.id, {
+                    usr: env.TEST_USR,
+                    pwd: env.TEST_PASS,
+                    inv_id: Number(env.TEST_INV),
+                    refresh_token: refresh_token
+                });
+
+
+                const token = generate_JWT(updated_user);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Test OTP validated successfully",
+                    data: {
+                        user: {
+                            user_id: updated_user.id,
+                            phone_no: updated_user.phone_no,
+                            metadata: updated_user.meta_data ?? {
+                                onboarding_stage: 0,
+                                is_onboarding_completed: false,
+                            }
+                        },
+                        token: token,
+                        refresh_token: refresh_token
+                    }
+                });
+                return
+            }
+
 
             logger.info(`Validating OTP for Mobile: ${mob}, Device: ${device_params.did}`);
             const auth_res = await auth_service.validate_otp(mob, otp, device_params);

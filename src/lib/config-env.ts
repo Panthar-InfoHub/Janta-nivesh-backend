@@ -28,6 +28,11 @@ export const env = {
     BLOSTEM_ENCRYPTION_SALT: process.env.BLOSTEM_ENCRYPTION_SALT!,
     BLOSTEM_MASTER_URL: process.env.BLOSTEM_MASTER_URL!,
 
+    // Testing creds
+    TEST_USR: process.env.TEST_USR!,
+    TEST_PASS: process.env.TEST_PASS!,
+    TEST_INV: process.env.TEST_INV!,
+
     // Redis Config
     REDIS_HOST: process.env.REDIS_HOST!,
     REDIS_PORT: process.env.REDIS_PORT!,
