@@ -56,6 +56,7 @@ class AuthControllerClass {
                         phone_no: user.phone_no
                     }
                 });
+                return;
             }
 
 
