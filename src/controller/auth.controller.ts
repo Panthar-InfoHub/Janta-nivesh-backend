@@ -110,7 +110,7 @@ class AuthControllerClass {
                 throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
             }
 
-            if (mob === "9876543210" && otp === "000000" && env.ENVIRONMENT === "dev") {
+            if (mob === "9876543210" && otp === "0000" && env.ENVIRONMENT === "dev") {
                 logger.info(`Test environment: OTP validation started for mobile number ${mob}`)
 
                 const refresh_token = generate_JWT(user, "30d");
