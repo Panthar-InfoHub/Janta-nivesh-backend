@@ -2,6 +2,7 @@ import { env } from "../lib/config-env.js";
 import { FdCustomerType, FdPayoutFrequency, Prisma } from "../prisma/generated/prisma/client.js";
 import { chunkArray, logMemoryUsage, map_mf_asset_type } from "../lib/utils.js";
 import { v4 as uuidv4 } from 'uuid';
+import cuid from 'cuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
@@ -50,8 +51,10 @@ class JobServiceClass {
                     )`;
                     });
 
-                    // -> Execute Bulk Upsert for Products?? why raw sql because prisma don't support upsertMany and we want to do this in 1 query for 30k records
-                    await tx.$executeRaw`
+                    // -> Execute Bulk Upsert for Products with RETURNING to get actual IDs back
+                    // Why raw sql? Because prisma don't support upsertMany and we want to do this in 1 query for 30k records
+                    // RETURNING gives us the real id for both new inserts AND conflict-updated rows — no extra findMany needed
+                    const products: { id: string, scheme_id: string, isin: string | null, nse_scheme_code: string | null }[] = await tx.$queryRaw`
                     INSERT INTO "MfProduct" (
                         id, scheme_id, isin, mapping_code, nse_scheme_code, platform_code, scheme_name, 
                         amc_id, amc_code, amc_name, asset_type, scheme_type, 
@@ -67,24 +70,13 @@ class JobServiceClass {
                         sip_allowed = EXCLUDED.sip_allowed,
                         redemption_allowed = EXCLUDED.redemption_allowed,
                         switch_allowed = EXCLUDED.switch_allowed,
-                        "updatedAt" = NOW();
+                        "updatedAt" = NOW()
+                    RETURNING id, scheme_id, isin, nse_scheme_code;
                 `;
 
                     logger.info(`Batch of ${batch.length} products upserted successfully.`);
 
-                    //->. Get UUIDs for the current batch (using the transaction client 'tx')
-                    const products = await tx.mfProduct.findMany({
-                        where: {
-                            OR: batch.map(m => ({
-                                scheme_id: String(m.SCHM_ID),
-                                isin: m.ISIN,
-                                nse_scheme_code: m.NSE_SCHEME_CODE
-                            }))
-                        },
-                        select: { id: true, scheme_id: true, isin: true, nse_scheme_code: true }
-                    });
-
-                    // -> Create a Map for O(1) access to product IDs based on scheme_id
+                    // -> Create a Map for O(1) access to product IDs (built directly from RETURNING result)
                     const productMap = new Map(products.map(p => [
                         `${p.scheme_id}-${p.isin}-${p.nse_scheme_code}`.toUpperCase(),
                         p.id
@@ -130,7 +122,7 @@ class JobServiceClass {
                             "updatedAt" = NOW();
                     `;
                     }
-                    logger.info(`Batch of ${metricsValues.length} metrics upserted successfully.`);
+                    logger.info(`Batch of Mf Metrics ${metricsValues.length} metrics upserted successfully.`);
 
                     if (ruleValues.length > 0) {
                         await tx.$executeRaw`
@@ -142,7 +134,31 @@ class JobServiceClass {
                             "updatedAt" = NOW();
                     `;
                     }
-                    logger.info(`Batch of ${ruleValues.length} rules upserted successfully.`);
+                    logger.info(`Batch of mf rules : ${ruleValues.length} rules upserted successfully.`);
+
+                    // -> Append today's NAV to history (prevents need for heavy full-history job in production)
+                    const navHistoryValues: Prisma.Sql[] = [];
+
+                    for (const mf of batch) {
+                        const tripleKey = `${mf.SCHM_ID}-${mf.ISIN}-${mf.NSE_SCHEME_CODE}`.toUpperCase();
+                        const pId = productMap.get(tripleKey);
+                        if (!pId || !mf.NAV) continue;
+
+                        const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
+                        navHistoryValues.push(Prisma.sql`(
+                            ${cuid()}, ${pId}, ${String(mf.SCHM_ID)},
+                            ${parseFloat(mf.NAV)}, ${navDate}, NOW()
+                        )`);
+                    }
+
+                    if (navHistoryValues.length > 0) {
+                        await tx.$executeRaw`
+                            INSERT INTO "MfNavHistory" (id, mf_product_id, scheme_id, nav, nav_date, "updatedAt")
+                            VALUES ${Prisma.join(navHistoryValues)}
+                            ON CONFLICT (mf_product_id, nav_date) DO NOTHING;
+                        `;
+                    }
+                    logger.info(`Batch: ${navHistoryValues.length} NAV history points appended.`);
 
                 }
             }, {
@@ -150,7 +166,7 @@ class JobServiceClass {
                 maxWait: 10000
             });
 
-            logger.info(`Daily MF Sync: 30,000 records synchronized atomically.`);
+            logger.info(`Daily MF Sync: ${api_data.length} synchronized atomically.`);
             return true;
 
         } catch (error) {
@@ -168,9 +184,7 @@ class JobServiceClass {
         try {
             const api_res = await axios.get(`${env.BLOSTEM_MASTER_URL}/binvestt/portal/fixed-deposit/templates`, {
                 headers: { 'x-partner-token': token },
-                params: {
-                    ...(env.ENVIRONMENT === "dev" && { rmCode: "TEST100" })
-                }
+                timeout: 15000
             }).then(res => res.data);
 
             const api_data: any[] = api_res.data?.data ?? [];
@@ -313,13 +327,13 @@ class JobServiceClass {
 
         logger.debug(`NAV History Job: startDate=${startDate} endDate=${endDate}`);
 
-        const mf_products = await db.mfProduct.findMany({
-            select: { id: true, scheme_id: true, mapping_code: true }
-        });
+        // const mf_products = await db.mfProduct.findMany({
+        //     select: { id: true, scheme_id: true, mapping_code: true }
+        // });
 
         let cursor: string | null = null;
         const BATCH_SIZE = 100;
-        const limit = pLimit(5);
+        const limit = pLimit(2);
 
         while (true) {
 
@@ -350,10 +364,11 @@ class JobServiceClass {
 
 
 
-    process_nav_history = async (product: { id: string; scheme_id: string, mapping_code: string }, startDate: string, endDate: string) => {
+    process_nav_history = async (product: { id: string, mapping_code: string }, startDate: string, endDate: string) => {
         try {
             const nav_history_data = await axios.get(`${process.env.MF_LATEST_URL}/mf/${product.mapping_code}`, {
-                params: { startDate, endDate }
+                params: { startDate, endDate },
+                timeout: 15000
             }).then(res => res.data.data);
 
             logger.debug(`Fetched NAV history for scheme_id: ${product.mapping_code}, Records: ${nav_history_data.length}`);
@@ -372,7 +387,7 @@ class JobServiceClass {
                 }
 
                 if (isNaN(parsedDate.getTime())) {
-                    logger.error(`Skipping ${product.scheme_id}: Invalid date format "${nav_record.date}"`);
+                    logger.error(`Skipping ${product.mapping_code}: Invalid date format "${nav_record.date}"`);
                 }
 
                 return {
@@ -384,20 +399,18 @@ class JobServiceClass {
             });
 
             if (to_insert.length > 0) {
-                await db.$transaction(async (tx) => {
-                    const BATCH_SIZE = 1000;
-                    for (let i = 0; i < to_insert.length; i += BATCH_SIZE) {
-                        await tx.mfNavHistory.createMany({
-                            data: to_insert.slice(i, i + BATCH_SIZE),
-                            skipDuplicates: true
-                        });
-                    }
-                });
+                const BATCH_SIZE = 1000;
+                for (let i = 0; i < to_insert.length; i += BATCH_SIZE) {
+                    await db.mfNavHistory.createMany({
+                        data: to_insert.slice(i, i + BATCH_SIZE),
+                        skipDuplicates: true
+                    });
+                }
             }
 
-            logger.info(`NAV History Job: Inserted ${to_insert.length} records for scheme_id: ${product.scheme_id}`);
+            logger.info(`NAV History Job: Inserted ${to_insert.length} records for scheme_id: ${product.mapping_code}`);
         } catch (error) {
-            logger.error(`Error fetching/storing NAV history for scheme_id: ${product.scheme_id}`, error);
+            logger.error(`Error fetching/storing NAV history for scheme_id: ${product.mapping_code}`, error);
         }
     }
 

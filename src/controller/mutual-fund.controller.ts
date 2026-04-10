@@ -26,12 +26,15 @@ class MutualFundControllerClass {
             const risk = parseInt(req.query.risk as string)
 
             logger.info(`Fetching mutual funds - Page: ${page}, Limit: ${limit}`);
-            const { query, order } = get_mf_search_query({ category, risk, sort_by, search });
+            const { query, order, search: normalized_search } = get_mf_search_query({ category, risk, sort_by, search });
+
+            logger.debug("Query for mutual fund ==> ", query)
 
             const result = await mututal_funds_service.get_mutual_funds({
                 pagination: { page, limit },
                 query,
-                order
+                order,
+                search: normalized_search
             });
 
             logger.debug(`Fetched ${result.mutual_funds.length} mutual funds from database`);

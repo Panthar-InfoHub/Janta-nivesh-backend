@@ -4,6 +4,8 @@ import { user_service } from "../services/user.service.js";
 import AppError from "../middleware/error.middleware.js";
 import { fire_report_service } from "../services/fire.report.service.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
+import { user_patch_schema, verify_mpin_schema } from "../lib/zod-schemas/user.schema.js";
+import { generate_JWT } from "../middleware/jwt.js";
 
 class UserFinanceControllerClass {
     async onboarding_create(req: Request) {
@@ -247,6 +249,68 @@ class UserFinanceControllerClass {
             return;
         } catch (error) {
             logger.error(`Error in getting user portfolio: `, error);
+            next(error);
+            return;
+        }
+    }
+
+
+    patch_user = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user!.id;
+            const data = user_patch_schema.parse(req.body);
+
+            logger.info(`Patching user data for User ID: ${user_id}`);
+            const updated_user = await user_service.patch_user(user_id, data);
+
+            logger.debug("Updated user ==> ", updated_user)
+
+            res.status(200).json({
+                code: 200,
+                message: "User updated successfully",
+                data: updated_user
+            });
+            return
+        } catch (error) {
+            logger.error(`Error in patch_user: ${error}`);
+            next(error);
+            return
+        }
+    }
+
+    verify_mpin = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user!.id;
+            const { mpin } = verify_mpin_schema.parse(req.body);
+
+            logger.info(`Verifying MPIN for User ID: ${user_id}`);
+            const result = await user_service.verify_mpin(user_id, mpin);
+
+            if (!result.is_verified) {
+                logger.warn(`Invalid MPIN for User ID: ${user_id}`);
+                res.status(401).json({
+                    code: 401,
+                    message: "Invalid MPIN",
+                    data: { verified: false }
+                });
+                return;
+            }
+
+            logger.debug("MPIN verified for user ==> ", user_id)
+
+
+            res.status(200).json({
+                code: 200,
+                message: "MPIN verified successfully",
+                data: {
+                    verified: true,
+                    token: result.token,
+                    refresh_token: result.refresh_token
+                }
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in verify_mpin: ${error}`);
             next(error);
             return;
         }

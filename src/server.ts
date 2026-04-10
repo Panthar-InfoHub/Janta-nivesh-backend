@@ -21,6 +21,7 @@ import { user_loan_router } from "./routes/user/user.loan.router.js"
 import { user_router } from "./routes/user/user.router.js"
 import { webhook_router } from "./routes/webhook.router.js"
 import { fd_router } from "./routes/fd.router.js"
+import { bundle_router } from "./routes/bundle.router.js"
 
 
 //Configurations
@@ -62,6 +63,7 @@ app.use("/api/v1/fire-report", fire_report_router)
 app.use("/api/v1/webhook", webhook_router)
 
 app.use("/api/v1/kyc", kyc_router)
+app.use("/api/v1/bundles", bundle_router)
 //Health check
 app.get("/api/v1/ping", (_req, res) => {
     // throw new AppError("Service is running...", 501, "SERVER_RUNNING")
