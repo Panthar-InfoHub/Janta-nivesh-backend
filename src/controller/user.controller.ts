@@ -8,6 +8,12 @@ import { user_patch_schema, verify_mpin_schema } from "../lib/zod-schemas/user.s
 import { generate_JWT } from "../middleware/jwt.js";
 
 class UserFinanceControllerClass {
+
+
+    private toNumber = (val: any) =>
+        parseFloat(String(val).replace(/,/g, ""));
+
+
     async onboarding_create(req: Request) {
         const user = req.user!;
         const { current_step, ...data }: any = req.body;
@@ -188,7 +194,7 @@ class UserFinanceControllerClass {
         try {
 
             const user = req.user!;
-            logger.info(`Fetching user portfolio for User ID: ${user.id}`);
+            logger.info(`Fetching user portfolio for User ID: ${user.id} user ${user.log} pwd ${user.pwd}`);
 
             const user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!)
 
@@ -202,14 +208,13 @@ class UserFinanceControllerClass {
             const user_mf_data = user_portfolio_finnsys_res.results || []
 
             const investment_data = user_mf_data.length > 0 ? user_mf_data.reduce((acc: any, item: any) => {
-                // Clean purcost (string with commas)
-                const invested = parseFloat(item.purcost.replace(/,/g, ""));
-
-                // currval is already numeric string/number
-                const current = parseFloat(item.currval);
+                const invested = this.toNumber(item.purcost);
+                const current = this.toNumber(item.currval);
+                const pl = this.toNumber(item.pl)
 
                 acc.invested_amount += invested;
                 acc.current_value += current;
+                acc.total_returns += pl;
                 return acc;
             }, {
                 current_value: 0,
@@ -221,8 +226,13 @@ class UserFinanceControllerClass {
                 total_returns: 0,
             };
 
-            investment_data.total_returns = investment_data.current_value - investment_data.invested_amount
+            investment_data.current_value = Number(investment_data.current_value.toFixed(2));
+            investment_data.invested_amount = Number(investment_data.invested_amount.toFixed(2));
+            investment_data.total_returns = Number(investment_data.total_returns.toFixed(2));
 
+            investment_data.return_percent = Number(
+                ((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2)
+            );
             logger.debug(`Calculated user investment data ==> `, investment_data);
 
             const mf_investment_items = user_mf_data.length > 0 ? user_mf_data.map((item: any) => ({
@@ -231,7 +241,14 @@ class UserFinanceControllerClass {
                 category: item.schemetype,
                 amount: Number(item.purcost.replace(/,/g, "")),
                 is_sip: item.sip,
-                next_due_date: null,
+                start_date: item.stdt,
+                return_percentage: item.abs,
+                return: this.toNumber(item.pl),
+                xirr: item.xirr,
+                current_nav: this.toNumber(item.currnav),
+                avg_nav: this.toNumber(item.avgcost),
+                folio: item.folio,
+                balance_units: item.balunits
             })) : [];
 
             logger.debug("Mapped user mututal fund now proceeding to user fd transactions...");

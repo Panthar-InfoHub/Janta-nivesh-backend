@@ -34,6 +34,18 @@ class MututalFundServiceClass {
 
 
 
+
+
+    /**
+     * Retrieves a paginated list of mutual funds with optional filtering, sorting, and fuzzy search capabilities.
+     * 
+     * @param params - The parameters for retrieving mutual funds.
+     * @param params.pagination - Pagination details (page and limit).
+     * @param params.query - Prisma where input for filtering by exact fields (e.g., risk_level, asset_type).
+     * @param params.order - Prisma order by input for sorting the results.
+     * @param params.search - Optional search string. If provided, applies a fuzzy search (pg_trgm) across scheme name, scheme type, and AMC name.
+     * @returns A promise that resolves to an object containing the list of mutual funds and pagination metadata.
+     */
     get_mutual_funds = async ({ pagination, query, order, search }: { pagination: pagination, query?: MfProductWhereInput, order?: MfProductOrderByWithRelationInput, search?: string }) => {
         const { page, limit } = pagination;
         const offset = (page - 1) * limit;
@@ -51,20 +63,27 @@ class MututalFundServiceClass {
                 const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}` : Prisma.empty;
 
                 // 2. Define a consistent threshold (0.3 is usually best for "LIC Multicap" vs "LIC Multi Cap")
-                const threshold = 0.2;
+                const threshold = 0.15;
+                let sql_order_by = Prisma.sql`score DESC`; // Default
+
+                if (order?.metrics?.return_90d) sql_order_by = Prisma.sql`m.return_90d DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_6m) sql_order_by = Prisma.sql`m.return_6m DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_1y) sql_order_by = Prisma.sql`m.return_1y DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_3y) sql_order_by = Prisma.sql`m.return_3y DESC NULLS LAST, score DESC`;
 
                 // 3. Execute Search
                 const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
                 SELECT 
-                    id, 
-                    (similarity(scheme_name, ${search}) * 2.0 + coalesce(similarity(amc_name, ${search}), 0)) as score
-                FROM "MfProduct"
+                    p.id,
+                    (similarity(p.scheme_name, ${search}) * 2.0 + coalesce(similarity(p.amc_name, ${search}), 0)) as score
+                FROM "MfProduct" p
+                LEFT JOIN "MfMetrics" m ON m.mf_product_id = p.id
                 WHERE 
                     (scheme_name % ${search} OR scheme_type % ${search} OR amc_name % ${search})
                     AND similarity(scheme_name, ${search}) > ${threshold}
                     ${categoryFilter}
                     ${riskFilter}
-                ORDER BY score DESC
+                ORDER BY ${sql_order_by}
                 LIMIT ${limit} OFFSET ${offset}
             `;
 

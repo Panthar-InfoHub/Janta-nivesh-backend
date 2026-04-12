@@ -22,6 +22,7 @@ import { user_router } from "./routes/user/user.router.js"
 import { webhook_router } from "./routes/webhook.router.js"
 import { fd_router } from "./routes/fd.router.js"
 import { bundle_router } from "./routes/bundle.router.js"
+import { frontend_router } from "./routes/frontend.router.js"
 
 
 //Configurations
@@ -50,6 +51,7 @@ if (process.env.ENVIRONMENT === "dev") {
 app.use("/api/v1/auth", auth_router)
 app.use("/api/v1/user", user_router)
 app.use("/api/v1/jobs", job_router)
+app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
 app.use("/api/v1/mf", mututal_fund_router)
