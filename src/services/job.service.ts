@@ -54,7 +54,7 @@ class JobServiceClass {
                     // -> Execute Bulk Upsert for Products with RETURNING to get actual IDs back
                     // Why raw sql? Because prisma don't support upsertMany and we want to do this in 1 query for 30k records
                     // RETURNING gives us the real id for both new inserts AND conflict-updated rows — no extra findMany needed
-                    const products: { id: string, scheme_id: string, isin: string | null, nse_scheme_code: string | null }[] = await tx.$queryRaw`
+                    const products: { id: string, scheme_id: string, isin: string | null, nse_scheme_code: string | null, mapping_code: string | null }[] = await tx.$queryRaw`
                     INSERT INTO "MfProduct" (
                         id, scheme_id, isin, mapping_code, nse_scheme_code, platform_code, scheme_name, 
                         amc_id, amc_code, amc_name, asset_type, scheme_type, 
@@ -71,7 +71,7 @@ class JobServiceClass {
                         redemption_allowed = EXCLUDED.redemption_allowed,
                         switch_allowed = EXCLUDED.switch_allowed,
                         "updatedAt" = NOW()
-                    RETURNING id, scheme_id, isin, nse_scheme_code;
+                    RETURNING id, scheme_id, isin, nse_scheme_code, mapping_code;
                 `;
 
                     logger.info(`Batch of ${batch.length} products upserted successfully.`);
@@ -146,7 +146,7 @@ class JobServiceClass {
 
                         const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
                         navHistoryValues.push(Prisma.sql`(
-                            ${cuid()}, ${pId}, ${String(mf.SCHM_ID)},
+                            ${cuid()}, ${pId}, ${String(mf.MAPPING_CODE)},
                             ${parseFloat(mf.NAV)}, ${navDate}, NOW()
                         )`);
                     }
