@@ -6,21 +6,18 @@ import { user_service } from "../services/user.service.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import { User } from "../prisma/generated/prisma/client.js";
 import { env } from "../lib/config-env.js";
+import { AuthResponse } from "../lib/types.js";
+import { deviceParamsSchema, reqOtpSchema, validateOtpSchema } from "../schemas/auth.schema.js";
 
 class AuthControllerClass {
 
     private extract_device_params(req: Request) {
-        const dtyp = req.query.dtyp as "A" | "I";
-        const dver = req.query.dver as string;
-        const dbn = req.query.dbn as string;
-        const did = req.query.did as string;
-
-        return {
-            dtyp: dtyp,
-            dver: dver,
-            dbn: dbn,
-            did: did,
-        };
+        const validation = deviceParamsSchema.safeParse(req.query);
+        if (!validation.success) {
+            logger.error("Invalid device parameters:", validation.error.format());
+            throw new AppError("Invalid device parameters", 400, "INVALID_DEVICE_PARAMS");
+        }
+        return validation.data;
     }
 
     auth_req_otp = async (req: Request, res: Response, next: NextFunction) => {
@@ -30,37 +27,18 @@ class AuthControllerClass {
             logger.debug("Extracting device parameters for OTP request  ==> ", req.query);
             const device_params = this.extract_device_params(req);
 
-            // Optional Query Params
-            const mob = req.query.mob as string;
-
-            if (!mob) {
-                logger.error("Mobile number is required for OTP request");
-                throw new AppError("Mobile number is required", 400, "NOT_MOBILE_PROVIDED");
+            // Validation
+            const validation = reqOtpSchema.safeParse(req.query);
+            if (!validation.success) {
+                logger.error("Mobile number validation failed");
+                throw new AppError("A valid 10-digit mobile number is required", 400, "INVALID_PHONE_NUMBER");
             }
+
+            const mob = validation.data.mob;
 
             logger.info(`OTP Request for Mobile: ${mob}, Device: ${device_params.did}`);
 
-            // Test environment
-
-            if (mob === "9876543210" && env.ENVIRONMENT === "dev") {
-                logger.info(`Test environment: Skipping OTP request for mobile number ${mob}`)
-                const user = await user_service.create_user({
-                    phone_no: mob
-                })
-
-                res.status(200).json({
-                    success: true,
-                    message: "Test environment: OTP requested successfully",
-                    data: {
-                        user_id: user.id,
-                        phone_no: user.phone_no
-                    }
-                });
-                return;
-            }
-
-
-            const auth_res: { code: number } = await auth_service.req_otp(mob, device_params);
+            const auth_res: AuthResponse = await auth_service.req_otp(mob, device_params);
 
             if (auth_res.code !== 1) {
                 throw new AppError("Failed to request OTP", 500, "OTP_REQUEST_FAILED");
@@ -96,13 +74,13 @@ class AuthControllerClass {
 
             const device_params = this.extract_device_params(req);
 
-            const mob = req.body.mob as string;
-            const otp = req.body.otp as string;
-
-            if (!mob || !otp) {
-                logger.error("Mobile number and OTP are required for OTP validation");
-                throw new AppError("Mobile number and OTP are required", 400, "NOT_MOBILE_OR_OTP_PROVIDED");
+            const validation = validateOtpSchema.safeParse(req.body);
+            if (!validation.success) {
+                logger.error("OTP validation payload invalid");
+                throw new AppError("Mobile number and 4-digit OTP are required", 400, "INVALID_OTP_PAYLOAD");
             }
+
+            const { mob, otp } = validation.data;
 
             const user = await user_service.get_user_by_phone(mob);
             if (!user) {
@@ -110,43 +88,8 @@ class AuthControllerClass {
                 throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
             }
 
-            if (mob === "9876543210" && otp === "0000" && env.ENVIRONMENT === "dev") {
-                logger.info(`Test environment: OTP validation started for mobile number ${mob}`)
-
-                const refresh_token = generate_JWT(user, "30d");
-
-                const updated_user = await user_service.update_user(user.id, {
-                    usr: env.TEST_USR,
-                    pwd: env.TEST_PASS,
-                    inv_id: Number(env.TEST_INV),
-                    refresh_token: refresh_token
-                });
-
-
-                const token = generate_JWT(updated_user);
-
-                res.status(200).json({
-                    success: true,
-                    message: "Test OTP validated successfully",
-                    data: {
-                        user: {
-                            user_id: updated_user.id,
-                            phone_no: updated_user.phone_no,
-                            metadata: updated_user.meta_data ?? {
-                                onboarding_stage: 0,
-                                is_onboarding_completed: false,
-                            }
-                        },
-                        token: token,
-                        refresh_token: refresh_token
-                    }
-                });
-                return
-            }
-
-
             logger.info(`Validating OTP for Mobile: ${mob}, Device: ${device_params.did}`);
-            const auth_res = await auth_service.validate_otp(mob, otp, device_params);
+            const auth_res: AuthResponse = await auth_service.validate_otp(mob, otp, device_params);
 
 
             if (auth_res.code !== 1) {

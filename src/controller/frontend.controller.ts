@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
-import { mututal_funds_service } from "../services/mutual-fund.service.js";
+import { mutual_funds_service } from "../services/mutual-fund.service.js";
 import { bundle_service } from "../services/bundle.services.js";
 import { redis_buffer_client } from "../lib/redis.js";
 import { compress_json, decompress_json } from "../lib/utils.js";
@@ -26,31 +26,31 @@ class FrontendControllerClass {
 
             const [bundle, flexi_cap, large_cap, mid_cap, small_cap, index] = await Promise.all([
                 bundle_service.get_bundles({ page: 1, limit: 6 }),
-                mututal_funds_service.get_mutual_funds({
+                mutual_funds_service.get_mutual_funds({
                     pagination: { page: 1, limit: 6 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'flexicap'
                 }),
-                mututal_funds_service.get_mutual_funds({
+                mutual_funds_service.get_mutual_funds({
                     pagination: { page: 1, limit: 6 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'largecap'
                 }),
-                mututal_funds_service.get_mutual_funds({
+                mutual_funds_service.get_mutual_funds({
                     pagination: { page: 1, limit: 6 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'midcap'
                 }),
-                mututal_funds_service.get_mutual_funds({
+                mutual_funds_service.get_mutual_funds({
                     pagination: { page: 1, limit: 6 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'smallcap'
                 }),
-                mututal_funds_service.get_mutual_funds({
+                mutual_funds_service.get_mutual_funds({
                     pagination: { page: 1, limit: 6 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },

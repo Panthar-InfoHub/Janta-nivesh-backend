@@ -11,7 +11,7 @@ import { auth_router } from "./routes/auth.router.js"
 import { fire_report_router } from "./routes/fire-report.router.js"
 import { job_router } from "./routes/job.router.js"
 import { kyc_router } from "./routes/kyc.router.js"
-import { mututal_fund_router } from "./routes/mututal.fund.router.js"
+import { mutual_fund_router } from "./routes/mutual-fund.router.js"
 import { onboarding_router } from "./routes/onboarding.router.js"
 import { user_assets_router } from "./routes/user/user.assets.router.js"
 import { user_finance_router } from "./routes/user/user.finance.router.js"
@@ -54,7 +54,7 @@ app.use("/api/v1/jobs", job_router)
 app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
-app.use("/api/v1/mf", mututal_fund_router)
+app.use("/api/v1/mf", mutual_fund_router)
 app.use("/api/v1/onboarding", onboarding_router)
 app.use("/api/v1/user-assets", user_assets_router)
 app.use("/api/v1/user-finance", user_finance_router)

@@ -4,7 +4,7 @@ import { sip_cart_zod_schema, redeem_request_zod_schema } from "../lib/types.js"
 import { get_mf_search_query } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
-import { mututal_funds_service } from "../services/mutual-fund.service.js";
+import { mutual_funds_service } from "../services/mutual-fund.service.js";
 
 
 
@@ -30,7 +30,7 @@ class MutualFundControllerClass {
 
             logger.debug("Query for mutual fund ==> ", query)
 
-            const result = await mututal_funds_service.get_mutual_funds({
+            const result = await mutual_funds_service.get_mutual_funds({
                 pagination: { page, limit },
                 query,
                 order,
@@ -75,7 +75,7 @@ class MutualFundControllerClass {
             }
 
             logger.debug(`Cache Miss for MF ID: ${id}. Fetching from database...`);
-            const result = await mututal_funds_service.get_mutual_fund_by_id(id);
+            const result = await mutual_funds_service.get_mutual_fund_by_id(id);
 
             await redis.set(mf_detail_key, JSON.stringify(result), { EX: 60 * 60 })
             logger.debug(`Fetched and cached mutual fund by id: ${id}`);
@@ -99,7 +99,7 @@ class MutualFundControllerClass {
             const id = req.params.id as string;
             const period = req.query.period as string || "1y";
 
-            const full_history = await mututal_funds_service.get_mutual_fund_history(id, period);
+            const full_history = await mutual_funds_service.get_mutual_fund_history(id, period);
 
             if (!full_history) {
                 logger.warn(`No history found for MF ID: ${id}, returning empty array response`);
@@ -132,9 +132,9 @@ class MutualFundControllerClass {
                 throw new AppError("Missing required fields: amount and mf_product_id are required", 400);
             }
 
-            const mf_product = await mututal_funds_service.get_mutual_fund_by_id(mf_product_id);
+            const mf_product = await mutual_funds_service.get_mutual_fund_by_id(mf_product_id);
 
-            const result = await mututal_funds_service.add_lumpsum_cart({
+            const result = await mutual_funds_service.add_lumpsum_cart({
                 amc_code: mf_product?.amc_code || "",
                 amc_name: mf_product?.amc_name || "",
                 prod_code: mf_product?.platform_code || "",
@@ -172,7 +172,7 @@ class MutualFundControllerClass {
             const user = req.user!;
             logger.info(`Purchasing lumpsum items for user: ${user.id}`);
 
-            const result = await mututal_funds_service.execute_lumpsum_purchase(user.id, user.log!, user.pwd!);
+            const result = await mutual_funds_service.execute_lumpsum_purchase(user.id, user.log!, user.pwd!);
 
             res.status(200).json({
                 success: true,
@@ -192,7 +192,7 @@ class MutualFundControllerClass {
             const user = req.user!;
             logger.info(`Purchasing SIP items for user: ${user.id}`);
 
-            const result = await mututal_funds_service.execute_sip_purchase(user.id, user.log!, user.pwd!);
+            const result = await mutual_funds_service.execute_sip_purchase(user.id, user.log!, user.pwd!);
 
             res.status(200).json({
                 success: true,
@@ -220,7 +220,7 @@ class MutualFundControllerClass {
                 throw new AppError("Missing required fields: amount and mf_product_id are required", 400);
             }
 
-            const mf_product = await mututal_funds_service.get_mutual_fund_by_id(mf_product_id);
+            const mf_product = await mutual_funds_service.get_mutual_fund_by_id(mf_product_id);
 
 
             if (!mf_product?.transaction_rules?.sip_allowed_dates.includes(sip_day)) {
@@ -251,7 +251,7 @@ class MutualFundControllerClass {
                 throw new AppError("Validation failed for SIP cart data", 400, "VALIDATION_ERROR", sip_data_validation.error);
             }
 
-            const result = await mututal_funds_service.add_sip_cart(sip_data_validation.data, {
+            const result = await mutual_funds_service.add_sip_cart(sip_data_validation.data, {
                 log: user?.log as string,
                 pwd: user?.pwd as string
             });
@@ -292,7 +292,7 @@ class MutualFundControllerClass {
                 throw new AppError("Validation failed for redemption data", 400, "VALIDATION_ERROR", validation.error);
             }
 
-            const result = await mututal_funds_service.execute_redemption(user.id, validation.data);
+            const result = await mutual_funds_service.execute_redemption(user.id, validation.data);
 
             res.status(200).json({
                 success: true,

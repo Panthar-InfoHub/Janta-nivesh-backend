@@ -24,7 +24,7 @@ export type pagination = {
 
 
 
-class MututalFundServiceClass {
+class MutualFundServiceClass {
 
     finnsys_base_url: string;
 
@@ -531,4 +531,4 @@ class MututalFundServiceClass {
 
 }
 
-export const mututal_funds_service = new MututalFundServiceClass();
+export const mutual_funds_service = new MutualFundServiceClass();
