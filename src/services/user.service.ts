@@ -13,6 +13,8 @@ import { user_insurance_service } from "./onboarding/user.insurance.service.js";
 import { user_loan_service } from "./onboarding/user.loan.service.js";
 import { user_goal_service } from "./onboarding/user.goal.service.js";
 import { pagination } from "./mutual-fund.service.js";
+import { hash_mpin, compare_mpin } from "../lib/utils.js";
+import { generate_JWT } from "../middleware/jwt.js";
 
 
 type GetUserFdDataInput = {
@@ -70,6 +72,46 @@ class UserServiceClass {
                 ...data
             }
         });
+    }
+
+    async patch_user(user_id: string, data: any) {
+        if (data.mpin) {
+            data.mpin = await hash_mpin(data.mpin);
+        }
+        const updated_user = await db.user.update({
+            where: { id: user_id },
+            data: { ...data },
+        });
+        delete updated_user.pwd;
+        delete updated_user.mpin;
+        return updated_user;
+    }
+
+    async verify_mpin(user_id: string, mpin: string): Promise<{ is_verified: boolean; token: string; refresh_token: string; }> {
+        const user = await db.user.findUnique({
+            where: { id: user_id },
+        });
+
+        if (!user || !user.mpin) return {
+            is_verified: false,
+            token: "",
+            refresh_token: ""
+        };
+
+        const refresh_token = generate_JWT(user, "30d");
+
+        const updated_user = await user_service.update_user(user_id, {
+            refresh_token: refresh_token
+        });
+        const token = generate_JWT(updated_user);
+
+
+
+        return {
+            is_verified: await compare_mpin(mpin, user.mpin),
+            token: token,
+            refresh_token: refresh_token
+        }
     }
 
     async get_user_by_phone(phone_no: string) {
@@ -131,7 +173,7 @@ class UserServiceClass {
 
 
     async get_all_user_data(user_id: string, options?: GetAllUserDataOptions): Promise<UserWithAllData | null> {
-        return await db.user.findUnique({
+        const user = await db.user.findUnique({
             where: {
                 id: user_id
             },
@@ -151,6 +193,10 @@ class UserServiceClass {
                 mfKycIdentities: options?.mfKycIdentities ?? false,
             }
         });
+
+        delete user?.pwd;
+        delete user?.mpin;
+        return user
     }
 
     async discard_user_onboarding(user_id: string) {

@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
 import logger from "../middleware/logger.js";
 import { FdCustomerType, FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
-import { fd_service } from "../services/fd.service.js";
+import { fd_service } from "../services/fd/fd.service.js";
 import AppError from "../middleware/error.middleware.js";
 import { fd_transaction_service } from "../services/fd.transaction.service.js";
 import { env } from "../lib/config-env.js";

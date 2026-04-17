@@ -14,6 +14,7 @@ import { user_service } from "./user.service.js";
 import { generate_unique_code } from "../helpers/unique.code.js";
 import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
 import { nse_service } from "./nse.service.js";
+import { Prisma } from "../prisma/generated/prisma/client.js";
 const gzipAsync = promisify(gzip);
 
 export type pagination = {
@@ -23,7 +24,7 @@ export type pagination = {
 
 
 
-class MututalFundServiceClass {
+class MutualFundServiceClass {
 
     finnsys_base_url: string;
 
@@ -33,11 +34,102 @@ class MututalFundServiceClass {
 
 
 
-    get_mutual_funds = async ({ pagination, query, order }: { pagination: pagination, query?: MfProductWhereInput, order?: MfProductOrderByWithRelationInput }) => {
+
+
+    /**
+     * Retrieves a paginated list of mutual funds with optional filtering, sorting, and fuzzy search capabilities.
+     * 
+     * @param params - The parameters for retrieving mutual funds.
+     * @param params.pagination - Pagination details (page and limit).
+     * @param params.query - Prisma where input for filtering by exact fields (e.g., risk_level, asset_type).
+     * @param params.order - Prisma order by input for sorting the results.
+     * @param params.search - Optional search string. If provided, applies a fuzzy search (pg_trgm) across scheme name, scheme type, and AMC name.
+     * @returns A promise that resolves to an object containing the list of mutual funds and pagination metadata.
+     */
+    get_mutual_funds = async ({ pagination, query, order, search }: { pagination: pagination, query?: MfProductWhereInput, order?: MfProductOrderByWithRelationInput, search?: string }) => {
         const { page, limit } = pagination;
         const offset = (page - 1) * limit;
 
         const where = query ? query : {};
+
+        // If search is provided, we use fuzzy similarity scoring via pg_trgm
+        if (search && search.trim().length > 0) {
+            try {
+                // 1. Extract Filter Values
+                const riskValue = typeof query?.risk_level === 'object' ? query?.risk_level?.equals : query?.risk_level;
+                const categoryValue = typeof query?.asset_type === 'object' ? query?.asset_type?.equals : query?.asset_type;
+
+                const riskFilter = (riskValue !== undefined && riskValue !== null) ? Prisma.sql`AND risk_level = ${riskValue}` : Prisma.empty;
+                const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}` : Prisma.empty;
+
+                // 2. Define a consistent threshold (0.3 is usually best for "LIC Multicap" vs "LIC Multi Cap")
+                const threshold = 0.15;
+                let sql_order_by = Prisma.sql`score DESC`; // Default
+
+                if (order?.metrics?.return_90d) sql_order_by = Prisma.sql`m.return_90d DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_6m) sql_order_by = Prisma.sql`m.return_6m DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_1y) sql_order_by = Prisma.sql`m.return_1y DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_3y) sql_order_by = Prisma.sql`m.return_3y DESC NULLS LAST, score DESC`;
+
+                // 3. Execute Search
+                const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
+                SELECT 
+                    p.id,
+                    (similarity(p.scheme_name, ${search}) * 2.0 + coalesce(similarity(p.amc_name, ${search}), 0)) as score
+                FROM "MfProduct" p
+                LEFT JOIN "MfMetrics" m ON m.mf_product_id = p.id
+                WHERE 
+                    (scheme_name % ${search} OR scheme_type % ${search} OR amc_name % ${search})
+                    AND similarity(scheme_name, ${search}) > ${threshold}
+                    ${categoryFilter}
+                    ${riskFilter}
+                ORDER BY ${sql_order_by}
+                LIMIT ${limit} OFFSET ${offset}
+            `;
+
+                // 4. SYNCED COUNT QUERY
+                const totalResult = await db.$queryRaw<{ count: bigint }[]>`
+                SELECT count(*) as count FROM "MfProduct"
+                WHERE 
+                    (scheme_name % ${search} OR scheme_type % ${search} OR amc_name % ${search})
+                    AND similarity(scheme_name, ${search}) > ${threshold}
+                    ${categoryFilter}
+                    ${riskFilter}
+            `;
+
+                const total = Number(totalResult[0]?.count || 0);
+
+                if (searchResults.length > 0) {
+                    const ids = searchResults.map(r => r.id);
+                    const data = await db.mfProduct.findMany({
+                        where: { id: { in: ids } },
+                        include: { metrics: true }
+                    });
+
+                    const sortedData = ids.map(id => data.find(d => d.id === id)).filter(Boolean);
+
+                    return {
+                        mutual_funds: sortedData,
+                        pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+                    };
+                } else {
+                    // If fuzzy found NOTHING, return empty instead of falling through to "everything"
+                    return {
+                        mutual_funds: [],
+                        pagination: { total: 0, page, limit, totalPages: 0 }
+                    };
+                }
+            } catch (error) {
+                logger.error("Error in fuzzy search, falling back to basic contains matching:", error);
+                // On error, we add the search back to the Prisma 'where' object for a standard match
+                (where as any).OR = [
+                    { scheme_name: { contains: search, mode: 'insensitive' } },
+                    { amc_name: { contains: search, mode: 'insensitive' } }
+                ];
+            }
+        }
+
+        logger.debug("Searching fallback, using standard search....")
 
         const [total, data] = await Promise.all([
             db.mfProduct.count({ where }),
@@ -439,4 +531,4 @@ class MututalFundServiceClass {
 
 }
 
-export const mututal_funds_service = new MututalFundServiceClass();
+export const mutual_funds_service = new MutualFundServiceClass();

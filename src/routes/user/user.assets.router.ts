@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { user_assets_controller } from "../../controller/user.assests.controller.js";
+import { user_assets_controller } from "../../controller/user.assets.controller.js";
 
 export const user_assets_router = Router();
 

@@ -11,7 +11,7 @@ import { auth_router } from "./routes/auth.router.js"
 import { fire_report_router } from "./routes/fire-report.router.js"
 import { job_router } from "./routes/job.router.js"
 import { kyc_router } from "./routes/kyc.router.js"
-import { mututal_fund_router } from "./routes/mututal.fund.router.js"
+import { mutual_fund_router } from "./routes/mutual-fund.router.js"
 import { onboarding_router } from "./routes/onboarding.router.js"
 import { user_assets_router } from "./routes/user/user.assets.router.js"
 import { user_finance_router } from "./routes/user/user.finance.router.js"
@@ -21,6 +21,8 @@ import { user_loan_router } from "./routes/user/user.loan.router.js"
 import { user_router } from "./routes/user/user.router.js"
 import { webhook_router } from "./routes/webhook.router.js"
 import { fd_router } from "./routes/fd.router.js"
+import { bundle_router } from "./routes/bundle.router.js"
+import { frontend_router } from "./routes/frontend.router.js"
 
 
 //Configurations
@@ -49,9 +51,10 @@ if (process.env.ENVIRONMENT === "dev") {
 app.use("/api/v1/auth", auth_router)
 app.use("/api/v1/user", user_router)
 app.use("/api/v1/jobs", job_router)
+app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
-app.use("/api/v1/mf", mututal_fund_router)
+app.use("/api/v1/mf", mutual_fund_router)
 app.use("/api/v1/onboarding", onboarding_router)
 app.use("/api/v1/user-assets", user_assets_router)
 app.use("/api/v1/user-finance", user_finance_router)
@@ -62,6 +65,7 @@ app.use("/api/v1/fire-report", fire_report_router)
 app.use("/api/v1/webhook", webhook_router)
 
 app.use("/api/v1/kyc", kyc_router)
+app.use("/api/v1/bundles", bundle_router)
 //Health check
 app.get("/api/v1/ping", (_req, res) => {
     // throw new AppError("Service is running...", 501, "SERVER_RUNNING")

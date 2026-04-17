@@ -12,6 +12,12 @@ class AuthServiceClass {
     }
 
     req_otp = async (mobile: string, device: DeviceDetails): Promise<AuthResponse> => {
+
+        if (mobile === "9876543210" && env.ENVIRONMENT === "dev") {
+            logger.info(`Test environment: Intercepting OTP request for mobile number ${mobile}`);
+            return { code: 1, results: [] };
+        }
+
         const res = await axios.get(this.finsys_api, {
             params: {
                 ...device,
@@ -24,6 +30,19 @@ class AuthServiceClass {
     }
 
     validate_otp = async (mobile: string, otp: string, device: DeviceDetails): Promise<AuthResponse> => {
+
+        if (mobile === "9876543210" && otp === "0000" && env.ENVIRONMENT === "dev") {
+            logger.info(`Test environment: Intercepting OTP validation for mobile number ${mobile}`);
+            return {
+                code: 1,
+                results: [{
+                    usr: env.TEST_USR,
+                    pwd: env.TEST_PASS,
+                    invid: Number(env.TEST_INV)
+                }]
+            };
+        }
+
         const res = await axios.get(this.finsys_api, {
             params: {
                 ...device,

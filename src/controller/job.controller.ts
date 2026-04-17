@@ -10,13 +10,18 @@ class JobControllerClass {
     get_blostem_token = async () => {
         try {
 
-            logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
-            logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`);
-            const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`, {
-                email: env.BLOSTEM_USERNAME,
-                password: env.BLOSTEM_PASSWORD,
-            },
-            );
+            logger.debug(`Environment: ${env.ENVIRONMENT}, therefore using URL: ${env.ENVIRONMENT === "dev" ? `${env.BLOSTEM_MASTER_URL}/binvestt/partner/login` : `https://binvestt-api.blostem.com/partner/login`}`);
+            const res = env.ENVIRONMENT === "dev"
+                ? await axios.post(`${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_PASSWORD,
+                },
+                )
+                : await axios.post(`https://binvestt-api.blostem.com/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_PASSWORD,
+                },
+                );
 
             logger.debug("Blostem login response: ", res.data);
             return res.data.data.access.token;

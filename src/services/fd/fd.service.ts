@@ -1,11 +1,11 @@
-import { db } from "../server.js";
-import { FdCustomerType, FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
+import { db } from "../../server.js";
+import { FdCustomerType, FdPayoutFrequency } from "../../prisma/generated/prisma/enums.js";
 import {
     FdInterestRateWhereInput,
     FdProductOrderByWithRelationInput,
     FdProductWhereInput
-} from "../prisma/generated/prisma/models.js";
-import { pagination } from "./mutual-fund.service.js";
+} from "../../prisma/generated/prisma/models.js";
+import { pagination } from "../mutual-fund.service.js";
 
 class FdServiceClass {
 

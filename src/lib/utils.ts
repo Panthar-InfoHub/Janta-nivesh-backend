@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { promisify } from "util";
+import bcrypt from "bcryptjs";
 import logger from "../middleware/logger.js";
 import { gunzip, gzip } from "zlib";
 import { FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
@@ -52,7 +53,7 @@ const FD_TENURE_MAP: Record<string, number[]> = {
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-export const get_mf_search_query = (params: any): { query: MfProductWhereInput, order: MfProductOrderByWithRelationInput } => {
+export const get_mf_search_query = (params: any): { query: MfProductWhereInput, order: MfProductOrderByWithRelationInput, search?: string } => {
 
     const { category, risk, sort_by, search } = params;
     const normalized_category = map_mf_asset_type(category, category);
@@ -60,12 +61,6 @@ export const get_mf_search_query = (params: any): { query: MfProductWhereInput, 
     const query: MfProductWhereInput = {
         ...(normalized_category && { asset_type: { equals: normalized_category } }),
         ...(risk && { risk_level: { equals: risk } }),
-        ...(search && {
-            OR: [
-                { scheme_name: { contains: search, mode: 'insensitive' } },
-                { scheme_type: { contains: search, mode: 'insensitive' } }
-            ]
-        }),
     }
 
     const order: MfProductOrderByWithRelationInput = {
@@ -75,7 +70,7 @@ export const get_mf_search_query = (params: any): { query: MfProductWhereInput, 
         ...(sort_by === "3y" && { metrics: { return_3y: 'desc' } }),
     }
 
-    return { query, order };
+    return { query, order, search };
 }
 
 const normalize_fd_pagination = (params: RawFdParams): { page: number, limit: number } => {
@@ -244,4 +239,13 @@ export const decompressAndFilter = async (buffer: Buffer, period?: string) => {
         return new Date(entry.nav_date).getTime() >= cutoffTimestamp;
     });
 
+}
+
+export const hash_mpin = async (mpin: string): Promise<string> => {
+    const salt = await bcrypt.genSalt(10);
+    return await bcrypt.hash(mpin, salt);
+}
+
+export const compare_mpin = async (mpin: string, hashedMpin: string): Promise<boolean> => {
+    return await bcrypt.compare(mpin, hashedMpin);
 }
