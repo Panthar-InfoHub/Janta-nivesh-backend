@@ -305,7 +305,8 @@ class JobServiceClass {
                 }
             }
         } catch (error: any) {
-            logger.error("FATAL: FD Sync Job Failed.", error.message);
+            logger.error("FATAL: FD Sync Job Failed.", error);
+            throw error
         }
     };
 
