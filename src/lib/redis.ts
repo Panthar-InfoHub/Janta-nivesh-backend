@@ -13,7 +13,7 @@ class RedisService {
                     connectTimeout: 10000,
                     reconnectStrategy: (retries) => Math.min(retries * 100, 3000)
                 },
-                database: env.ENVIRONMENT === "dev" ? 0 : 1
+                // database: env.ENVIRONMENT === "dev" ? 0 : 1
             }) as RedisClientType;
 
             client.on('error', (err) => logger.error('Redis Client Error', err));
