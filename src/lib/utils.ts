@@ -164,6 +164,7 @@ export const build_fd_list_cache_key = (params: RawFdParams): string => {
     const normalized_tenure = FD_TENURE_MAP[tenure_key] ? tenure_key : "3y";
     const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase();
     const sort_by = String(params.sort_by ?? "created_at").toLowerCase();
+    const search = String(params.search ?? "").trim();
     const normalized_sort_by = ["min_deposit", "max_deposit", "tenure", "created_at"].includes(sort_by) ? sort_by : "created_at";
     const sort_order = String(params.sort_order ?? "desc").toLowerCase() === "asc" ? "asc" : "desc";
     const min_deposit = parse_optional_number(params.min_deposit);
@@ -180,6 +181,7 @@ export const build_fd_list_cache_key = (params: RawFdParams): string => {
         max_deposit: max_deposit ?? null,
         sort_by: normalized_sort_by,
         sort_order,
+        search,
     };
 
     const hash = createHash("sha1").update(JSON.stringify(normalized_payload)).digest("hex");
