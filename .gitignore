@@ -11,9 +11,10 @@ plans/
 .vscode/
 .idea/
 
-TODO.md
 notes.js
 
 ecas-parser.js
 response.json
 # src/lib/ecas-parser.ts
+
+Todo.md

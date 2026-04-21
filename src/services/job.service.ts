@@ -182,10 +182,16 @@ class JobServiceClass {
 
     daily_fd_job = async (token: string) => {
         try {
-            const api_res = await axios.get(`${env.BLOSTEM_MASTER_URL}/binvestt/portal/fixed-deposit/templates`, {
-                headers: { 'x-partner-token': token },
-                timeout: 15000
-            }).then(res => res.data);
+
+            const api_res = env.ENVIRONMENT === "dev"
+                ? await axios.get(`${env.BLOSTEM_MASTER_URL}/binvestt/portal/fixed-deposit/templates`, {
+                    headers: { 'x-partner-token': token },
+                    timeout: 15000
+                }).then(res => res.data)
+                : await axios.get(`https://binvestt-api.blostem.com/portal/fixed-deposit/templates`, {
+                    headers: { 'x-partner-token': token },
+                    timeout: 15000
+                }).then(res => res.data)
 
             const api_data: any[] = api_res.data?.data ?? [];
 

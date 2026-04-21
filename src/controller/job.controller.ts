@@ -76,7 +76,7 @@ class JobControllerClass {
             return;
 
         } catch (error: any) {
-            console.error("Error while running daily mf job ==> ", error.message);
+            console.error("Error while running daily mf job ==> ", error);
             // logger.error("Error while running daily mf job ==> ", error.message);
             next(error);
             return;
