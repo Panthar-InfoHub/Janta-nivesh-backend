@@ -3,7 +3,7 @@ import { promisify } from "util";
 import bcrypt from "bcryptjs";
 import logger from "../middleware/logger.js";
 import { gunzip, gzip } from "zlib";
-import { FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
+import { FdCustomerType, FdPayoutFrequency, IssuerType } from "../prisma/generated/prisma/enums.js";
 import {
     FdInterestRateWhereInput,
     FdProductOrderByWithRelationInput,
@@ -50,6 +50,23 @@ const FD_TENURE_MAP: Record<string, number[]> = {
     "5y": [1825, 1826],
 };
 
+const FD_TENURE_BUCKETS = {
+    LT_1Y: { lt: 365 },
+    Y1_TO_3: { gte: 365, lte: 1095 },
+    Y3_TO_5: { gt: 1095, lte: 1825 },
+    GT_5Y: { gt: 1825 },
+} as const;
+
+const parse_optional_boolean = (value: unknown): boolean | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    if (typeof value === "boolean") return value;
+
+    const normalized = String(value).trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(normalized)) return true;
+    if (["false", "0", "no", "n"].includes(normalized)) return false;
+    return undefined;
+}
+
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
@@ -81,15 +98,23 @@ const normalize_fd_pagination = (params: RawFdParams): { page: number, limit: nu
 }
 
 const build_fd_interest_rate_filter = (params: RawFdParams): FdInterestRateWhereInput => {
+    const tenure_bucket_key = String(params.tenure_bucket ?? "").toUpperCase() as keyof typeof FD_TENURE_BUCKETS;
     const tenure_key = String(params.tenure ?? "3y").toLowerCase();
-    const tenure_days = FD_TENURE_MAP[tenure_key] ?? FD_TENURE_MAP["3y"];
 
     const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase() as FdPayoutFrequency;
+    const customer_type_candidate = String(params.customer_type ?? "").toUpperCase();
+    const customer_type = Object.values(FdCustomerType).includes(customer_type_candidate as FdCustomerType)
+        ? customer_type_candidate as FdCustomerType
+        : undefined;
+
+    const tenure_days = FD_TENURE_BUCKETS[tenure_bucket_key]
+        ? FD_TENURE_BUCKETS[tenure_bucket_key]
+        : { in: FD_TENURE_MAP[tenure_key] ?? FD_TENURE_MAP["3y"] };
 
     return {
-        tenure_days: { in: tenure_days },
+        tenure_days,
         payout_frequency,
-        // is_default_selection: true,
+        ...(customer_type ? { customer_type } : {}),
     };
 }
 
@@ -101,16 +126,24 @@ const parse_optional_number = (value: unknown): number | undefined => {
 
 const build_fd_where_query = (params: RawFdParams, interestRateFilter: FdInterestRateWhereInput): FdProductWhereInput => {
     const min_deposit = parse_optional_number(params.min_deposit);
-    const max_deposit = parse_optional_number(params.max_deposit);
+    const low_min_investment = parse_optional_boolean(params.low_min_investment);
+    const issuer_type_candidate = String(params.issuer_type ?? "").toUpperCase();
+    const issuer_type = Object.values(IssuerType).includes(issuer_type_candidate as IssuerType)
+        ? issuer_type_candidate as IssuerType
+        : undefined;
     const search = String(params.search ?? "").trim();
 
+    const min_deposit_filter: { gte?: number, lte?: number } = {
+        ...(min_deposit !== undefined ? { gte: min_deposit } : {}),
+        ...(low_min_investment ? { lte: 2000 } : {}),
+    };
+
     return {
-        ...(params.issuer_id ? { issuer_id: String(params.issuer_id) } : {}),
-        ...(min_deposit !== undefined || max_deposit !== undefined
+        ...(issuer_type ? { issuer: { issuer_type } } : {}),
+        ...(Object.keys(min_deposit_filter).length > 0
             ? {
                 min_deposit: {
-                    ...(min_deposit !== undefined ? { gte: min_deposit } : {}),
-                    ...(max_deposit !== undefined ? { lte: max_deposit } : {}),
+                    ...min_deposit_filter,
                 },
             }
             : {}),
@@ -162,30 +195,44 @@ export const build_fd_list_cache_key = (params: RawFdParams): string => {
     const pagination = normalize_fd_pagination(params);
     const tenure_key = String(params.tenure ?? "3y").toLowerCase();
     const normalized_tenure = FD_TENURE_MAP[tenure_key] ? tenure_key : "3y";
+    const tenure_bucket_candidate = String(params.tenure_bucket ?? "").toUpperCase();
+    const tenure_bucket = Object.keys(FD_TENURE_BUCKETS).includes(tenure_bucket_candidate)
+        ? tenure_bucket_candidate
+        : "";
     const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase();
+    const customer_type_candidate = String(params.customer_type ?? "").toUpperCase();
+    const customer_type = Object.values(FdCustomerType).includes(customer_type_candidate as FdCustomerType)
+        ? customer_type_candidate
+        : "";
+    const issuer_type_candidate = String(params.issuer_type ?? "").toUpperCase();
+    const issuer_type = Object.values(IssuerType).includes(issuer_type_candidate as IssuerType)
+        ? issuer_type_candidate
+        : "";
     const sort_by = String(params.sort_by ?? "created_at").toLowerCase();
     const search = String(params.search ?? "").trim();
     const normalized_sort_by = ["min_deposit", "max_deposit", "tenure", "created_at"].includes(sort_by) ? sort_by : "created_at";
     const sort_order = String(params.sort_order ?? "desc").toLowerCase() === "asc" ? "asc" : "desc";
     const min_deposit = parse_optional_number(params.min_deposit);
-    const max_deposit = parse_optional_number(params.max_deposit);
+    const low_min_investment = parse_optional_boolean(params.low_min_investment);
 
     const normalized_payload = {
-        version: 1,
+        version: 2,
         page: pagination.page,
         limit: pagination.limit,
         tenure: normalized_tenure,
+        tenure_bucket,
         payout_frequency,
-        issuer_id: params.issuer_id ? String(params.issuer_id) : "",
+        customer_type,
+        issuer_type,
+        low_min_investment: low_min_investment ?? null,
         min_deposit: min_deposit ?? null,
-        max_deposit: max_deposit ?? null,
         sort_by: normalized_sort_by,
         sort_order,
         search,
     };
 
     const hash = createHash("sha1").update(JSON.stringify(normalized_payload)).digest("hex");
-    return `fd:list:v1:page1:${hash}`;
+    return `fd:list:v2:page1:${hash}`;
 }
 
 export const compress_json = async (value: unknown): Promise<Buffer> => {
