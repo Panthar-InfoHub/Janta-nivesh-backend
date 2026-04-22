@@ -25,13 +25,13 @@ RUN npx puppeteer browsers install chrome
 # We copy ONLY the prisma folder. 
 # Changing a controller or a helper won't trigger a prisma re-generate.
 COPY src/prisma ./src/prisma
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate --schema=./src/prisma/schema.prisma
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate --schema=./src/prisma
 
 # 5. SOURCE CODE BUILD
 # Now we copy the rest of the code. 
 # This is the only part that will run on every "push".
 COPY . .
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate --schema=./src/prisma/schema.prisma
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate --schema=./src/prisma
 RUN npm run build
 
 EXPOSE 8080
