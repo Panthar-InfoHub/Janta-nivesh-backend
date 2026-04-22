@@ -288,22 +288,22 @@ class JobServiceClass {
                             const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
                             if (!pId) continue;
 
-                            // Extract product-level calculator flags
-                            const productHasSenior = fd.calculator?.isSeniorCitizen || false;
-                            const productHasFemale = fd.calculator?.isFemale || false;
-
                             fd.frequencyTenureMapping?.forEach((freqGroup: any) => {
                                 const apiFreq = freqGroup.frequency?.toUpperCase();
                                 const mappedFreq = frequencyMap[apiFreq] || 'CUMULATIVE';
 
-                                // Determine customer type from product calculator flags, NOT from group properties
+                                // Use FREQUENCY GROUP's flags, not product-level calculator flags
+                                // Blostem API provides separate groups for senior/female variants
+                                const groupHasSenior = freqGroup.isSeniorCitizen || false;
+                                const groupHasFemale = freqGroup.isFemale || false;
+
                                 let customerType: FdCustomerType = "STANDARD";
 
-                                if (productHasSenior && productHasFemale) {
+                                if (groupHasSenior && groupHasFemale) {
                                     customerType = "SENIOR_CITIZEN_FEMALE";
-                                } else if (productHasSenior) {
+                                } else if (groupHasSenior) {
                                     customerType = "SENIOR_CITIZEN";
-                                } else if (productHasFemale) {
+                                } else if (groupHasFemale) {
                                     customerType = "FEMALE";
                                 }
 
