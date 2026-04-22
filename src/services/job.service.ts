@@ -284,6 +284,9 @@ class JobServiceClass {
                         // --- STEP D: UPSERT INTEREST RATES ---
                         logger.debug(`[FD SYNC] STEP D: Starting interest rate upsert`);
                         const rateValues: Prisma.Sql[] = [];
+                        const seenUniqueKeys = new Set<string>();  // Deduplicate by unique constraint
+                        let duplicatesSkipped = 0;
+
                         for (const fd of batch) {
                             const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
                             if (!pId) continue;
@@ -293,7 +296,6 @@ class JobServiceClass {
                                 const mappedFreq = frequencyMap[apiFreq] || 'CUMULATIVE';
 
                                 // Use FREQUENCY GROUP's flags, not product-level calculator flags
-                                // Blostem API provides separate groups for senior/female variants
                                 const groupHasSenior = freqGroup.isSeniorCitizen || false;
                                 const groupHasFemale = freqGroup.isFemale || false;
 
@@ -308,15 +310,25 @@ class JobServiceClass {
                                 }
 
                                 freqGroup.tenure_mapping?.forEach((tm: any) => {
-                                    rateValues.push(Prisma.sql`(
-                                    ${cuid()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
-                                    ${tm.tenure}, ${tm.year || tm.display}, ${parseFloat(tm.rates.replace('%', ''))}, 
-                                    ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
-                                    ${tm.default === true}, null, NOW()
-                                )`);
+                                    // Unique constraint: (fd_product_id, payout_frequency, tenure_days, customer_type)
+                                    const uniqueKey = `${pId}|${mappedFreq}|${tm.tenure}|${customerType}`;
+
+                                    if (seenUniqueKeys.has(uniqueKey)) {
+                                        duplicatesSkipped++;
+                                    } else {
+                                        seenUniqueKeys.add(uniqueKey);
+                                        rateValues.push(Prisma.sql`(
+                                        ${cuid()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
+                                        ${tm.tenure}, ${tm.year || tm.display}, ${parseFloat(tm.rates.replace('%', ''))}, 
+                                        ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
+                                        ${tm.default === true}, null, NOW()
+                                    )`);
+                                    }
                                 });
                             });
                         }
+
+                        logger.debug(`[FD SYNC] STEP D: Total unique rate rows: ${rateValues.length}, Duplicates skipped: ${duplicatesSkipped}`);
 
                         if (rateValues.length > 0) {
                             logger.debug(`[FD SYNC] STEP D: Created ${rateValues.length} interest rate rows`);
