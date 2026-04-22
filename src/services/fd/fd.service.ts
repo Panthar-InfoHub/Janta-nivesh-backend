@@ -145,6 +145,7 @@ class FdServiceClass {
     }: {
         product_id: string;
         payout_frequency: FdPayoutFrequency;
+        
         tenure_days: number;
     }) => {
         return await db.fdInterestRate.findFirst({
