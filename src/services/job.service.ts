@@ -213,8 +213,14 @@ class JobServiceClass {
 
             for (const batch of batches) {
                 try {
+                    // DEBUG LOGGING: Check batch composition
+                    logger.debug(`[FD SYNC] Processing batch of ${batch.length} products`);
+                    logger.debug(`[FD SYNC] Batch issuer IDs: ${batch.map((fd: any) => fd.issuerId).join(', ')}`);
+                    logger.debug(`[FD SYNC] Batch product types: ${batch.map((fd: any) => fd?.type).join(', ')}`);
+
                     await db.$transaction(async (tx) => {
                         // --- STEP A: UPSERT ISSUERS ---
+                        logger.debug(`[FD SYNC] STEP A: Starting issuer upsert`);
                         const issuerValues = batch.map(fd => {
                             const desc = (fd.aboutIssuer?.about?.description || '').toLowerCase();
                             const issuer_type = desc.includes('nbfc') ? 'NBFC' : 'BANK';
@@ -235,13 +241,18 @@ class JobServiceClass {
                         )`;
                         });
 
+                        logger.debug(`[FD SYNC] STEP A: Created ${issuerValues.length} issuer value rows (may contain duplicates)`);
+
                         await tx.$executeRaw`
                         INSERT INTO "FdIssuer" (id, full_name, display_name, issuer_type, logo_url, banner_url, rating_text, customer_served, operating_since, about_description, support_email, support_phone, "updatedAt")
                         VALUES ${Prisma.join(issuerValues)}
                         ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, "updatedAt" = NOW();
                     `;
 
+                        logger.debug(`[FD SYNC] STEP A: Issuer upsert completed successfully`);
+
                         // --- STEP B: UPSERT PRODUCTS ---
+                        logger.debug(`[FD SYNC] STEP B: Starting product upsert`);
                         const productValues = batch.map(fd => Prisma.sql`(
                         ${fd.id}, ${fd.issuerId}, ${fd.type}, 
                         ${parseFloat(fd.minimumDeposit || 0)}, ${parseFloat(fd.maximumDeposit || 0)},
@@ -253,11 +264,15 @@ class JobServiceClass {
                         ${JSON.stringify(fd.tags || [])}::jsonb, NOW()
                     )`);
 
+                        logger.debug(`[FD SYNC] STEP B: Created ${productValues.length} product value rows`);
+
                         await tx.$executeRaw`
                         INSERT INTO "FdProduct" (id, issuer_id, type, min_deposit, max_deposit, min_tenure_days, max_tenure_days, lock_in_period_days, withdrawal_message, premature_penalty_percent, is_vkyc_required, min_amount_for_vkyc, usps, faqs, tags, "updatedAt")
                         VALUES ${Prisma.join(productValues)}
                         ON CONFLICT (issuer_id, type) DO UPDATE SET min_deposit = EXCLUDED.min_deposit, max_deposit = EXCLUDED.max_deposit, "updatedAt" = NOW();
                     `;
+
+                        logger.debug(`[FD SYNC] STEP B: Product upsert completed successfully`);
 
                         // --- STEP C: MAP IDS FOR RATES ---
                         const currentProducts = await tx.fdProduct.findMany({
@@ -267,6 +282,7 @@ class JobServiceClass {
                         const productMap = new Map(currentProducts.map(p => [`${p.issuer_id}-${p.type}`, p.id]));
 
                         // --- STEP D: UPSERT INTEREST RATES ---
+                        logger.debug(`[FD SYNC] STEP D: Starting interest rate upsert`);
                         const rateValues: Prisma.Sql[] = [];
                         for (const fd of batch) {
                             const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
@@ -303,6 +319,7 @@ class JobServiceClass {
                         }
 
                         if (rateValues.length > 0) {
+                            logger.debug(`[FD SYNC] STEP D: Created ${rateValues.length} interest rate rows`);
                             await tx.$executeRaw`
                             INSERT INTO "FdInterestRate" (
                                 id, fd_product_id, payout_frequency, customer_type, 
@@ -316,12 +333,21 @@ class JobServiceClass {
                                 annualized_yield = EXCLUDED.annualized_yield, 
                                 "updatedAt" = NOW();
                         `;
+                            logger.debug(`[FD SYNC] STEP D: Interest rate upsert completed successfully`);
+                        } else {
+                            logger.debug(`[FD SYNC] STEP D: No rate values to insert`);
                         }
                     }, { timeout: 30000 });
 
                     totalSynced += batch.length;
-                    logger.info(`Batch Sync Successful: ${totalSynced}/${api_data.length}`);
+                    logger.info(`[FD SYNC] Batch Sync Successful: ${totalSynced}/${api_data.length}`);
                 } catch (batchError) {
+                    logger.error(`[FD SYNC] Batch failed with error:`, batchError);
+                    logger.error(`[FD SYNC] Batch error details:`, {
+                        message: (batchError as any).message,
+                        code: (batchError as any).code,
+                        constraint: (batchError as any).constraint
+                    });
                     logger.error("Batch failed, skipping to next...", batchError);
                 }
             }
