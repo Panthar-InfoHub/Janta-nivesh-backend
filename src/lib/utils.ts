@@ -11,6 +11,7 @@ import {
     MfProductOrderByWithRelationInput,
     MfProductWhereInput
 } from "../prisma/generated/prisma/models.js";
+import { env } from "./config-env.js";
 
 type RawFdParams = Record<string, unknown>;
 
@@ -99,7 +100,7 @@ const normalize_fd_pagination = (params: RawFdParams): { page: number, limit: nu
 
 const build_fd_interest_rate_filter = (params: RawFdParams): FdInterestRateWhereInput => {
     const tenure_bucket_key = String(params.tenure_bucket ?? "").toUpperCase() as keyof typeof FD_TENURE_BUCKETS;
-    const tenure_key = String(params.tenure ?? "3y").toLowerCase();
+    const tenure_key = String(params.tenure ?? "").toLowerCase();
 
     const payout_frequency = String(params.payout_frequency ?? "CUMULATIVE").toUpperCase() as FdPayoutFrequency;
     const customer_type_candidate = String(params.customer_type ?? "").toUpperCase();
@@ -107,12 +108,16 @@ const build_fd_interest_rate_filter = (params: RawFdParams): FdInterestRateWhere
         ? customer_type_candidate as FdCustomerType
         : undefined;
 
-    const tenure_days = FD_TENURE_BUCKETS[tenure_bucket_key]
-        ? FD_TENURE_BUCKETS[tenure_bucket_key]
-        : { in: FD_TENURE_MAP[tenure_key] ?? FD_TENURE_MAP["3y"] };
+    let tenure_days: any = undefined;
+
+    if (FD_TENURE_BUCKETS[tenure_bucket_key]) {
+        tenure_days = FD_TENURE_BUCKETS[tenure_bucket_key];
+    } else if (tenure_key && FD_TENURE_MAP[tenure_key]) {
+        tenure_days = { in: FD_TENURE_MAP[tenure_key] };
+    }
 
     return {
-        tenure_days,
+        ...(tenure_days !== undefined && { tenure_days }),
         payout_frequency,
         ...(customer_type ? { customer_type } : {}),
     };
@@ -193,8 +198,8 @@ export const get_fd_search_query = (params: RawFdParams): FdSearchBuildResult =>
 
 export const build_fd_list_cache_key = (params: RawFdParams): string => {
     const pagination = normalize_fd_pagination(params);
-    const tenure_key = String(params.tenure ?? "3y").toLowerCase();
-    const normalized_tenure = FD_TENURE_MAP[tenure_key] ? tenure_key : "3y";
+    const tenure_key = String(params.tenure ?? "").toLowerCase();
+    const normalized_tenure = FD_TENURE_MAP[tenure_key] ? tenure_key : null;
     const tenure_bucket_candidate = String(params.tenure_bucket ?? "").toUpperCase();
     const tenure_bucket = Object.keys(FD_TENURE_BUCKETS).includes(tenure_bucket_candidate)
         ? tenure_bucket_candidate
@@ -214,6 +219,7 @@ export const build_fd_list_cache_key = (params: RawFdParams): string => {
     const sort_order = String(params.sort_order ?? "desc").toLowerCase() === "asc" ? "asc" : "desc";
     const min_deposit = parse_optional_number(params.min_deposit);
     const low_min_investment = parse_optional_boolean(params.low_min_investment);
+    const env_mode = env.ENVIRONMENT
 
     const normalized_payload = {
         version: 2,
@@ -229,6 +235,7 @@ export const build_fd_list_cache_key = (params: RawFdParams): string => {
         sort_by: normalized_sort_by,
         sort_order,
         search,
+        env_mode,
     };
 
     const hash = createHash("sha1").update(JSON.stringify(normalized_payload)).digest("hex");
