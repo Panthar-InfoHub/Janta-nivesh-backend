@@ -43,9 +43,9 @@ model FdIssuer {
   issuer_type       IssuerType
   logo_url          String
   banner_url        String
-  rating_text       String // e.g. "CRISIL AAA"
+  rating_text       String? // e.g. "CRISIL AAA"
   customer_served   String // e.g. "2 Million+"
-  operating_since   String // e.g. "1994"
+  operating_since   String? // e.g. "1994"
   about_description String     @db.Text
   support_email     String
   support_phone     String
@@ -96,7 +96,7 @@ model FdInterestRate {
   interest_rate        Decimal           @db.Decimal(5, 2)
   annualized_yield     Decimal           @db.Decimal(5, 2)
   is_default_selection Boolean           @default(false)
-  is_tax_saver         Boolean           @default(false)
+  is_tax_saver         Boolean?
 
   last_updated_at DateTime @default(now())
   createdAt       DateTime @default(now())

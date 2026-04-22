@@ -215,19 +215,25 @@ class JobServiceClass {
                 try {
                     await db.$transaction(async (tx) => {
                         // --- STEP A: UPSERT ISSUERS ---
-                        const issuerValues = batch.map(fd => Prisma.sql`(
-                        ${fd.issuerId}, 
-                        ${fd.organization?.fullName || fd.displayName}, 
-                        ${fd.displayName}, 
-                        ${fd.issuerType}, 
-                        ${fd.organization?.logo || ''}, 
-                        ${fd.aboutIssuer?.banner || ''}, 
-                        ${fd.aboutIssuer?.rating || ''}, 
-                        ${fd.aboutIssuer?.customerServed || ''}, 
-                        ${fd.aboutIssuer?.operatingSince || ''}, 
-                        ${fd.aboutIssuer?.about?.description || ''}, 
-                        '', '', NOW()
-                    )`);
+                        const issuerValues = batch.map(fd => {
+                            const desc = (fd.aboutIssuer?.about?.description || '').toLowerCase();
+                            const issuer_type = desc.includes('nbfc') ? 'NBFC' : 'BANK';
+                            const rating_text = fd.tags?.map((t: any) => t.text).join(', ') || '';
+
+                            return Prisma.sql`(
+                            ${fd.issuerId}, 
+                            ${fd.organization?.fullName || fd.displayName}, 
+                            ${fd.displayName}, 
+                            ${issuer_type}, 
+                            ${fd.organization?.logo || ''}, 
+                            ${fd.aboutIssuer?.banner || ''}, 
+                            ${rating_text}, 
+                            ${fd.aboutIssuer?.customerServed || ''}, 
+                            'Not provided',
+                            ${fd.aboutIssuer?.about?.description || ''}, 
+                            '', '', NOW()
+                        )`;
+                        });
 
                         await tx.$executeRaw`
                         INSERT INTO "FdIssuer" (id, full_name, display_name, issuer_type, logo_url, banner_url, rating_text, customer_served, operating_since, about_description, support_email, support_phone, "updatedAt")
@@ -242,7 +248,7 @@ class JobServiceClass {
                         ${parseInt(fd.minimumTenure || 0)}, ${parseInt(fd.maximumTenure || 0)},
                         ${fd.aboutIssuer?.lockInDetails?.period || 0}, ${fd.aboutIssuer?.lockInDetails?.message || ''}, 
                         1.0, ${!!fd.aboutIssuer?.vkyc}, ${parseFloat(fd.aboutIssuer?.vkyc?.minAmountForVkyc || 0)},
-                        ${JSON.stringify(fd.aboutIssuer?.usp || [])}::jsonb,
+                        ${JSON.stringify(fd.aboutIssuer?.invest?.content || [])}::jsonb,
                         ${JSON.stringify(fd.aboutIssuer?.questions?.content || [])}::jsonb,
                         ${JSON.stringify(fd.tags || [])}::jsonb, NOW()
                     )`);
@@ -266,22 +272,31 @@ class JobServiceClass {
                             const pId = productMap.get(`${fd.issuerId}-${fd.type}`);
                             if (!pId) continue;
 
+                            // Extract product-level calculator flags
+                            const productHasSenior = fd.calculator?.isSeniorCitizen || false;
+                            const productHasFemale = fd.calculator?.isFemale || false;
+
                             fd.frequencyTenureMapping?.forEach((freqGroup: any) => {
-                                // Map the API frequency to your Enum
                                 const apiFreq = freqGroup.frequency?.toUpperCase();
                                 const mappedFreq = frequencyMap[apiFreq] || 'CUMULATIVE';
 
+                                // Determine customer type from product calculator flags, NOT from group properties
                                 let customerType: FdCustomerType = "STANDARD";
-                                if (freqGroup.isSeniorCitizen && freqGroup.isFemale) customerType = "SENIOR_CITIZEN_FEMALE";
-                                else if (freqGroup.isSeniorCitizen) customerType = "SENIOR_CITIZEN";
-                                else if (freqGroup.isFemale) customerType = "FEMALE";
+
+                                if (productHasSenior && productHasFemale) {
+                                    customerType = "SENIOR_CITIZEN_FEMALE";
+                                } else if (productHasSenior) {
+                                    customerType = "SENIOR_CITIZEN";
+                                } else if (productHasFemale) {
+                                    customerType = "FEMALE";
+                                }
 
                                 freqGroup.tenure_mapping?.forEach((tm: any) => {
                                     rateValues.push(Prisma.sql`(
-                                    ${uuidv4()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
+                                    ${cuid()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
                                     ${tm.tenure}, ${tm.year || tm.display}, ${parseFloat(tm.rates.replace('%', ''))}, 
                                     ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
-                                    ${tm.default === true}, ${tm.taxSaver === true}, NOW()
+                                    ${tm.default === true}, null, NOW()
                                 )`);
                                 });
                             });
