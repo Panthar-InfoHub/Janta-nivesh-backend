@@ -277,6 +277,19 @@ class FdControllerClass {
                 }
             });
 
+
+            // {
+            //     "status": "Ok",
+            //         "message": "Success",
+            //             "user": {
+            //         "name": "",
+            //             "email": "",
+            //                 "mobileNumber": "",
+            //                     "pan": "CBGPT9606L",
+            //                         "dob": "2003-02-05"
+            //     }
+            // }
+
             const nbfc_payload = this.omit_empty({
                 user: {
                     name: user.full_name,
@@ -317,12 +330,20 @@ class FdControllerClass {
             });
 
             res.status(200).json({
-                success: true,
-                message: "Customer details fetched successfully",
-                data: {
-                    bank: bank_payload,
-                    nbfc: nbfc_payload,
-                }
+
+                status: "Ok",
+                message: "Success",
+                user: {
+                    name: user.full_name,
+                    email: user.email || kyc_identity?.email_id,
+                    mobileNumber: user.phone_no,
+                    pan: kyc_identity?.pan_no,
+                    dob: this.to_dd_mm_yyyy(user.dob) || kyc_identity?.dob,
+                },
+                // data: {
+                //     bank: bank_payload,
+                //     nbfc: nbfc_payload,
+                // }
             });
             return;
         } catch (error) {
@@ -338,59 +359,59 @@ class FdControllerClass {
     get_fds = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
-            const raw_query = req.query as Record<string, unknown>;
-            const { query, order, pagination, interest_rate_filter } = get_fd_search_query(raw_query);
+        const raw_query = req.query as Record<string, unknown>;
+        const { query, order, pagination, interest_rate_filter } = get_fd_search_query(raw_query);
 
 
-            const should_use_cache = pagination.page === 1;
-            logger.debug(`FD products request - Page: ${pagination.page}, Limit: ${pagination.limit}, Using Cache: ${should_use_cache}`);
-            const cache_key = should_use_cache ? build_fd_list_cache_key(raw_query) : "";
+        const should_use_cache = pagination.page === 1;
+        logger.debug(`FD products request - Page: ${pagination.page}, Limit: ${pagination.limit}, Using Cache: ${should_use_cache}`);
+        const cache_key = should_use_cache ? build_fd_list_cache_key(raw_query) : "";
 
-            logger.debug("Cache key for FD products: ", cache_key);
+        logger.debug("Cache key for FD products: ", cache_key);
 
-            if (should_use_cache) {
-                const cached = await redis_buffer_client.get(cache_key);
+        if (should_use_cache) {
+            const cached = await redis_buffer_client.get(cache_key);
 
-                if (cached) {
-                    logger.debug(`FD products cache hit for key: ${cache_key}`);
-                    const cached_data = await decompress_json<any>(cached as Buffer);
+            if (cached) {
+                logger.debug(`FD products cache hit for key: ${cache_key}`);
+                const cached_data = await decompress_json<any>(cached as Buffer);
 
 
-                    logger.debug("Cached FD products data: ", cached_data);
-                    res.status(200).json({
-                        success: true,
-                        message: "FD products fetched successfully",
-                        data: cached_data,
-                    });
-                    return;
-                }
-
-                logger.debug(`FD products cache miss for key: ${cache_key}`);
-            } else {
-                logger.debug(`FD products cache bypass for page: ${pagination.page}`);
+                logger.debug("Cached FD products data: ", cached_data);
+                res.status(200).json({
+                    success: true,
+                    message: "FD products fetched successfully",
+                    data: cached_data,
+                });
+                return;
             }
 
-            logger.debug("FD products search query - ", { query, order, pagination, interest_rate_filter });
-            const data = await fd_service.get_fd_products({ pagination, order, query, interest_rate_filter });
-
-            if (should_use_cache) {
-                const compressed = await compress_json(data);
-                await redis_buffer_client.set(cache_key, compressed, { EX: 300 });
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "FD products fetched successfully",
-                data,
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in get_fds: ", error);
-            next(error);
-            return;
+            logger.debug(`FD products cache miss for key: ${cache_key}`);
+        } else {
+            logger.debug(`FD products cache bypass for page: ${pagination.page}`);
         }
+
+        logger.debug("FD products search query - ", { query, order, pagination, interest_rate_filter });
+        const data = await fd_service.get_fd_products({ pagination, order, query, interest_rate_filter });
+
+        if (should_use_cache) {
+            const compressed = await compress_json(data);
+            await redis_buffer_client.set(cache_key, compressed, { EX: 300 });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "FD products fetched successfully",
+            data,
+        });
+        return;
+
+    } catch (error) {
+        logger.error("Error in get_fds: ", error);
+        next(error);
+        return;
     }
+}
 
 
 
@@ -400,31 +421,31 @@ class FdControllerClass {
             const payout_frequency = this.normalize_payout_frequency(req.query.payout_frequency as string | undefined);
             const customer_type = this.normalize_customer_type(req.query.customer_type as string | undefined);
 
-            logger.info(`Fetching FD Product with ID ${fd_id}, payout_frequency: ${payout_frequency}, customer_type: ${customer_type}`);
+        logger.info(`Fetching FD Product with ID ${fd_id}, payout_frequency: ${payout_frequency}, customer_type: ${customer_type}`);
 
-            const fd_product = await fd_service.get_fd_details({
-                id: fd_id,
-                payout_frequency,
-                customer_type,
-            });
+        const fd_product = await fd_service.get_fd_details({
+            id: fd_id,
+            payout_frequency,
+            customer_type,
+        });
 
-            if (!fd_product) {
-                logger.warn(`FD Product with ID ${fd_id} not found`);
-                throw new AppError("FD Product not found", 404, "FD_PRODUCT_NOT_FOUND");
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "FD Product retrieved successfully",
-                data: fd_product
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in get_fd_by_id: ", error);
-            next(error);
-            return;
+        if (!fd_product) {
+            logger.warn(`FD Product with ID ${fd_id} not found`);
+            throw new AppError("FD Product not found", 404, "FD_PRODUCT_NOT_FOUND");
         }
+
+        res.status(200).json({
+            success: true,
+            message: "FD Product retrieved successfully",
+            data: fd_product
+        });
+        return;
+
+    } catch (error) {
+        logger.error("Error in get_fd_by_id: ", error);
+        next(error);
+        return;
     }
+}
 }
 export const fd_controller = new FdControllerClass();
