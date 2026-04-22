@@ -31,6 +31,7 @@ RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma gene
 # Now we copy the rest of the code. 
 # This is the only part that will run on every "push".
 COPY . .
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate --schema=./src/prisma/schema.prisma
 RUN npm run build
 
 EXPOSE 8080
