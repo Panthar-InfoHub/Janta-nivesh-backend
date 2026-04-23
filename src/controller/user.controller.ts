@@ -359,7 +359,7 @@ class UserFinanceControllerClass {
 
 
     private calculate_kyc_progress = (kyc_types: { status: string, kyc_type: string }[]): number => {
-        const total = kyc_types.length;
+        const total = 2;
         const completed = kyc_types.filter((kyc) => kyc.status === "verified").length;
         return total > 0 ? Math.round((completed / total) * 100) : 0;
     }
