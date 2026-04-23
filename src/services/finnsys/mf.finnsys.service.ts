@@ -48,20 +48,29 @@ class MutualFundFinnsysServiceClass {
      */
     purchase_lumpsum_finnsys = async (payload: PurchasePayload) => {
         try {
-            logger.info(`Submitting lumpsum purchase order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
-            logger.debug(`Purchase payload ==> `, payload);
+            logger.info(`Submitting purchase order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
+            // logger.debug(`Purchase payload ==> `, payload);
 
             const response = await axios.post(
                 `${this.FINNSYS_BASE_URL}/nse/v2/transaction/purchase-redemption-order`,
                 payload,
             );
 
+            if (response.data?.code !== 1) {
+                logger.error("Finnsys API returned an error: ", response.data);
+                throw new AppError(
+                    response.data?.message || "Failed to create orders",
+                    500,
+                    "FINNSYS_ORDER_FAILED"
+                );
+            }
+
             logger.info("Lumpsum purchase order submitted successfully");
             logger.debug(`Purchase response: `, response.data);
 
             return response.data;
         } catch (error: any) {
-            logger.error("Error submitting lumpsum purchase order to Finnsys: ", error);
+            logger.error("Error submitting purchase order to Finnsys: ", error);
 
             if (error.response?.data) {
                 throw new AppError(
