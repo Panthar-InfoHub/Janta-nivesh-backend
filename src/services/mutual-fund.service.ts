@@ -415,8 +415,8 @@ class MutualFundServiceClass {
         // 5. Call Upstream API
         const payload = {
             arn: env.ARN,
-            username: user.usr,
-            password: user.pwd,
+            username: user_log,
+            password: user_pwd,
             data: {
                 transaction_details
             }
