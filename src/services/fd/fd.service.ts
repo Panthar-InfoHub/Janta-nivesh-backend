@@ -72,7 +72,7 @@ class FdServiceClass {
     }
     get_fd_details = async ({
         id,
-        payout_frequency = FdPayoutFrequency.CUMULATIVE,
+        payout_frequency,
         customer_type = FdCustomerType.STANDARD,
     }: {
         id: string,
@@ -114,10 +114,7 @@ class FdServiceClass {
                     }
                 },
                 interest_rates: {
-                    where: {
-                        payout_frequency,
-                        customer_type,
-                    },
+                    where: payout_frequency ? { payout_frequency, customer_type } : { customer_type },
                     select: {
                         id: true,
                         payout_frequency: true,
@@ -145,7 +142,7 @@ class FdServiceClass {
     }: {
         product_id: string;
         payout_frequency: FdPayoutFrequency;
-        
+
         tenure_days: number;
     }) => {
         return await db.fdInterestRate.findFirst({
