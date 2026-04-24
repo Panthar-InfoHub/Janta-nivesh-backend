@@ -259,7 +259,7 @@ class UserFinanceControllerClass {
                 message: "User portfolio fetched successfully",
                 data: {
                     investment_data,
-                    mutual_funs: mf_investment_items,
+                    mutual_funds: mf_investment_items,
                     user_fd: user_fd_transactions
                 }
             });
