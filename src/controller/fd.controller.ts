@@ -61,7 +61,8 @@ class FdControllerClass {
     }
 
     private normalize_payout_frequency = (value?: string): FdPayoutFrequency => {
-        const normalized = String(value ?? FdPayoutFrequency.CUMULATIVE).toUpperCase();
+        if (!value) return undefined;
+        const normalized = value.toUpperCase();
         return Object.values(FdPayoutFrequency).includes(normalized as FdPayoutFrequency)
             ? (normalized as FdPayoutFrequency)
             : FdPayoutFrequency.CUMULATIVE;
