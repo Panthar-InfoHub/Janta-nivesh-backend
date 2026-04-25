@@ -450,7 +450,7 @@ class MutualFundServiceClass {
             buy_sell_type: "FRESH",  // TODO: verify exact value with Finnsys docs for redemptions
             client_code: user.nse_client_code,
             demat_physical: "P",
-            order_amount: is_full ? "" : String(redem_data.redemption_amount),
+            order_amount: is_full ? "" : (redem_data.redemption_amount ? String(redem_data.redemption_amount) : ""),
             folio_no: folio_no,
             remarks: "Velvet Invest App : Redeem reward",
             kyc_flag: "Y",
@@ -460,7 +460,7 @@ class MutualFundServiceClass {
             min_redemption_flag: "N",
             dpc_flag: "Y",
             all_units: is_full ? "Y" : "N",
-            redemption_units: is_full ? "" : String(redem_data.redemption_units),
+            redemption_units: is_full ? "" : (redem_data.redemption_units ? String(redem_data.redemption_units) : ""),
             sub_broker_arn: "",
             bank_ref_no: "",
             account_no: primary_bank.account_no,
@@ -527,6 +527,26 @@ class MutualFundServiceClass {
         }
 
         return short_url.data.firstHolderLink;
+    }
+
+    remove_item_from_cart = async (user_log: string, user_pwd: string, cart_item_id: number) => {
+        try {
+            const response = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: 'deletecart',
+                    del: cart_item_id,
+                }
+            });
+
+            logger.debug("Remove from cart response ==> ", response.data);
+            return response.data;
+
+        } catch (error) {
+            logger.error("Error removing item from cart ==> ", error);
+            throw new AppError("Failed to remove item from cart", 500, "REMOVE_FROM_CART_ERROR");
+        }
     }
 
 }
