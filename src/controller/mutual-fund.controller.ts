@@ -307,6 +307,41 @@ class MutualFundControllerClass {
         }
     }
 
+
+    remove_item_from_cart = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            logger.info(`Removing item from cart for user: ${user.id}`);
+
+            const cart_item_id = Number(req.query.cart_item_id as string);
+
+            if (!cart_item_id) {
+                logger.warn("Missing cart_item_id in remove_item_from_cart request body");
+                throw new AppError("Missing required field: cart_item_id", 400);
+            }
+
+            const result = await mutual_funds_service.remove_item_from_cart(user.log, user.pwd, cart_item_id);
+
+            if (result.code != 1 && result.code != 0) {
+                logger.error("Failed to remove item from cart, service response code: ", result.code);
+                throw new AppError("Failed to remove item from cart", 500, "REMOVE_FROM_CART_ERROR");
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Item removed from cart successfully",
+                data: result
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in remove_item_from_cart controller ===> ", error);
+            next(error);
+            return;
+        }
+    }
+
 }
 
 export const mutual_fund_controller = new MutualFundControllerClass();

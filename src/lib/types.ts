@@ -84,9 +84,12 @@ export type Sip_cart_data = z.infer<typeof sip_cart_zod_schema>
 const redeem_partial_fields = z.object({
     redem_type: z.literal("PARTIAL"),
     folio_no: z.string().min(1, "folio_no is required"),
-    redemption_units: z.number().positive("redemption_units must be positive"),
-    redemption_amount: z.number().positive("redemption_amount must be positive"),
-});
+    redemption_units: z.number().positive("redemption_units must be positive").optional(),
+    redemption_amount: z.number().positive("redemption_amount must be positive").optional(),
+}).refine(
+    (data) => data.redemption_units || data.redemption_amount,
+    { message: "Either redemption_units or redemption_amount must be provided" }
+);
 
 const redeem_full_fields = z.object({
     redem_type: z.literal("FULL"),
