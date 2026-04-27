@@ -63,7 +63,7 @@ class MutualFundServiceClass {
                 const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}` : Prisma.empty;
 
                 // 2. Define a consistent threshold (0.3 is usually best for "LIC Multicap" vs "LIC Multi Cap")
-                const threshold = 0.15;
+                const threshold = 0.1;
                 let sql_order_by = Prisma.sql`score DESC`; // Default
 
                 if (order?.metrics?.return_90d) sql_order_by = Prisma.sql`m.return_90d DESC NULLS LAST, score DESC`;
@@ -75,12 +75,21 @@ class MutualFundServiceClass {
                 const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
                 SELECT 
                     p.id,
-                    (similarity(p.scheme_name, ${search}) * 2.0 + coalesce(similarity(p.amc_name, ${search}), 0)) as score
+                    (
+                        similarity(p.scheme_name, ${search}) * 2.0 + 
+                        coalesce(similarity(p.amc_name, ${search}), 0) +
+                        (CASE WHEN p.scheme_name ILIKE ${search} THEN 0.5 ELSE 0 END)
+                    ) as score
                 FROM "MfProduct" p
                 LEFT JOIN "MfMetrics" m ON m.mf_product_id = p.id
                 WHERE 
-                    (scheme_name % ${search} OR scheme_type % ${search} OR amc_name % ${search})
-                    AND similarity(scheme_name, ${search}) > ${threshold}
+                    (
+                        p.scheme_name % ${search} 
+                        OR p.scheme_type % ${search} 
+                        OR p.amc_name % ${search}
+                        OR p.scheme_name ILIKE ${`%${search}%`}
+                    )
+                    -- AND similarity(scheme_name, ${search}) > ${threshold}
                     ${categoryFilter}
                     ${riskFilter}
                 ORDER BY ${sql_order_by}
