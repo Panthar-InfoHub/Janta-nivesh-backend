@@ -12,3 +12,37 @@ export const create_bundle_zod_schema = z.object({
 });
 
 export type CreateBundleInput = z.infer<typeof create_bundle_zod_schema>;
+
+// ─── Add Bundle to Cart ───────────────────────────────────────────────────────
+
+export const add_bundle_sip_schema = z.object({
+    type: z.literal("SIP"),
+    bundle_id: z.string().min(1, "bundle_id is required"),
+    amount: z.number().positive("amount must be positive"),
+    sip_st_date: z.string().refine((date) => {
+        const now = new Date();
+        const inputDate = new Date(date);
+        return inputDate.getTime() - now.getTime() >= 30 * 24 * 60 * 60 * 1000;
+    }, { message: "SIP start date must be at least 30 days in the future" }),
+    sip_en_date: z.string().refine((date) => {
+        const inputDate = new Date(date);
+        const maxDate = new Date("2099-12-31");
+        return inputDate <= maxDate;
+    }, { message: "SIP end date must be on or before December 31, 2099" }),
+    sip_freq: z.enum(["DZ", "D", "OM", "Q", "WD", "OW", "H", "Y"]),
+    sip_day: z.number(),
+    sip_amt: z.number().positive("sip_amt must be positive"),
+});
+
+export const add_bundle_lumpsum_schema = z.object({
+    type: z.literal("LUMPSUM"),
+    bundle_id: z.string().min(1, "bundle_id is required"),
+    amount: z.number().positive("amount must be positive"),
+});
+
+export const add_bundle_to_cart_schema = z.discriminatedUnion("type", [
+    add_bundle_sip_schema,
+    add_bundle_lumpsum_schema,
+]);
+
+export type AddBundleToCartInput = z.infer<typeof add_bundle_to_cart_schema>;

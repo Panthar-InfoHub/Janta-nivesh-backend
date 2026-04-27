@@ -58,14 +58,22 @@ class FrontendControllerClass {
                 })
             ]);
 
-            const response_data = [
-                { title: "Curated Bundles", items: bundle.bundles, key: "Bundle api hit kr nalle" },
-                { title: "Flexi Cap", items: flexi_cap.mutual_funds, key: "flexicap" },
-                { title: "Large Cap", items: large_cap.mutual_funds, key: "largecap" },
-                { title: "Mid Cap", items: mid_cap.mutual_funds, key: "midcap" },
-                { title: "Small Cap", items: small_cap.mutual_funds, key: "smallcap" },
-                { title: "Index", items: index.mutual_funds, key: "index" }
-            ];
+            const response_data = {
+                bundle_funds: {
+                    title: "Curated Bundles",
+                    items: bundle.bundles,
+                    key: "bundle_funds"
+                },
+                normal_funds: {
+                    title: "Normal Bundles", key: "normal_funds", items: [
+                        { title: "Flexi Cap", items: flexi_cap.mutual_funds, key: "flexicap" },
+                        { title: "Large Cap", items: large_cap.mutual_funds, key: "largecap" },
+                        { title: "Mid Cap", items: mid_cap.mutual_funds, key: "midcap" },
+                        { title: "Small Cap", items: small_cap.mutual_funds, key: "smallcap" },
+                        { title: "Index", items: index.mutual_funds, key: "index" }
+                    ]
+                }
+            }
 
             const compressed = await compress_json(response_data);
             await redis_buffer_client.set(cache_key, compressed, { EX: 300 });

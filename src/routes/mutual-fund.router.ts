@@ -20,6 +20,13 @@ mutual_fund_router.post("/sip-cart",
     mutual_fund_controller.add_to_sip_cart
 );
 
+// Add bundle to cart
+mutual_fund_router.post("/bundle-cart",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.add_bundle_to_cart
+);
+
+
 mutual_fund_router.delete("/remove-cart-item",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.remove_item_from_cart
