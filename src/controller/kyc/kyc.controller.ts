@@ -8,6 +8,7 @@ import { kyc_session_service } from "../../services/kyc/kyc.session.service.js";
 import { kyc_type_service } from "../../services/kyc/kyc.type.service.js";
 import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.service.js";
 import { user_service } from "../../services/user.service.js";
+import { MfKycIdentity } from "../../prisma/generated/prisma/client.js";
 
 class KycControllerClass {
 
@@ -168,7 +169,7 @@ class KycControllerClass {
 
 
 
-
+            // Saving Finnsys session details in database to accesss in next apis
             const kyc_type_record = await kyc_type_service.create_kyc_type({
                 user_id: user_id,
                 kyc_type: kyc_type,
@@ -218,17 +219,29 @@ class KycControllerClass {
                 throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
+            // 4th Api : Finnsys KYC : Get user details after web kyc
             const digilocker_data = await kyc_finnsys_service.user_digilocker_data(
                 user_kyc_session?.mfKycSessions?.merchant_id!,
                 user_kyc_session?.mfKycSessions?.kyc_access_token!,
-                inv_id
+                inv_id.toString()
             );
 
             logger.debug("Digilocker data response: ", digilocker_data);
 
+            // Save digilocker data in database
             const user_mf_kyc_identity = await mfkyc_identity_service.upsert_from_digilocker(user_id, digilocker_data.result.output);
-
             logger.info("Digilocker data upserted to MfKycIdentity for user ID: ", user_id);
+
+            // hit finnsys POI, POA and Corr Address update APIs in sequence 
+            const address_data = this.extract_poi_data(user_mf_kyc_identity);
+            const poi_res = await kyc_finnsys_service.update_poi(address_data, user_kyc_session?.mfKycSessions?.kyc_access_token!, user_kyc_session?.mfKycSessions?.merchant_id!, inv_id.toString());
+            const poa_res = await kyc_finnsys_service.update_poa(address_data, user_kyc_session?.mfKycSessions?.kyc_access_token!, user_kyc_session?.mfKycSessions?.merchant_id!, inv_id.toString());
+            const corr_res = await kyc_finnsys_service.update_corr_poa_address(user_kyc_session?.mfKycSessions?.kyc_access_token!, user_kyc_session?.mfKycSessions?.merchant_id!, inv_id.toString());
+
+
+            logger.debug(` Poi res ==> `, poi_res)
+            logger.debug(` Poa res ==> `, poa_res)
+            logger.debug(` Corr res ==> `, corr_res)
 
             res.status(200).json({
                 success: true,
@@ -236,8 +249,8 @@ class KycControllerClass {
                 data: user_mf_kyc_identity
             });
             return;
-        } catch (error) {
-            logger.error("Error fetching digilocker data: ", error);
+        } catch (error: any) {
+            logger.error("Error fetching digilocker data: ", error.response.data);
             next(error);
             return;
         }
@@ -267,19 +280,18 @@ class KycControllerClass {
             }
 
             // Update KYC data and FATCA data via Finnsys in parallel
-            const [update_response, fatca_response] = await Promise.all([
-                kyc_finnsys_service.update_kyc_data(
-                    kyc_data,
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session.mfKycSessions.merchant_id!,
-                    `${inv_id}`
-                ),
-                kyc_finnsys_service.update_fatca_data(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session.mfKycSessions.merchant_id!,
-                    `${inv_id}`
-                )
-            ]);
+            const update_response = await kyc_finnsys_service.update_kyc_data(
+                kyc_data,
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                `${inv_id}`
+            )
+
+            const fatca_response = await kyc_finnsys_service.update_fatca_data(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                `${inv_id}`
+            )
 
             logger.debug("KYC data update response: ", update_response);
             logger.debug("FATCA data update response: ", fatca_response);
@@ -315,7 +327,8 @@ class KycControllerClass {
     update_doc = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user.id!;
             logger.info("Updating KYC document for user ID: ", user_id);
 
             const { img_url, type }: { img_url: string, type: "photo" | "signature" } = req.body;
@@ -334,8 +347,8 @@ class KycControllerClass {
 
 
             // Finnsys call :
-            type === "photo" ? await kyc_finnsys_service.update_photo(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session.mfKycSessions.merchant_id!, user_id) :
-                await kyc_finnsys_service.update_signature(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session.mfKycSessions.merchant_id!, user_id);
+            type === "photo" ? await kyc_finnsys_service.update_photo(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user.inv_id!.toString()) :
+                await kyc_finnsys_service.update_signature(img_url, user_kyc_session.mfKycSessions.kyc_access_token, user_kyc_session?.mfKycSessions?.merchant_id!, user.inv_id!.toString());
 
             // Update the document URL in the KYC session
             await mfkyc_identity_service.update_identity(user_id, {
@@ -358,10 +371,11 @@ class KycControllerClass {
 
     create_contract = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user?.id!;
             logger.info("Creating contract PDF for user ID: ", user_id);
 
-            const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_kyc_session = await kyc_type_service.get_kyc_query(user_id, { kyc_type: "mf" });
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
@@ -370,15 +384,15 @@ class KycControllerClass {
 
             const contract_response = await kyc_finnsys_service.create_contract_pdf(
                 user_kyc_session.mfKycSessions.kyc_access_token,
-                user_kyc_session.mfKycSessions.merchant_id!,
-                user_id
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString()
             );
 
             logger.debug("Contract PDF creation response: ", contract_response);
 
             // Save contract PDF URL to MfKycIdentity
             await mfkyc_identity_service.update_identity(user_id, {
-                contract_pdf_url: contract_response?.result?.pdfUrl || null
+                contract_pdf_url: contract_response?.object?.result?.combinedPdf || null
             });
             logger.info("Contract PDF URL updated in MfKycIdentity for user ID: ", user_id);
 
@@ -396,40 +410,75 @@ class KycControllerClass {
         }
     }
 
-    verify_kyc = async (req: Request, res: Response, next: NextFunction) => {
+
+    get_aadhar_esign_url = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
-            const user_id = req.user?.id!;
+            const user = req.user!;
+            const user_id = user?.id!;
             logger.info("Verifying KYC for user ID: ", user_id);
 
             const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_data = await user_service.get_all_user_data(user_id, { mfKycIdentities: true });
+
 
             if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
                 logger.warn("No KYC session found for user ID: ", req.user?.id);
                 throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
-            // Save esign pdf and exxecute verification in parallel
-            const [esign_response, verification_response] = await Promise.allSettled([
-                kyc_finnsys_service.save_esign_pdf(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session.mfKycSessions.merchant_id!,
-                    user_id
-                ),
-                kyc_finnsys_service.execute_verification(
-                    user_kyc_session.mfKycSessions.kyc_access_token,
-                    user_kyc_session.mfKycSessions.merchant_id!,
-                    user_id
-                )
-            ]);
+            const generate_esign = await kyc_finnsys_service.generate_esign_url(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString(),
+                user_data?.mfKycIdentities?.contract_pdf_url!,
+            )
 
-            if (esign_response.status === "rejected" || verification_response.status === "rejected") {
-                logger.warn("Failed to verify KYC for user ID: ", user_id);
-                throw new AppError("Failed to verify KYC from finnsys end", 424, "KYC_VERIFICATION_FAILED");
+            logger.debug("Generate esign response ==> ", generate_esign)
+
+            res.status(200).json({
+                success: true,
+                message: "Aadhar esign url generated successfully",
+                data: generate_esign.object.result.url
+            })
+            return;
+
+        } catch (error) {
+            logger.error("Error while generating aadhar esign url ===> ", error)
+            next(error);
+            return;
+        }
+    }
+
+    verify_kyc = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const user_id = user?.id!;
+            logger.info("Verifying KYC for user ID: ", user_id);
+
+            const user_kyc_session = await kyc_type_service.get_kyc_query(req.user?.id!, { kyc_type: "mf" });
+            const user_data = await user_service.get_all_user_data(user_id, { mfKycIdentities: true });
+
+
+            if (!user_kyc_session || !user_kyc_session.mfKycSessions) {
+                logger.warn("No KYC session found for user ID: ", req.user?.id);
+                throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
-            logger.debug("Esign PDF response: ", esign_response.value);
-            logger.debug("KYC verification response: ", verification_response.value);
+    // Save esign pdf and exxecute verification in sequence
+            const esign_response = await kyc_finnsys_service.save_esign_pdf(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString()
+            )
+            logger.debug("Esign PDF save response ==> ", esign_response)
+
+            const verification_response = await kyc_finnsys_service.execute_verification(
+                user_kyc_session.mfKycSessions.kyc_access_token,
+                user_kyc_session?.mfKycSessions?.merchant_id!,
+                user.inv_id!.toString()
+            )
+            logger.debug("KYC verification response: ", verification_response);
 
             // Update KYC status to completed
             await Promise.all([
@@ -453,6 +502,26 @@ class KycControllerClass {
             logger.error("Error verifying KYC: ", error);
             next(error);
             return;
+        }
+    }
+
+
+
+    //// Helper methods :
+
+    // 1. Extract POI data from mfkyc identity response and call Finnsys API to update POI
+    private extract_poi_data = (user_mf_kyc_identity: MfKycIdentity) => {
+
+        return {
+            type: "aadhaarDigiLocker",
+            name: user_mf_kyc_identity.full_name || "",
+            uid: user_mf_kyc_identity.uid || "",
+            address: user_mf_kyc_identity.address_line || "",
+            city: user_mf_kyc_identity.city || "",
+            state: user_mf_kyc_identity.state || "",
+            district: user_mf_kyc_identity.district || "",
+            pincode: user_mf_kyc_identity.pincode || "",
+            dob: user_mf_kyc_identity.dob || ""
         }
     }
 }

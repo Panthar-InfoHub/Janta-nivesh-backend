@@ -1,53 +1,66 @@
 import axios from "axios";
-import { env } from "../../lib/config-env.js";
-import { NSEServiceClass } from "../nse.service.js";
 import logger from "../../middleware/logger.js";
+import { NSEServiceClass } from "../nse.service.js";
+import { user_finance_service } from "../onboarding/user.finance.service.js";
+import { env } from "../../lib/config-env.js";
 
 class TradingAccountServiceClass extends NSEServiceClass {
-    // kyc_base_url: string;
 
     constructor() {
         super();
-        // this.kyc_base_url = `${env.KYC_BASE_URL}/kyc/v1`;
     }
 
 
     // Implement trading account related methods here
-    client_registration = async (data: any) => {
+    client_registration = async (user_id: string, data: any, username: string, pwd: string) => {
 
-        const headers = this.get_nse_headers();
-
-        const response = await axios.post(`${this.kyc_base_url}/nse/v2/registration/client-registration`, {
+        const payload = {
+            arn: env.ARN,
+            username: username,
+            password: pwd,
             data: {
                 reg_details: [data]
             }
-        }, {
+        };
+
+        logger.debug(`Client Registration Payload (NSE API) ==> \n${JSON.stringify(payload, null, 2)}`);
+
+        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/client-registration`, payload, {
             headers: {
-                ...headers,
                 "Content-Type": "application/json"
             }
         });
 
-        logger.debug("Client registration response from NSE API ==> ", response.data);
+        logger.debug("Client registration response from NSE API ==> ", response.data.code);
 
 
-        // If data tax_status === 01 (Individual), need to call fatca registration API as well. This is mandatory for individual clients.
-        if (data.tax_status === "01") {
-            logger.debug("Client is individual, proceeding with FATCA registration...");
-            // Call fatca registration API
-            const fatca_data = this.extract_fatca_data(data);
-            const response = await axios.post(`${this.kyc_base_url}/nse/v2/registration/fatca-registration`, {
-                data: {
-                    reg_details: [fatca_data]
-                }
-            }, {
-                headers: {
-                    ...headers,
-                    "Content-Type": "application/json"
-                }
-            });
+        if (response.data.code != 1) {
+            logger.warn("Client registration failed with NSE API. Response ==> ", response.data);
+            throw new Error("Client registration failed with NSE API, Reason : " + response.data.data.reg_details[0].reg_remark);
+        }
 
-            logger.debug("FATCA registration response from NSE API ==> ", response.data);
+        logger.debug("Proceeding with FATCA registration...");
+        // Call fatca registration API
+        const fatca_data = await this.extract_fatca_data(user_id, data);
+        const fatca_res = await axios.post(`${this.finnsys_base_url}/nse/v2/registration/fatca-registration`, {
+            arn: env.ARN,
+            username: username,
+            password: pwd,
+            data: {
+                reg_details: [fatca_data]
+            }
+        }, {
+            headers: {
+                // ...headers,
+                "Content-Type": "application/json"
+            }
+        });
+
+        logger.debug("FATCA registration response from NSE API ==> ", fatca_res.data);
+
+        if (fatca_res.data.code != 1) {
+            logger.warn("FATCA registration failed with NSE API. Response ==> ", fatca_res.data);
+            throw new Error("FATCA registration failed with NSE API, Reason : " + fatca_res.data.data.reg_details[0].reg_remark);
         }
 
         return response.data;
@@ -57,26 +70,33 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
 
 
+    private async extract_fatca_data(user_id: string, user_input: any) {
+        const income_slab = await user_finance_service.get_income_slab_code(user_id);
+        const full_name = [
+            user_input.primary_holder_first_name,
+            user_input.primary_holder_middle_name,
+            user_input.primary_holder_last_name
+        ]
+            .filter(Boolean)
+            .join(" ");
 
 
-
-    private extract_fatca_data(user_input: any) {
         return {
             // --- 1. PREFILLED DATA (Mapped from input) ---
-            pan_rp: user_input.pan_rp || "",
-            inv_name: user_input.inv_name || "",
-            dob: user_input.dob || "",
+            pan_rp: user_input.primary_holder_pan || "",
+            inv_name: full_name || "",
+            dob: user_input.primary_holder_dob_incorporation || "",
             co_bir_inc: user_input.co_bir_inc || "IN",
-            tpin1: user_input.pan_rp || "",
-            log_name: user_input.inv_name || "",
+            tpin1: user_input.primary_holder_pan || "",
+            log_name: full_name,
 
             // --- 2. USER INPUTS (Requested from UI) ---
             addr_type: user_input.addr_type || "1",
-            po_bir_inc: user_input.po_bir_inc || "",
-            srce_wealt: user_input.srce_wealt || "",
-            inc_slab: user_input.inc_slab || "",
-            occ_code: user_input.occ_code || "",
-            occ_type: user_input.occ_type || "",
+            po_bir_inc: user_input.po_bir_inc || "", // Place of birth for individual clients, country of incorporation for non-individual clients
+            srce_wealt: user_input.srce_wealt || "", // 01 : Salary | 02 : Business Income | 03 : Gift | 04 : Ancestral Property | 05 : Rental Income | 06 : Prize Money | 07 : Royalty | 08 : Other
+            inc_slab: income_slab, // Auto-calculated from user_finance
+            occ_code: user_input.occupation_code || "", // store from user kyc process | TODO : user model should have occupation code field to store this data | Don't ask user
+            occ_type: user_input.occ_type || "", // S - Service; B - Business, O - Others; X - Not Categorized
             pep_flag: user_input.pep_flag || "N",
 
             // --- 3. SYSTEM CONSTANTS (Do not change) ---

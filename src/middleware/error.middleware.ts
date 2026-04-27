@@ -1,24 +1,34 @@
 import { ErrorRequestHandler } from "express";
 import { Prisma } from "../prisma/generated/prisma/client.js";
 import logger from "./logger.js";
+import { ZodError } from "zod";
 
 
 class AppError extends Error {
     public readonly statusCode: number;
     public readonly errorType: string;
     public readonly isOperational: boolean;
+    public readonly details?: unknown;
 
     constructor(
         message: string,
         statusCode = 500,
         errorType = "ApplicationError",
+        details?: unknown,
         isOperational = true
     ) {
         super(message);
 
+        // Backward compatibility: allow the 4th argument to be isOperational boolean.
+        if (typeof details === "boolean") {
+            isOperational = details;
+            details = undefined;
+        }
+
         this.statusCode = statusCode;
         this.errorType = errorType;
         this.isOperational = isOperational;
+        this.details = details;
 
         Error.captureStackTrace(this, this.constructor);
     }
@@ -60,6 +70,20 @@ export const errorHandler: ErrorRequestHandler = (
                 .join(", ");
 
             error = new AppError(message, 400, "ValidationError");
+        }
+
+        // Zod validation error
+        else if (error instanceof ZodError) {
+            error = new AppError(
+                "Validation failed",
+                400,
+                "VALIDATION_ERROR",
+                error.issues.map((issue) => ({
+                    path: issue.path.join("."),
+                    message: issue.message,
+                    code: issue.code,
+                }))
+            );
         }
 
         // CastError (invalid ObjectId)
@@ -178,6 +202,7 @@ export const errorHandler: ErrorRequestHandler = (
         error: {
             type: error.errorType,
             message: error.message,
+            ...(error.details && { details: error.details }),
             ...(process.env.NODE_ENV === "development" && {
                 stack: error.stack
             })

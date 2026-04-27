@@ -2,10 +2,10 @@ import axios from "axios";
 import { env } from "../lib/config-env.js";
 
 export class NSEServiceClass {
-    kyc_base_url: string;
+    finnsys_base_url: string;
 
     constructor() {
-        this.kyc_base_url = `${env.KYC_BASE_URL}/kyc/v1`;
+        this.finnsys_base_url = `${env.KYC_BASE_URL}`;
     }
 
     /**
@@ -23,7 +23,7 @@ export class NSEServiceClass {
     }
 
     get_short_url = async (product_type: string, product_ref_id: string) => {
-        const response = await axios.post(`${this.kyc_base_url}/nse/v2/reports/get-short-url`, {
+        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/reports/get-short-url`, {
             data: {
                 "productType": product_type,
                 "productRefId": product_ref_id
@@ -38,3 +38,5 @@ export class NSEServiceClass {
     }
 
 }
+
+export const nse_service = new NSEServiceClass();

@@ -1,7 +1,8 @@
 .env
+.agents/
 node_modules/
 dist/
-tests/
+extras/
 plans/
 /src/prisma/generated/
 
@@ -10,5 +11,10 @@ plans/
 .vscode/
 .idea/
 
-TODO.md
 notes.js
+
+ecas-parser.js
+response.json
+# src/lib/ecas-parser.ts
+
+Todo.md

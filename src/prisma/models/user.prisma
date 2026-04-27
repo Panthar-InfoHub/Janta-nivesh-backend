@@ -2,7 +2,7 @@
  * User Model
  * meta_data {
  * onboarding_stage : number
- * is_onboarding_complete : number
+ * is_onboarding_completed : number
  * }
  */
 
@@ -16,22 +16,29 @@ model User {
     phone_no  String?   @unique
     city      String?
     dob       DateTime?
+    mpin      String?
     fcm_token String?   @db.Text
     meta_data Json?
 
     nse_client_code String? @unique
 
+    refresh_token String? @db.Text
+
     createdAt DateTime @default(now())
     updatedAt DateTime @default(now()) @updatedAt
 
     // Relations
-    user_finance   UserFinance?
-    user_assets    UserAssets?
-    user_insurance UserInsurance?
-    user_loan      UserLoan[]
-    user_goals     UserGoals[]
+    user_finance      UserFinance?
+    user_assets       UserAssets?
+    user_insurance    UserInsurance?
+    user_loan         UserLoan[]
+    user_goals        UserGoals[]
+    user_bank_details UserBankDetails[]
 
     // Kyc Relations
     kyc_types       KycType[]
     mfKycIdentities MfKycIdentity?
+
+    // Fd Relations
+    fds FdTransaction[]
 }

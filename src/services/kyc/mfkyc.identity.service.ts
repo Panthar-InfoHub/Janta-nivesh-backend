@@ -1,6 +1,7 @@
 import { db } from "../../server.js";
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { map_digilocker_to_identity, type DigilockerData } from "../../lib/zod-schemas/finnsys.schema.js";
+import logger from "../../middleware/logger.js";
 
 export type { DigilockerData };
 
@@ -39,15 +40,51 @@ class MFKycIdentityServiceClass {
         });
     }
 
-
-    get_verified_details = async (user_id: string, pan_no: string) => {
-        return await db.mfKycIdentity.findUnique({
+    upsert_bank_details = async (user_id: string, bank_data: {
+        account_no: string;
+        ifsc_code: string;
+        bank_name?: string;
+        account_type: string;
+        is_primary?: boolean;
+    }) => {
+        return await db.userBankDetails.upsert({
             where: {
+                user_account_no_idx: {
+                    user_id,
+                    account_no: bank_data.account_no
+                }
+            },
+            create: {
                 user_id,
-                pan_no,
-                is_final_confirmed: true
+                ...bank_data
+            },
+            update: {
+                ...bank_data
             }
         });
+    }
+
+    get_primary_bank = async (user_id: string) => {
+        return await db.userBankDetails.findFirst({
+            where: { user_id, is_primary: true }
+        });
+    }
+
+
+    get_verified_details = async (user_id: string, pan_no: string) => {
+        try {
+            return await db.mfKycIdentity.findUnique({
+                where: {
+                    user_id,
+                    pan_no,
+                    is_final_confirmed: true
+                }
+            });
+        } catch (error) {
+            logger.error("Error in fetching verified KYC details ==> ", error);
+            throw error;
+        }
+
     }
 
     confirm_identity = async (user_id: string) => {

@@ -5,7 +5,7 @@ import { user_loan_service } from "../services/onboarding/user.loan.service.js";
 import AppError from "../middleware/error.middleware.js";
 
 class UserLoanControllerClass {
-    async onboarding_create(req: Request) {
+    onboarding_create = async (req: Request) => {
         const user = req.user!;
         const data = req.body;
 
@@ -16,7 +16,7 @@ class UserLoanControllerClass {
         return await user_loan_service.create(user.id, validated_data);
     }
 
-    async create(req: Request, res: Response, next: NextFunction) {
+    create = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const result = await this.onboarding_create(req);
 
@@ -33,7 +33,7 @@ class UserLoanControllerClass {
         }
     }
 
-    async update(req: Request, res: Response, next: NextFunction) {
+    update = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
             const loan_id = req.params.loan_id as string;
@@ -62,7 +62,7 @@ class UserLoanControllerClass {
         }
     }
 
-    async get_all(req: Request, res: Response, next: NextFunction) {
+    get_all = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
             const page = parseInt(req.query.page as string) || 1;
@@ -84,7 +84,7 @@ class UserLoanControllerClass {
         }
     }
 
-    async get_loan_by_id(req: Request, res: Response, next: NextFunction) {
+    get_loan_by_id = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
             const loan_id = req.params.loan_id as string;
@@ -113,7 +113,7 @@ class UserLoanControllerClass {
         }
     }
 
-    async delete(req: Request, res: Response, next: NextFunction) {
+    delete = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
             const loan_id = req.params.loan_id as string;

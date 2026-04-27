@@ -1,10 +1,58 @@
+import axios from "axios";
 import { NextFunction, Request, Response } from "express";
-import logger from "../middleware/logger.js";
+import { env } from "../lib/config-env.js";
 import AppError from "../middleware/error.middleware.js";
-import { mututal_funds_service } from "../services/mutual-fund.service.js";
+import logger from "../middleware/logger.js";
 import { job_service } from "../services/job.service.js";
 
 class JobControllerClass {
+
+    get_blostem_token = async () => {
+        try {
+
+            logger.debug(`Environment: ${env.ENVIRONMENT}, therefore using URL: ${env.ENVIRONMENT === "dev" ? `${env.BLOSTEM_MASTER_URL}/binvestt/partner/login` : `https://binvestt-api.blostem.com/partner/login`}`);
+            const res = env.ENVIRONMENT === "dev"
+                ? await axios.post(`${env.BLOSTEM_MASTER_URL}/binvestt/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_PASSWORD,
+                },
+                )
+                : await axios.post(`https://binvestt-api.blostem.com/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_PASSWORD,
+                },
+                );
+
+            logger.debug("Blostem login response: ", res.data);
+            return res.data.data.access.token;
+        } catch (error: any) {
+            logger.error("Error getting Blostem token: ", error.response?.data ?? error.message);
+        }
+    }
+
+
+
+    get_redirect_blostem_token = async () => {
+        try {
+
+            logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
+            logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`);
+            const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                email: env.BLOSTEM_USERNAME,
+                password: env.BLOSTEM_DASH_PASSWORD,
+            },
+            );
+
+            logger.debug("Blostem login response: ", res.data);
+            return res.data.data.access.token;
+        } catch (error: any) {
+            logger.error("Error getting Blostem token: ", error.response?.data ?? error.message);
+        }
+    }
+
+
+
+
 
     daily_mf_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -28,7 +76,7 @@ class JobControllerClass {
             return;
 
         } catch (error: any) {
-            console.error("Error while running daily mf job ==> ", error.message);
+            console.error("Error while running daily mf job ==> ", error);
             // logger.error("Error while running daily mf job ==> ", error.message);
             next(error);
             return;
@@ -49,7 +97,7 @@ class JobControllerClass {
 
             logger.info("Running mf nav history job...");
 
-            await mututal_funds_service.nav_history_job();
+            await job_service.nav_history_job();
 
             res.status(200).json({
                 success: true,
@@ -83,7 +131,7 @@ class JobControllerClass {
 
             logger.info("Running mf single nav history job...");
 
-            await mututal_funds_service.single_nav_history_job(scheme_id);
+            await job_service.single_nav_history_job(scheme_id);
 
             res.status(200).json({
                 success: true,
@@ -98,6 +146,46 @@ class JobControllerClass {
             return;
         }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    daily_fd_product_sync_job = async (req: Request, res: Response, next: NextFunction) => {
+
+        try {
+            logger.info("FD Sync Job Initiated.");
+            const token = await this.get_blostem_token();
+
+            if (!token) {
+                logger.error("Failed to retrieve Blostem token. Aborting FD sync job.");
+                throw new AppError("Failed to authenticate with Blostem API", 500, "BLOSTEM_AUTH_FAILED");
+            }
+
+            logger.debug("Blostem sign-in successful. Token acquired, starting FD product sync..., Token: ", token);
+
+            await job_service.daily_fd_job(token);
+            logger.info("FD MASTER SYNC SUCCESSFUL");
+
+            res.status(200).json({
+                success: true,
+                message: "Daily fd job completed successfully"
+            })
+            return;
+        } catch (error: any) {
+            logger.error("CRITICAL: FD Sync Job Failed. Rollback executed.", error.response?.data ?? error.message);
+            next(error);
+            return;
+        }
+    };
 }
 
 export const job_controller = new JobControllerClass();

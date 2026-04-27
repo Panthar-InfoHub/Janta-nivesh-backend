@@ -14,6 +14,24 @@ model UserFinance {
     user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
+model UserBankDetails {
+    id           String  @id @default(cuid())
+    user_id      String
+    account_no   String
+    ifsc_code    String
+    bank_name    String?
+    account_type String // SB, CA, NRE, NRO
+    is_primary   Boolean @default(false)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+
+    // Relations
+    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+    @@unique([user_id, account_no], name: "user_account_no_idx")
+}
+
 model UserAssets {
     id           String  @id @default(cuid())
     user_id      String  @unique
@@ -66,13 +84,13 @@ model UserGoals {
     id                   String  @id @default(cuid())
     user_id              String
     goal_id              Int? // Finsys Goal ID
-    goal_type_id         Int // 1 - child education, 2 - child marriage, 3 - retirement, 4 - buying a car, 5 - other
+    goal_type_id         Int // 1 - child education, 2 - child marriage, 3 - retirement, 4 - buying a car or any wealth goal
     inflation_rate       Int
     return_rate          Int
     current_saved_amount Decimal @default(0.00) @db.Decimal(12, 2)
 
     goal_name      String? // in case goal type id is 4
-    goal_item_id   Int? // 1-4 and 5 - other | 1 - car , 2 - home, 3 - vacactions, 4 - Celebrations
+    goal_item_id   Int? // 1-5 | 5 - othe , 2 - home, 3 -r | 1 - car vacactions, 4 - Celebrations
     goal_item_name String? // in case above is 5 just for db and ux purpose
 
     // In case of goal_type is 1 or 2
@@ -95,5 +113,5 @@ model UserGoals {
     // Relations
     user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-    @@unique([user_id, goal_type_id], name: "user_goal_type_idx")
+    @@index([user_id, goal_type_id], name: "user_goal_type_idx")
 }

@@ -1,0 +1,158 @@
+// Fixed Deposit Models
+enum TransactionStatus {
+  INITIATED
+  ONBOARDING_COMPLETED
+  ONBOARDING_FAILED
+  PAYMENT_PENDING
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  VKYC_PENDING
+  VKYC_COMPLETED
+  VKYC_FAILED
+  FD_CREATED
+  REFUNDED
+  MATURED
+  PREMATURE_WITHDRAWN
+}
+
+enum FdPayoutFrequency {
+  CUMULATIVE
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+  ON_MATURITY
+}
+
+enum FdCustomerType {
+  STANDARD
+  SENIOR_CITIZEN
+  FEMALE
+  SENIOR_CITIZEN_FEMALE // isSeniorCitizen + isFemale combined for easier querying
+}
+
+enum IssuerType {
+  BANK
+  NBFC
+}
+
+model FdIssuer {
+  id                String     @id @default(cuid())
+  full_name         String
+  display_name      String
+  issuer_type       IssuerType
+  logo_url          String
+  banner_url        String
+  rating_text       String? // e.g. "CRISIL AAA"
+  customer_served   String // e.g. "2 Million+"
+  operating_since   String? // e.g. "1994"
+  about_description String     @db.Text
+  support_email     String
+  support_phone     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  products FdProduct[]
+}
+
+model FdProduct {
+  id                        String  @id @default(cuid())
+  issuer_id                 String
+  type                      String // e.g. "Fixed Deposit", "Corporate FD"
+  min_deposit               Decimal @default(0.00) @db.Decimal(12, 2)
+  max_deposit               Decimal @default(0.00) @db.Decimal(12, 2)
+  min_tenure_days           Int
+  max_tenure_days           Int
+  lock_in_period_days       Int
+  withdrawal_message        String
+  premature_penalty_percent Float
+  is_vkyc_required          Boolean @default(false)
+  min_amount_for_vkyc       Decimal @default(0.00) @db.Decimal(12, 2)
+
+  usps Json? // Unique Selling Points
+  faqs Json? // Frequently Asked Questions
+  tags Json? // Search tags
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  issuer         FdIssuer         @relation(fields: [issuer_id], references: [id], onDelete: Cascade)
+  interest_rates FdInterestRate[]
+  fdTransactions FdTransaction[]
+
+  @@unique([issuer_id, type])
+}
+
+model FdInterestRate {
+  id                   String            @id @default(cuid())
+  fd_product_id        String
+  payout_frequency     FdPayoutFrequency
+  customer_type        FdCustomerType
+  tenure_days          Int
+  tenure_label         String // e.g. "1 Year", "400 Days"
+  interest_rate        Decimal           @db.Decimal(5, 2)
+  annualized_yield     Decimal           @db.Decimal(5, 2)
+  is_default_selection Boolean           @default(false)
+  is_tax_saver         Boolean?
+
+  last_updated_at DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  product FdProduct @relation(fields: [fd_product_id], references: [id], onDelete: Cascade)
+
+  @@unique([fd_product_id, payout_frequency, tenure_days, customer_type])
+}
+
+model FdTransaction {
+  // We use this 'id' as the 'jid' parameter in the redirect URL
+  id         String  @id @default(cuid())
+  user_id    String
+  product_id String
+  issuer_id  String? // Optional until confirmed by webhook
+
+  // Financial Core (Captured at the time of redirect/payment)
+  amount            Decimal           @db.Decimal(12, 2)
+  roi_at_booking    Decimal?          @db.Decimal(5, 2)
+  tenure_at_booking Int? // Tenure in days
+  payout_frequency  FdPayoutFrequency
+
+  // Status Tracking
+  status           TransactionStatus @default(INITIATED)
+  is_vkyc_required Boolean           @default(false) // Non webhook entity
+  is_nominee_added Boolean           @default(false) // Non webhook entity
+
+  // Webhook Data Sync (Fields filled as events arrive)
+  payment_tx_id       String? @unique // From PAYMENT event 
+  bank_name_added     String? // From BANK_ADD event 
+  vkyc_failure_reason String? @db.Text // From VKYC_FAILED event 
+  vkyc_failed_by      String? // AGENT or AUDITOR 
+
+  // Final FD Details (Populated by FD_CREATED) 
+  fd_account_number    String? // From FD_CREATED in case of NBFC
+  maturity_amount      Decimal?  @db.Decimal(12, 2)
+  maturity_date        DateTime?
+  maturity_instruction String? // REFUND or REINVEST
+
+  // Audit Timestamps for Funnel Analytics
+  onboarded_at         DateTime? // Updated on SSO/ONBOARDING event 
+  payment_completed_at DateTime? // Updated on PAYMENT success
+  vkyc_completed_at    DateTime? // Updated on VKYC success
+  fd_issued_at         DateTime? // Updated on FD_CREATED
+  refund_date          DateTime? // Updated on REFUND event
+
+  failure_reason    String? @db.Text // Captures Payment or VKYC failure reasons
+  is_vkyc_initiated Boolean @default(false)
+  is_vkyc_pending   Boolean @default(true) // Initially true if VKYC is required, set to false on completion/failure
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  product FdProduct @relation(fields: [product_id], references: [id])
+  user    User      @relation(fields: [user_id], references: [id])
+}

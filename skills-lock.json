@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "css": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "computedHash": "80c477418be4bdd2d102ba5a71760125a9c1925292f5b3c208ee56ab9e6e3cc2"
+    },
+    "css-styling-expert": {
+      "source": "cin12211/orca-q",
+      "sourceType": "github",
+      "computedHash": "0452fc26b9a005e38c423082aa6f309eb119705f7835ace3f6c821a98d46b3e8"
+    }
+  }
+}

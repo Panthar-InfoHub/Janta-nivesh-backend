@@ -1,5 +1,5 @@
 model MfProduct {
-    id              String  @id @default(uuid())
+    id              String  @id @default(cuid())
     scheme_id       String
     isin            String?
     mapping_code    String // Remember this is real schema code : Unique code needed for most MF apis and NSE Apis : It's just Finnsys mother fuckers that mess with this so complain to them
@@ -12,7 +12,7 @@ model MfProduct {
     amc_code String?
     amc_name String?
 
-    asset_type  String?
+    asset_type  String? // Hybrid, Equity, Debt, Liquid, etc
     scheme_type String?
     structure   String?
     risk_name   String?
@@ -36,6 +36,7 @@ model MfProduct {
     nav_history       MfNavHistory[]
     transaction_rules MfSchemeTransactionRules?
     metrics           MfMetrics?
+    bundle_products   BundleProduct[]
 
     @@unique([scheme_id, isin, nse_scheme_code]) // Only for bulk upsert operations, individual fetches will use scheme_id or isin as needed
     @@index([amc_code])
@@ -45,7 +46,7 @@ model MfProduct {
 }
 
 model MfNavHistory {
-    id            String @id @default(uuid())
+    id            String @id @default(cuid())
     mf_product_id String
     scheme_id     String
 

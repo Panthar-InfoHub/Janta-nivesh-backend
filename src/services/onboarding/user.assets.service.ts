@@ -1,8 +1,11 @@
 import { db } from "../../server.js";
+import type { Prisma } from "../../prisma/generated/prisma/client.js";
+
+type TxClient = Prisma.TransactionClient;
 
 class userAssetsServiceClass {
-    async create(userId: string, data: any) {
-        return await db.userAssets.upsert({
+    async create(userId: string, data: any, tx: TxClient | typeof db = db) {
+        return await tx.userAssets.upsert({
             where: { user_id: userId },
             update: { ...data },
             create: {
@@ -25,8 +28,8 @@ class userAssetsServiceClass {
         });
     }
 
-    async delete(userId: string) {
-        return await db.userAssets.delete({
+    async delete(userId: string, tx: TxClient | typeof db = db) {
+        return await tx.userAssets.delete({
             where: { user_id: userId },
         });
     }

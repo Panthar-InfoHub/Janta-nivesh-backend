@@ -20,6 +20,9 @@ export const NseRegistrationSchema = z.object({
 
     // --- Financial & Communication ---
     account_no_1: z.string().min(1, "At least one bank account is required"),
+    ifsc_code_1: z.string().min(1, "IFSC code is required"),
+    account_type_1: z.enum(["SB", "CA", "NRE", "NRO"]).default("SB"),
+    default_bank_flag_1: z.enum(["Y", "N"]).default("Y"),
     div_pay_mode: z.string().min(1, "Dividend payout mode is required"),
     email: z.string().email(),
     communication_mode: z.string().min(1, "Communication mode is mandatory"),
@@ -41,22 +44,24 @@ export const NseRegistrationSchema = z.object({
     nomination_authentication: z.enum(["W", "E", "O", "V"], {
         error: "Invalid nomination authentication mode",
     }),
-}).superRefine((data, ctx) => {
-    if (data.nomination_opt === "Y" && !["W", "E", "O"].includes(data.nomination_authentication)) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["nomination_authentication"],
-            message: "When nomination_opt is Y, authentication must be W (Wet Signature), E (E-Sign), or O (OTP Authentication)",
-        });
-    }
-    if (data.nomination_opt === "N" && !["O", "V"].includes(data.nomination_authentication)) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["nomination_authentication"],
-            message: "When nomination_opt is N, authentication must be O (OTP with Declaration) or V (Video Recording)",
-        });
-    }
-});
+})
+    .passthrough()
+    .superRefine((data, ctx) => {
+        if (data.nomination_opt === "Y" && !["W", "E", "O"].includes(data.nomination_authentication)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["nomination_authentication"],
+                message: "When nomination_opt is Y, authentication must be W (Wet Signature), E (E-Sign), or O (OTP Authentication)",
+            });
+        }
+        if (data.nomination_opt === "N" && !["O", "V"].includes(data.nomination_authentication)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["nomination_authentication"],
+                message: "When nomination_opt is N, authentication must be O (OTP with Declaration) or V (Video Recording)",
+            });
+        }
+    });
 
 // Type inference for your service layer
 export type NseRegistrationPayload = z.infer<typeof NseRegistrationSchema>;

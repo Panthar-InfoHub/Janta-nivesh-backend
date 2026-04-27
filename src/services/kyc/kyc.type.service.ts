@@ -1,5 +1,6 @@
 import { db } from "../../server.js";
-import type { Prisma, KycTypeValue } from "../../prisma/generated/prisma/client.js";
+import type { Prisma, KycTypeValue, KycStatus } from "../../prisma/generated/prisma/client.js";
+import { KycTypeUpdateInput } from "../../prisma/generated/prisma/models.js";
 
 type KycQueryInput = {
     kyc_type?: KycTypeValue;
@@ -44,6 +45,42 @@ class KycTypeServiceClass {
         });
 
         return kyc_data;
+    }
+
+    update_kyc_type = async (user_id: string, kyc_type: KycTypeValue, data: KycTypeUpdateInput) => {
+        const kyc_type_data = await db.kycType.update({
+            where: {
+                user_id_kyc_type: {
+                    user_id,
+                    kyc_type
+                }
+            },
+            data: {
+                ...data
+            }
+        });
+
+        return kyc_type_data;
+    }
+
+    upsert_kyc_status = async (user_id: string, kyc_type: KycTypeValue, status: KycStatus) => {
+        const kyc_type_data = await db.kycType.upsert({
+            where: {
+                user_id_kyc_type: {
+                    user_id,
+                    kyc_type
+                }
+            },
+            update: {
+                status
+            },
+            create: {
+                user_id,
+                kyc_type,
+                status
+            }
+        });
+        return kyc_type_data;
     }
 
 }
