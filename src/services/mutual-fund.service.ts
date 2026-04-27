@@ -61,8 +61,8 @@ class MutualFundServiceClass {
                 const riskValue = typeof query?.risk_level === 'object' ? query?.risk_level?.equals : query?.risk_level;
                 const categoryValue = typeof query?.asset_type === 'object' ? query?.asset_type?.equals : query?.asset_type;
 
-                const riskFilter = (riskValue !== undefined && riskValue !== null) ? Prisma.sql`AND risk_level = ${riskValue}` : Prisma.empty;
-                const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}` : Prisma.empty;
+                const riskFilter = (riskValue !== undefined && riskValue !== null) ? Prisma.sql`AND risk_level = ${riskValue}::int` : Prisma.empty;
+                const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}::text` : Prisma.empty;
 
                 // 2. Define a consistent threshold (0.3 is usually best for "LIC Multicap" vs "LIC Multi Cap")
                 const threshold = 0.1;
@@ -379,8 +379,8 @@ class MutualFundServiceClass {
         // 5. Call Upstream API
         const payload = {
             arn: env.ARN,
-            username: user.usr,
-            password: user.pwd,
+            username: user_log,
+            password: user_pwd,
             data: {
                 transaction_details
             }
