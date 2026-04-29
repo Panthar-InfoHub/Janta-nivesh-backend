@@ -29,7 +29,7 @@ class AuthServiceClass {
                     ...device,
                     mob: mobile,
                 },
-                timeout: 30000, // 30 second timeout 
+                timeout: 300000, // 30 second timeout 
             });
 
             const request_duration = Date.now() - request_start;
