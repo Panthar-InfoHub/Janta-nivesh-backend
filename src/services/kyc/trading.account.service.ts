@@ -3,6 +3,7 @@ import logger from "../../middleware/logger.js";
 import { NSEServiceClass } from "../nse.service.js";
 import { user_finance_service } from "../onboarding/user.finance.service.js";
 import { env } from "../../lib/config-env.js";
+import AppError from "../../middleware/error.middleware.js";
 
 class TradingAccountServiceClass extends NSEServiceClass {
 
@@ -32,12 +33,11 @@ class TradingAccountServiceClass extends NSEServiceClass {
         });
 
         logger.debug("Client registration response from NSE API ==> ", response.data.code);
-
-
         if (response.data.code != 1) {
             logger.warn("Client registration failed with NSE API. Response ==> ", response.data);
-            throw new Error("Client registration failed with NSE API, Reason : " + response.data.data.reg_details[0].reg_remark);
+            throw new AppError("Client registration failed with NSE API, Reason : " + response.data.data.reg_details[0].reg_remark);
         }
+
 
         logger.debug("Proceeding with FATCA registration...");
         // Call fatca registration API
@@ -60,7 +60,7 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
         if (fatca_res.data.code != 1) {
             logger.warn("FATCA registration failed with NSE API. Response ==> ", fatca_res.data);
-            throw new Error("FATCA registration failed with NSE API, Reason : " + fatca_res.data.data.reg_details[0].reg_remark);
+            throw new AppError("FATCA registration failed with NSE API, Reason : " + fatca_res.data.data.reg_details[0].reg_remark);
         }
 
         return response.data;
