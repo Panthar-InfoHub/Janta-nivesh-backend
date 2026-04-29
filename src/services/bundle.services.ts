@@ -25,9 +25,9 @@ class BundleServiceClass {
         const [bundles, total] = await Promise.all([
             db.bundle.findMany({
                 skip,
-                take: limit,
                 include: {
                     bundle_products: {
+                        take: limit,
                         include: {
                             mf_product: true
                         }

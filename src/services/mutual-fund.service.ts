@@ -15,6 +15,8 @@ import { generate_unique_code } from "../helpers/unique.code.js";
 import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
 import { nse_service } from "./nse.service.js";
 import { Prisma } from "../prisma/generated/prisma/client.js";
+import { AddBundleToCartInput } from "../lib/zod-schemas/bundle.schema.js";
+import { bundle_service } from "./bundle.services.js";
 const gzipAsync = promisify(gzip);
 
 export type pagination = {
@@ -59,8 +61,8 @@ class MutualFundServiceClass {
                 const riskValue = typeof query?.risk_level === 'object' ? query?.risk_level?.equals : query?.risk_level;
                 const categoryValue = typeof query?.asset_type === 'object' ? query?.asset_type?.equals : query?.asset_type;
 
-                const riskFilter = (riskValue !== undefined && riskValue !== null) ? Prisma.sql`AND risk_level = ${riskValue}` : Prisma.empty;
-                const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}` : Prisma.empty;
+                const riskFilter = (riskValue !== undefined && riskValue !== null) ? Prisma.sql`AND risk_level = ${riskValue}::int` : Prisma.empty;
+                const categoryFilter = categoryValue ? Prisma.sql`AND asset_type = ${categoryValue}::text` : Prisma.empty;
 
                 // 2. Define a consistent threshold (0.3 is usually best for "LIC Multicap" vs "LIC Multi Cap")
                 const threshold = 0.1;
@@ -377,8 +379,8 @@ class MutualFundServiceClass {
         // 5. Call Upstream API
         const payload = {
             arn: env.ARN,
-            username: user.usr,
-            password: user.pwd,
+            username: user_log,
+            password: user_pwd,
             data: {
                 transaction_details
             }
@@ -538,7 +540,128 @@ class MutualFundServiceClass {
         return short_url.data.firstHolderLink;
     }
 
-    remove_item_from_cart = async (user_log: string, user_pwd: string, cart_item_id: number) => {
+    // ─── Add Bundle to Cart ──────────────────────────────────────────────────
+
+    /**
+     * Clears the user's current Finnsys cart and re-populates it with every
+     * product from the given bundle, using either LUMPSUM or SIP cart logic.
+     *
+     * Per-product amount = Math.round((allocation_percentage / 100) * amount).
+     * Throws AppError if any bundle_product is missing allocation_percentage.
+     * For SIP: validates sip_day and sip_freq against each fund's transaction_rules.
+     */
+    add_bundle_to_cart = async (
+        input: AddBundleToCartInput,
+        user_creds: { log: string; pwd: string }
+    ) => {
+        const { bundle_id, type, amount } = input;
+
+        // 1. Fetch bundle with all products + mf_product details needed for cart calls
+        const bundle = await bundle_service.get_bundle_by_id(bundle_id);
+        if (!bundle) {
+            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+        }
+        if (!bundle.bundle_products || bundle.bundle_products.length === 0) {
+            throw new AppError("Bundle has no products", 400, "BUNDLE_EMPTY");
+        }
+
+        // 2. Fetch current Finnsys cart and clear all items
+        logger.info(`[BundleCart] Fetching current cart for user log: ${user_creds.log}`);
+        const cart_res = await user_service.get_user_cart_finnsys(user_creds.log, user_creds.pwd);
+
+        if (cart_res.code == 1 && Array.isArray(cart_res.results) && cart_res.results.length > 0) {
+            const cart_item_ids: number[] = cart_res.results.map((item: any) => Number(item.cart_id));
+            logger.info(`[BundleCart] Clearing ${cart_item_ids.length} existing cart item(s)`);
+            await this.remove_item_from_cart(user_creds.log, user_creds.pwd, cart_item_ids);
+        } else {
+            logger.info("[BundleCart] Cart is empty, skipping clear step");
+        }
+
+        // 3. For SIP: pre-fetch each product's transaction_rules for validation
+        const failed: { mf_product_id: string; reason: string }[] = [];
+        let added = 0;
+
+        for (const bp of bundle.bundle_products) {
+            const mf_product = bp.mf_product as any;
+            if (!mf_product) {
+                logger.warn(`[BundleCart] mf_product missing for bundle_product ${bp.mf_product_id}, skipping`);
+                failed.push({ mf_product_id: bp.mf_product_id, reason: "mf_product not found" });
+                continue;
+            }
+
+            // Compute per-product amount from allocation_percentage
+            const per_product_amount = Math.round((bp.allocation_percentage / 100) * amount);
+
+            try {
+                if (type === "LUMPSUM") {
+                    await this.add_lumpsum_cart(
+                        {
+                            amc_code: mf_product.amc_code || "",
+                            amc_name: mf_product.amc_name || "",
+                            prod_code: mf_product.platform_code || "",
+                            prod_name: mf_product.scheme_name || "",
+                            txn_amount: per_product_amount,
+                        },
+                        user_creds
+                    );
+                    added++;
+                } else {
+                    // SIP — validate sip_day and sip_freq against this product's transaction_rules
+                    // We need the full product with transaction_rules; re-fetch by ID to get them.
+                    const mf_detail = await this.get_mutual_fund_by_id(bp.mf_product_id);
+
+                    if (!mf_detail?.transaction_rules?.sip_allowed_dates.includes(input.sip_day)) {
+                        throw new AppError(
+                            `SIP day ${input.sip_day} is not allowed for fund "${mf_product.scheme_name}"`,
+                            400,
+                            "SIP_DAY_NOT_ALLOWED"
+                        );
+                    }
+
+                    if (!mf_detail?.transaction_rules?.sip_frequencies.includes(input.sip_freq)) {
+                        throw new AppError(
+                            `SIP frequency "${input.sip_freq}" is not allowed for fund "${mf_product.scheme_name}"`,
+                            400,
+                            "SIP_FREQ_NOT_ALLOWED"
+                        );
+                    }
+
+                    await this.add_sip_cart(
+                        {
+                            amc_code: mf_product.amc_code || "",
+                            amc_name: mf_product.amc_name || "",
+                            prod_code: mf_product.platform_code || "",
+                            prod_name: mf_product.scheme_name || "",
+                            txn_amount: per_product_amount,
+                            sip_st_date: input.sip_st_date,
+                            sip_en_date: input.sip_en_date,
+                            sip_freq: input.sip_freq,
+                            sip_day: input.sip_day,
+                            sip_amt: input.sip_amt,
+                        },
+                        user_creds
+                    );
+                    added++;
+                }
+            } catch (err: any) {
+                // Re-throw AppErrors (strict validation failures for the entire bundle)
+                if (err instanceof AppError) throw err;
+                // For unexpected per-product failures, log and continue
+                logger.error(`[BundleCart] Failed to add product ${bp.mf_product_id} to cart:`, err);
+                failed.push({ mf_product_id: bp.mf_product_id, reason: err?.message ?? "Unknown error" });
+            }
+        }
+
+        return {
+            bundle_id,
+            type,
+            total_products: bundle.bundle_products.length,
+            added,
+            failed,
+        };
+    }
+
+    remove_item_from_cart = async (user_log: string, user_pwd: string, cart_item_id: number | number[]) => {
         try {
             const response = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {
                 params: {

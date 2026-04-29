@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { redis } from "../lib/redis.js";
 import { sip_cart_zod_schema, redeem_request_zod_schema } from "../lib/types.js";
+import { add_bundle_to_cart_schema } from "../lib/zod-schemas/bundle.schema.js";
 import { get_mf_search_query } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
@@ -337,6 +338,38 @@ class MutualFundControllerClass {
 
         } catch (error) {
             logger.error("Error in remove_item_from_cart controller ===> ", error);
+            next(error);
+            return;
+        }
+    }
+
+    add_bundle_to_cart = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Adding bundle to cart for user: ${user.id}`);
+
+            const validation = add_bundle_to_cart_schema.safeParse(req.body);
+            if (!validation.success) {
+                logger.warn("Validation failed for add_bundle_to_cart request body", { errors: validation.error.issues });
+                throw new AppError("Validation failed", 400, "VALIDATION_ERROR", validation.error);
+            }
+
+            const result = await mutual_funds_service.add_bundle_to_cart(
+                validation.data,
+                { log: user.log as string, pwd: user.pwd as string }
+            );
+
+            logger.info(`[BundleCart] Added ${result.added}/${result.total_products} products to cart for user: ${user.id}`);
+
+            res.status(200).json({
+                success: true,
+                message: `Bundle added to cart: ${result.added} of ${result.total_products} product(s) added successfully`,
+                data: result
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in add_bundle_to_cart controller ===> ", error);
             next(error);
             return;
         }

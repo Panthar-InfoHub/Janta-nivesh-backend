@@ -56,8 +56,14 @@ class MutualFundFinnsysServiceClass {
                 payload,
             );
 
+            // code 1 = full success, code 2 = partial success (some orders placed, some rejected)
+            if (response.data?.code === 2) {
+                logger.warn(`Partial success from Finnsys: ${response.data?.message}`);
+                return response.data; // still return so caller can generate payment link for successful orders
+            }
+
             if (response.data?.code !== 1) {
-                logger.error("Finnsys API returned an error: ", response.data);
+                logger.error("Finnsys API returned a full failure: ", response.data);
                 throw new AppError(
                     response.data?.message || "Failed to create orders",
                     500,
@@ -65,7 +71,7 @@ class MutualFundFinnsysServiceClass {
                 );
             }
 
-            logger.info("Lumpsum purchase order submitted successfully");
+            logger.info("Purchase order submitted successfully");
             logger.debug(`Purchase response: `, response.data);
 
             return response.data;
