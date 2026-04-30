@@ -13,7 +13,7 @@ class AuthServiceClass {
 
     req_otp = async (mobile: string, device: DeviceDetails): Promise<AuthResponse> => {
 
-        if (mobile === "9876543210" && env.ENVIRONMENT === "dev") {
+        if (mobile === "9876543210" && (env.ENVIRONMENT === "dev" || env.ENVIRONMENT === "prod")) {
             logger.info(`Test environment: Intercepting OTP request for mobile number ${mobile}`);
             return { code: 1, results: [] };
         }
@@ -71,7 +71,7 @@ class AuthServiceClass {
 
     validate_otp = async (mobile: string, otp: string, device: DeviceDetails): Promise<AuthResponse> => {
 
-        if (mobile === "9876543210" && otp === "0000" && env.ENVIRONMENT === "dev") {
+        if (mobile === "9876543210" && otp === "0000" && (env.ENVIRONMENT === "dev" || env.ENVIRONMENT === "prod")) {
             logger.info(`Test environment: Intercepting OTP validation for mobile number ${mobile}`);
             return {
                 code: 1,
