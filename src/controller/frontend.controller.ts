@@ -25,33 +25,33 @@ class FrontendControllerClass {
             }
 
             const [bundle, flexi_cap, large_cap, mid_cap, small_cap, index] = await Promise.all([
-                bundle_service.get_bundles({ page: 1, limit: 6 }),
+                bundle_service.get_bundles({ page: 1, limit: 4 }),
                 mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 6 },
+                    pagination: { page: 1, limit: 4 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'flexicap'
                 }),
                 mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 6 },
+                    pagination: { page: 1, limit: 4 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'largecap'
                 }),
                 mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 6 },
+                    pagination: { page: 1, limit: 4 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'midcap'
                 }),
                 mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 6 },
+                    pagination: { page: 1, limit: 4 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'smallcap'
                 }),
                 mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 6 },
+                    pagination: { page: 1, limit: 4 },
                     query: {},
                     order: { metrics: { return_3y: 'desc' } },
                     search: 'index'
