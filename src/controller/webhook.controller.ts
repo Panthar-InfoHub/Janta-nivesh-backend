@@ -50,6 +50,12 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                 update_data.roi_at_booking = parseFloat(data.roi);
                 update_data.tenure_at_booking = data.tenure;
                 update_data.payment_tx_id = data.paymentTxId;
+
+
+                if (data.isVkycRequired === false) {
+                    update_data.is_vkyc_required = false;
+                    update_data.is_vkyc_pending = false;
+                }
                 break
             case "PAYMENT_FAILED": // Explicit event for failures
                 status_to_update = TransactionStatus.PAYMENT_FAILED;
@@ -100,6 +106,7 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                     jid;                   // Fallback: Our own transaction ID
                 update_data.maturity_amount = parseFloat(data.maturityAmount);
                 update_data.maturity_date = new Date(data.maturityDate);
+                update_data.is_vkyc_pending = false;
                 update_data.maturity_instruction = data.maturityInstructions || data.maturity_instruction;
                 break;
 
