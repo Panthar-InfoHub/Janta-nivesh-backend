@@ -27,12 +27,12 @@ class BundleServiceClass {
                 skip,
                 include: {
                     bundle_products: {
-                        take: limit,
                         include: {
                             mf_product: true,
                         }
                     }
                 },
+                take: limit,
                 orderBy: {
                     bundle_name: 'asc'
                 }
