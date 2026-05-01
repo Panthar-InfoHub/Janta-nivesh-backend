@@ -140,7 +140,11 @@ class MutualFundServiceClass {
             }
         }
 
-        logger.debug("Searching fallback, using standard search....")
+        if (search) {
+            logger.debug("Searching fallback, using standard search....");
+        } else {
+            logger.debug("Executing standard query without search....");
+        }
 
         const [total, data] = await Promise.all([
             db.mfProduct.count({ where }),
@@ -172,6 +176,41 @@ class MutualFundServiceClass {
             }
         };
     }
+
+    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others', limit?: number, page?: number }) => {
+        let query: Prisma.MfProductWhereInput = {};
+
+        switch (category) {
+            case 'flexi_cap':
+                query = { scheme_type: { contains: 'Flexi-cap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                break;
+            case 'large_Mid_cap':
+                query = { scheme_type: { contains: 'Large & Mid Cap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                break;
+            case 'large_cap':
+                query = { scheme_type: { contains: 'Largecap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                break;
+            case 'mid_cap':
+                query = { scheme_type: { contains: 'Midcap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                break;
+            case 'small_cap':
+                query = { scheme_type: { contains: 'Smallcap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                break;
+            case 'index':
+                query = { scheme_type: { contains: 'ETF/Index', mode: 'insensitive' } };
+                break;
+            case 'global_others':
+                query = { asset_type: 'Others - Mutual Funds' };
+                break;
+        }
+
+        return await this.get_mutual_funds({
+            pagination: { page, limit },
+            query,
+            order: { metrics: { return_3y: 'desc' } }
+        });
+    }
+
     get_mutual_fund_by_id = async (id: string) => {
         return await db.mfProduct.findUnique({
             where: { id },

@@ -24,38 +24,15 @@ class FrontendControllerClass {
                 return;
             }
 
-            const [bundle, flexi_cap, large_cap, mid_cap, small_cap, index] = await Promise.all([
+            const [bundle, flexi_cap, large_mid_cap, large_cap, mid_cap, small_cap, index, global_others] = await Promise.all([
                 bundle_service.get_bundles({ page: 1, limit: 4 }),
-                mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 4 },
-                    query: {},
-                    order: { metrics: { return_3y: 'desc' } },
-                    search: 'flexicap'
-                }),
-                mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 4 },
-                    query: {},
-                    order: { metrics: { return_3y: 'desc' } },
-                    search: 'largecap'
-                }),
-                mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 4 },
-                    query: {},
-                    order: { metrics: { return_3y: 'desc' } },
-                    search: 'midcap'
-                }),
-                mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 4 },
-                    query: {},
-                    order: { metrics: { return_3y: 'desc' } },
-                    search: 'smallcap'
-                }),
-                mutual_funds_service.get_mutual_funds({
-                    pagination: { page: 1, limit: 4 },
-                    query: {},
-                    order: { metrics: { return_3y: 'desc' } },
-                    search: 'index'
-                })
+                mutual_funds_service.get_funds_by_category({ category: 'flexi_cap' }),
+                mutual_funds_service.get_funds_by_category({ category: 'large_Mid_cap' }),
+                mutual_funds_service.get_funds_by_category({ category: 'large_cap' }),
+                mutual_funds_service.get_funds_by_category({ category: 'mid_cap' }),
+                mutual_funds_service.get_funds_by_category({ category: 'small_cap' }),
+                mutual_funds_service.get_funds_by_category({ category: 'index' }),
+                mutual_funds_service.get_funds_by_category({ category: 'global_others' }),
             ]);
 
             const response_data = {
@@ -66,11 +43,13 @@ class FrontendControllerClass {
                 },
                 normal_funds: {
                     title: "Normal Bundles", key: "normal_funds", items: [
-                        { title: "Flexi Cap", items: flexi_cap.mutual_funds, key: "flexicap" },
-                        { title: "Large Cap", items: large_cap.mutual_funds, key: "largecap" },
-                        { title: "Mid Cap", items: mid_cap.mutual_funds, key: "midcap" },
-                        { title: "Small Cap", items: small_cap.mutual_funds, key: "smallcap" },
-                        { title: "Index", items: index.mutual_funds, key: "index" }
+                        { title: "Flexi Cap", items: flexi_cap.mutual_funds, key: "flexi_cap" },
+                        { title: "Large & Mid Cap", items: large_mid_cap.mutual_funds, key: "large_Mid_cap" },
+                        { title: "Large Cap", items: large_cap.mutual_funds, key: "large_cap" },
+                        { title: "Mid Cap", items: mid_cap.mutual_funds, key: "mid_cap" },
+                        { title: "Small Cap", items: small_cap.mutual_funds, key: "small_cap" },
+                        { title: "Index", items: index.mutual_funds, key: "index" },
+                        { title: "Global / Others", items: global_others.mutual_funds, key: "global_others" }
                     ]
                 }
             }

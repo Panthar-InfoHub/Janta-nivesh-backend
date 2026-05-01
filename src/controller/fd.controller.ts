@@ -255,10 +255,22 @@ class FdControllerClass {
                 throw new AppError("FD Transaction not found", 404, "FD_TRANSACTION_NOT_FOUND");
             }
 
+            let pending_action: "PAYMENT" | "VKYC" | "COMPLETED" | null = null;
+            if (!transaction.payment_completed_at) {
+                pending_action = "PAYMENT";
+            } else if (transaction.is_vkyc_pending) {
+                pending_action = "VKYC";
+            } else {
+                pending_action = "COMPLETED"
+            }
+
             res.status(200).json({
                 success: true,
                 message: "FD Transaction retrieved successfully",
-                data: transaction
+                data: {
+                    ...transaction,
+                    pending_action
+                }
             });
             return;
 

@@ -302,10 +302,44 @@ class UserServiceClass {
                 id: transaction_id,
                 user_id: user_id,
             },
-            include: {
+            select: {
+                id: true,
+                user_id: true,
+                payment_completed_at: true,
+                is_vkyc_pending: true,
+                amount: true,
+                roi_at_booking: true,
+                tenure_at_booking: true,
+                payout_frequency: true,
+                status: true,
+                maturity_amount: true,
+                maturity_date: true,
+                maturity_instruction: true,
+                payment_tx_id: true,
+                fd_account_number: true,
+                onboarded_at: true,
+                vkyc_completed_at: true,
+                fd_issued_at: true,
+                refund_date: true,
+                vkyc_failure_reason: true,
+                failure_reason: true,
+                createdAt: true,
+                updatedAt: true,
                 product: {
-                    include: {
-                        issuer: true
+                    select: {
+                        id: true,
+                        issuer_id: true,
+                        issuer: {
+                            select: {
+                                id: true,
+                                full_name: true,
+                                display_name: true,
+                                issuer_type: true,
+                                logo_url: true,
+                                banner_url: true,
+                                rating_text: true
+                            }
+                        }
                     }
                 }
             }

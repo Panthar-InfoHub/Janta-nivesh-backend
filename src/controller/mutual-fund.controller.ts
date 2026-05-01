@@ -20,6 +20,29 @@ class MutualFundControllerClass {
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 20;
 
+            // Direct category fetch
+            const fund_category = req.query.fund_category as string;
+            const direct_categories = ['flexi_cap', 'large_Mid_cap', 'large_cap', 'mid_cap', 'small_cap', 'index', 'global_others'];
+
+            if (fund_category && direct_categories.includes(fund_category)) {
+                logger.info(`Fetching mutual funds by fund_category: ${fund_category} - Page: ${page}, Limit: ${limit}`);
+                
+                const result = await mutual_funds_service.get_funds_by_category({
+                    category: fund_category as any,
+                    page,
+                    limit
+                });
+
+                logger.debug(`Fetched ${result.mutual_funds.length} mutual funds from database using category route`);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Mutual funds fetched successfully",
+                    data: result
+                });
+                return;
+            }
+
             //Filters
             const sort_by = req.query.sort_by as string
             const search = req.query.search as string
