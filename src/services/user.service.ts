@@ -1,5 +1,5 @@
 import axios from "axios";
-import { UserWithAllData } from "../lib/types.js";
+import { UserFireReportData, UserWithAllData } from "../lib/types.js";
 import {
     FdTransactionOrderByWithRelationInput,
     FdTransactionWhereInput,
@@ -167,6 +167,30 @@ class UserServiceClass {
         return await db.user.delete({
             where: {
                 id: user_id
+            }
+        });
+    }
+
+
+    async get_user_fire_report_data(user_id: string): Promise<UserFireReportData | null> {
+        return await db.user.findUnique({
+            where: { id: user_id },
+            include: {
+                user_finance: true,
+                user_assets: {
+                    select: {
+                        id: true,
+                        user_id: true,
+                        mutual_funds: true,
+                        stocks: true,
+                        fd: true,
+                        gold: true,
+                        cash_saving: true,
+                    }
+                },
+                user_insurance: true,
+                user_loan: true,
+                user_goals: true,
             }
         });
     }

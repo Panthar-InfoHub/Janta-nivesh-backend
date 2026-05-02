@@ -14,7 +14,7 @@ import {
     QuarterlyPoint,
     YearlyGoalRequirement,
 } from "../lib/fire-report.types.js";
-import { UserWithAllData } from "../lib/types.js";
+import { UserFireReportData, UserWithAllData } from "../lib/types.js";
 import { user_service } from "./user.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
@@ -90,13 +90,7 @@ class FireReportServiceClass {
     }
 
     async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportCoreResponse> {
-        const data = await user_service.get_all_user_data(user_id, {
-            user_finance: true,
-            user_assets: true,
-            user_insurance: true,
-            user_loan: true,
-            user_goals: true,
-        });
+        const data = await user_service.get_user_fire_report_data(user_id);
 
         if (!data) {
             logger.error(`No user data found for user_id: ${user_id}`);
@@ -134,7 +128,7 @@ class FireReportServiceClass {
     }
 
     // Compute Metrics 
-    private compute_metrics(data: UserWithAllData): ComputedMetrics {
+    private compute_metrics(data: UserFireReportData): ComputedMetrics {
         const finance = data.user_finance;
         const assets = data.user_assets;
         const loans = data.user_loan ?? [];
@@ -143,7 +137,6 @@ class FireReportServiceClass {
         const mutual_funds = this.to_num(assets?.mutual_funds);
         const stocks = this.to_num(assets?.stocks);
         const fd = this.to_num(assets?.fd);
-        const real_estate = this.to_num(assets?.real_estate);
         const gold = this.to_num(assets?.gold);
         const cash_saving = this.to_num(assets?.cash_saving);
 
@@ -154,9 +147,9 @@ class FireReportServiceClass {
         const expense_transportation = this.to_num(finance?.expense_transportation);
         const expense_others = this.to_num(finance?.expense_others);
 
-        const total_assets = mutual_funds + stocks + fd + real_estate + gold + cash_saving;
+        const total_assets = mutual_funds + stocks + fd + gold + cash_saving;
         const liquid_assets = mutual_funds + stocks + fd + cash_saving;
-        const illiquid_assets = real_estate + gold;
+        const illiquid_assets = gold;
 
         const total_liabilities = loans.reduce((sum, l) => sum + this.to_num(l.outstanding_amount), 0);
         const total_monthly_emi = loans.reduce((sum, l) => sum + this.to_num(l.monthly_emi), 0);
@@ -187,7 +180,7 @@ class FireReportServiceClass {
     }
 
     //  Projection ( per-asset growth, SIP goals, partial EMI — dual-track: emi_include / emi_exclude)
-    private compute_projection(data: UserWithAllData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number): ProjectionRow[] {
+    private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number): ProjectionRow[] {
         const current_year = new Date().getFullYear();
         const loans = this.normalize_loans(data.user_loan ?? []);
         const g = FIRE_CONSTANTS.asset_growth;
@@ -196,7 +189,6 @@ class FireReportServiceClass {
             mutual_funds: this.to_num(data.user_assets?.mutual_funds),
             stocks: this.to_num(data.user_assets?.stocks),
             fd: this.to_num(data.user_assets?.fd),
-            real_estate: this.to_num(data.user_assets?.real_estate),
             gold: this.to_num(data.user_assets?.gold),
             cash_saving: this.to_num(data.user_assets?.cash_saving),
             nps: 0,
@@ -218,7 +210,6 @@ class FireReportServiceClass {
                 mutual_funds: ya_inc.mutual_funds * (1 + g.mutual_funds),
                 stocks: ya_inc.stocks * (1 + g.stocks),
                 fd: ya_inc.fd * (1 + g.fd),
-                real_estate: ya_inc.real_estate * (1 + g.real_estate),
                 gold: ya_inc.gold * (1 + g.gold),
                 cash_saving: ya_inc.cash_saving * (1 + g.cash_saving),
                 nps: ya_inc.nps * (1 + g.nps),
@@ -228,7 +219,6 @@ class FireReportServiceClass {
                 mutual_funds: ya_exc.mutual_funds * (1 + g.mutual_funds),
                 stocks: ya_exc.stocks * (1 + g.stocks),
                 fd: ya_exc.fd * (1 + g.fd),
-                real_estate: ya_exc.real_estate * (1 + g.real_estate),
                 gold: ya_exc.gold * (1 + g.gold),
                 cash_saving: ya_exc.cash_saving * (1 + g.cash_saving),
                 nps: ya_exc.nps * (1 + g.nps),
@@ -238,7 +228,7 @@ class FireReportServiceClass {
             // 2. Portfolio totals after growth
             const sum_assets = (ya: ProjectionAssets) =>
                 ya.mutual_funds + ya.stocks + ya.fd + ya.gold +
-                ya.cash_saving + ya.nps + ya.ppf_epf + ya.real_estate;
+                ya.cash_saving + ya.nps + ya.ppf_epf;
             const portfolio_inc = sum_assets(ya_inc);
             const portfolio_exc = sum_assets(ya_exc);
 
@@ -422,19 +412,18 @@ class FireReportServiceClass {
 
     // ── 6 Enrichment helpers ──────────────────────────────────────────────────
 
-    private extract_assets_breakdown(data: UserWithAllData): AssetsBreakdown {
+    private extract_assets_breakdown(data: UserFireReportData): AssetsBreakdown {
         const mf = this.to_num(data.user_assets?.mutual_funds);
         const stocks = this.to_num(data.user_assets?.stocks);
         const fd = this.to_num(data.user_assets?.fd);
-        const real_estate = this.to_num(data.user_assets?.real_estate);
         const gold = this.to_num(data.user_assets?.gold);
         const cash_saving = this.to_num(data.user_assets?.cash_saving);
         const total_liquid = mf + stocks + fd + cash_saving;
-        const total_illiquid = real_estate + gold;
-        return { mutual_funds: mf, stocks, fd, real_estate, gold, cash_saving, total_liquid, total_illiquid, total: total_liquid + total_illiquid };
+        const total_illiquid = gold;
+        return { mutual_funds: mf, stocks, fd, gold, cash_saving, total_liquid, total_illiquid, total: total_liquid + total_illiquid };
     }
 
-    private extract_liabilities(data: UserWithAllData): LiabilityItem[] {
+    private extract_liabilities(data: UserFireReportData): LiabilityItem[] {
         return (data.user_loan ?? []).map(l => ({
             loan_type: l.loan_type,
             outstanding: this.to_num(l.outstanding_amount),
@@ -443,7 +432,7 @@ class FireReportServiceClass {
         }));
     }
 
-    private extract_expense_breakdown(data: UserWithAllData): ExpenseBreakdown {
+    private extract_expense_breakdown(data: UserFireReportData): ExpenseBreakdown {
         const house = this.to_num(data.user_finance?.expense_house);
         const food = this.to_num(data.user_finance?.expense_food);
         const transportation = this.to_num(data.user_finance?.expense_transportation);
@@ -452,22 +441,59 @@ class FireReportServiceClass {
         return { house, food, transportation, others, total_monthly: Math.round(total_annual / 12), total_annual };
     }
 
-    private compute_insurance_summary(data: UserWithAllData, metrics: ComputedMetrics): InsuranceSummary {
-        const annual_income = metrics.monthly_income * 12;
-        const term_life_recommended = Math.max(
-            15 * annual_income,
-            metrics.total_liabilities + 10 * metrics.total_annual_expenses,
-        );
-        const health_recommended = Math.max(4 * metrics.monthly_income, 2_000_000);
+    private compute_insurance_summary(data: UserFireReportData, metrics: ComputedMetrics): InsuranceSummary {
         const term_life_have = this.to_num(data.user_insurance?.life_insurance);
         const health_have = this.to_num(data.user_insurance?.health_insurance);
+
+        // Edge case: if no valid DOB, skip recommendations
+        if (!data.dob) {
+            return {
+                term_life_have,
+                term_life_recommended: 0,
+                term_life_gap: 0,
+                health_have,
+                health_recommended: 0,
+                health_gap: 0,
+            };
+        }
+
+        // Extract current age
+        const current_age = this.extract_age(data.dob);
+        const annual_income = metrics.monthly_income * 12;
+
+        // ── Term Life Insurance: Age-based multiplier × annual_income ───────────
+        let term_multiplier = 10;
+        if (current_age >= 20 && current_age <= 30) {
+            term_multiplier = 30;
+        } else if (current_age > 30 && current_age <= 40) {
+            term_multiplier = 20;
+        } else if (current_age > 40 && current_age <= 50) {
+            term_multiplier = 15;
+        } else if (current_age > 50) {
+            term_multiplier = 10;
+        }
+        const term_life_recommended = Math.round(term_multiplier * annual_income);
+
+        // ── Health Insurance: Age-based fixed lakhs (convert to rupees) ────────
+        let health_lakhs = 10;
+        if (current_age >= 20 && current_age <= 30) {
+            health_lakhs = 10;
+        } else if (current_age > 30 && current_age <= 40) {
+            health_lakhs = 15;
+        } else if (current_age > 40 && current_age <= 50) {
+            health_lakhs = 25;
+        } else if (current_age > 50) {
+            health_lakhs = 40;
+        }
+        const health_recommended = Math.round(health_lakhs * 100_000);
+
         return {
             term_life_have,
-            term_life_recommended: Math.round(term_life_recommended),
-            term_life_gap: Math.max(0, Math.round(term_life_recommended - term_life_have)),
+            term_life_recommended,
+            term_life_gap: Math.max(0, term_life_recommended - term_life_have),
             health_have,
-            health_recommended: Math.round(health_recommended),
-            health_gap: Math.max(0, Math.round(health_recommended - health_have)),
+            health_recommended,
+            health_gap: Math.max(0, health_recommended - health_have),
         };
     }
 

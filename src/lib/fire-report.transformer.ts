@@ -61,7 +61,6 @@ export interface VelvetReportViewData {
     netWorthPage: {
         equityTrend: { q: string; value: number }[];
         debtTrend: { q: string; value: number }[];
-        realEstateTrend: { q: string; value: number }[];
         goldCashTrend: { q: string; value: number }[];
         pieData: { name: string; value: number; percentage: number }[];
     };
@@ -144,7 +143,6 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         { name: "Stocks/Equity", value: ab.stocks },
         { name: "Fixed Deposits", value: ab.fd },
         { name: "Gold", value: ab.gold },
-        { name: "Real Estate", value: ab.real_estate },
         { name: "Cash & Savings", value: ab.cash_saving },
     ];
     const bsLiabilities = liabilities.map(l => ({
@@ -164,19 +162,16 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
 
     const equity_now = ab.mutual_funds + ab.stocks;
     const debt_now = ab.fd;
-    const re_now = ab.real_estate;
     const gold_cash_now = ab.gold + ab.cash_saving;
     const total_assets_now = ab.total;
 
     const equityTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(equity_now * scale_factor(i)) }));
     const debtTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(debt_now * scale_factor(i)) }));
-    const realEstateTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(re_now * scale_factor(i)) }));
     const goldCashTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(gold_cash_now * scale_factor(i)) }));
 
     const safe_pct = (v: number) => total_assets_now > 0 ? Math.round((v / total_assets_now) * 100) : 0;
     const pieData = [
         { name: "Financial Assets", value: ab.total_liquid - ab.cash_saving, percentage: safe_pct(ab.total_liquid - ab.cash_saving) },
-        { name: "Real Estate", value: ab.real_estate, percentage: safe_pct(ab.real_estate) },
         { name: "Cash & Savings", value: ab.cash_saving, percentage: safe_pct(ab.cash_saving) },
         { name: "Gold", value: ab.gold, percentage: safe_pct(ab.gold) },
     ];
@@ -281,7 +276,6 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         netWorthPage: {
             equityTrend,
             debtTrend,
-            realEstateTrend,
             goldCashTrend,
             pieData,
         },

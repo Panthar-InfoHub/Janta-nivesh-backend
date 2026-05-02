@@ -615,7 +615,6 @@ function page4(data: VelvetReportViewData): string {
   const cats = [
     { label: "Equity (MF + Direct)", trend: netWorthPage.equityTrend, color: NAVY },
     { label: "Debt (FD + PPF/EPF)", trend: netWorthPage.debtTrend, color: GOLD },
-    { label: "Real Estate", trend: netWorthPage.realEstateTrend, color: GRAY },
     { label: "Gold & Cash", trend: netWorthPage.goldCashTrend, color: "#D1D5DB" },
   ] as const;
 

@@ -25,6 +25,26 @@ export type UserWithAllData = UserGetPayload<{
     }
 }>
 
+export type UserFireReportData = UserGetPayload<{
+    include: {
+        user_finance: true;
+        user_assets: {
+            select: {
+                id: true;
+                user_id: true;
+                mutual_funds: true;
+                stocks: true;
+                fd: true;
+                gold: true;
+                cash_saving: true;
+            };
+        };
+        user_insurance: true;
+        user_loan: true;
+        user_goals: true;
+    };
+}>;
+
 export const lumpsum_cart_zod_schema = z.object({
     amc_code: z.string().min(1),
     amc_name: z.string().min(1),
