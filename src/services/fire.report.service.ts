@@ -46,10 +46,20 @@ class FireReportServiceClass {
         const current_year = new Date().getFullYear();
         const loans = this.normalize_loans(data.user_loan ?? []);
 
-        const current_year_emi = loans.reduce((sum, loan) => {
-            const months_paid = Math.max(0, Math.min(12, loan.tenure_months));
-            return sum + (loan.monthly_emi * months_paid);
-        }, 0);
+        // Extract initial assets
+        const initial_assets: ProjectionAssets = {
+            mutual_funds: this.to_num(data.user_assets?.mutual_funds),
+            stocks: this.to_num(data.user_assets?.stocks),
+            fd: this.to_num(data.user_assets?.fd),
+            gold: this.to_num(data.user_assets?.gold),
+            cash_saving: this.to_num(data.user_assets?.cash_saving),
+            nps: 0,
+            ppf_epf: 0,
+        };
+
+        // Get year-0 portfolio values with asset growth and partial-year aware EMI
+        const { portfolio_value_inc, portfolio_value_exc, yearly_emi } =
+            this.compute_year_zero_portfolio(initial_assets, computed_metrics, goals, loans);
 
         const goal_commitment_annual = goals.reduce((sum, goal) =>
             current_year <= goal.target_year
@@ -58,16 +68,16 @@ class FireReportServiceClass {
             , 0);
 
         const total_expenses_exclude = computed_metrics.total_annual_expenses;
-        const total_expenses_include = total_expenses_exclude + current_year_emi;
+        const total_expenses_include = total_expenses_exclude + yearly_emi;
 
         const fire_number_exclude = (total_expenses_exclude + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
         const fire_number_include = (total_expenses_include + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
 
         const fire_percentage_exclude = fire_number_exclude > 0
-            ? (computed_metrics.net_worth * 100) / fire_number_exclude
+            ? (portfolio_value_exc * 100) / fire_number_exclude
             : 0;
         const fire_percentage_include = fire_number_include > 0
-            ? (computed_metrics.net_worth * 100) / fire_number_include
+            ? (portfolio_value_inc * 100) / fire_number_include
             : 0;
 
         return {
@@ -148,7 +158,7 @@ class FireReportServiceClass {
         const expense_others = this.to_num(finance?.expense_others);
 
         const total_assets = mutual_funds + stocks + fd + gold + cash_saving;
-        const liquid_assets = mutual_funds + stocks + fd + cash_saving;
+        const liquid_assets = mutual_funds + stocks + fd + cash_saving + gold;
         const illiquid_assets = gold;
 
         const total_liabilities = loans.reduce((sum, l) => sum + this.to_num(l.outstanding_amount), 0);
@@ -176,6 +186,90 @@ class FireReportServiceClass {
             illiquid_assets,
             total_monthly_emi,
             debt_to_income_ratio,
+        };
+    }
+
+    // Year-0 Portfolio Calculation (with asset growth + partial-year aware EMI)
+    private compute_year_zero_portfolio(
+        initial_assets: ProjectionAssets,
+        metrics: ComputedMetrics,
+        goals: NormalizedGoalWithSIP[],
+        loans: TrackedLoan[]
+    ): { portfolio_value_inc: number; portfolio_value_exc: number; yearly_emi: number } {
+        const current_year = new Date().getFullYear();
+        const g = FIRE_CONSTANTS.asset_growth;
+
+        // 1. Apply per-asset growth
+        let ya_inc: ProjectionAssets = {
+            mutual_funds: initial_assets.mutual_funds * (1 + g.mutual_funds),
+            stocks: initial_assets.stocks * (1 + g.stocks),
+            fd: initial_assets.fd * (1 + g.fd),
+            gold: initial_assets.gold * (1 + g.gold),
+            cash_saving: initial_assets.cash_saving * (1 + g.cash_saving),
+            nps: initial_assets.nps * (1 + g.nps),
+            ppf_epf: initial_assets.ppf_epf * (1 + g.ppf_epf),
+        };
+        let ya_exc: ProjectionAssets = {
+            mutual_funds: initial_assets.mutual_funds * (1 + g.mutual_funds),
+            stocks: initial_assets.stocks * (1 + g.stocks),
+            fd: initial_assets.fd * (1 + g.fd),
+            gold: initial_assets.gold * (1 + g.gold),
+            cash_saving: initial_assets.cash_saving * (1 + g.cash_saving),
+            nps: initial_assets.nps * (1 + g.nps),
+            ppf_epf: initial_assets.ppf_epf * (1 + g.ppf_epf),
+        };
+
+        // 2. Portfolio totals after growth
+        const sum_assets = (ya: ProjectionAssets) =>
+            ya.mutual_funds + ya.stocks + ya.fd + ya.gold +
+            ya.cash_saving + ya.nps + ya.ppf_epf;
+        const portfolio_inc = sum_assets(ya_inc);
+        const portfolio_exc = sum_assets(ya_exc);
+
+        // 3. Income and base expenses (no growth for year 0)
+        const annual_income_base = metrics.monthly_income * 12;
+        const annual_expenses_base = metrics.total_annual_expenses;
+
+        // 4. EMI — partial-year aware (for year 0, months_elapsed = 0)
+        let yearly_emi = 0;
+        for (const loan of loans) {
+            const months_remaining = loan.tenure_months;
+            const months_paid = Math.max(0, Math.min(12, months_remaining));
+            if (months_paid > 0) yearly_emi += loan.monthly_emi * months_paid;
+        }
+
+        // 5. Total expenses — the only hard branch between the two tracks
+        const total_expenses_inc = annual_expenses_base + yearly_emi;
+        const total_expenses_exc = annual_expenses_base;
+
+        // 6. Goal SIP commitment (same for both tracks)
+        const goal_commitment_annual = goals.reduce((sum, goal) =>
+            current_year <= goal.target_year
+                ? sum + goal.required_monthly_sip * 12
+                : sum
+            , 0);
+
+        // 7. Goal payouts (same for both tracks)
+        const goals_payout = goals.reduce((sum, goal) => {
+            const fv = this.calculate_goal_future_value(goal, current_year, current_year);
+            if (fv && fv > 0) {
+                return sum + fv;
+            }
+            return sum;
+        }, 0);
+
+        // 8. Savings per track
+        const savings_inc = annual_income_base - total_expenses_inc - goal_commitment_annual;
+        const savings_exc = annual_income_base - total_expenses_exc - goal_commitment_annual;
+
+        // 9. Portfolio value per track
+        const portfolio_value_inc = portfolio_inc + savings_inc - goals_payout;
+        const portfolio_value_exc = portfolio_exc + savings_exc - goals_payout;
+
+        return {
+            portfolio_value_inc,
+            portfolio_value_exc,
+            yearly_emi
         };
     }
 
