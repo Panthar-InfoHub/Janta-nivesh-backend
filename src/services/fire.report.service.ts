@@ -16,8 +16,10 @@ import {
 } from "../lib/fire-report.types.js";
 import { UserFireReportData, UserWithAllData } from "../lib/types.js";
 import { user_service } from "./user.service.js";
+import { user_finnsys_service } from "./user.finnsys.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
+import { FireReportFinalResponse } from "../lib/fire-report.types.js";
 
 class FireReportServiceClass {
 
@@ -99,7 +101,7 @@ class FireReportServiceClass {
         };
     }
 
-    async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportCoreResponse> {
+    async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportFinalResponse> {
         const data = await user_service.get_user_fire_report_data(user_id);
 
         if (!data) {
@@ -107,7 +109,57 @@ class FireReportServiceClass {
             throw new AppError("User data not found", 404, "USER_DATA_NOT_FOUND");
         }
 
-        const computed_metrics = this.compute_metrics(data);
+        // 1. Fetch Real Data for "Actual" track
+        let actual_mf = 0;
+        let actual_fd = 0;
+
+        try {
+            // Fetch Mutual Funds from Finnsys if credentials exist
+            if (data.usr && data.pwd) {
+                const finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(data.usr, data.pwd);
+                if (finnsys_res && finnsys_res.code === 1 && finnsys_res.results) {
+                    actual_mf = finnsys_res.results.reduce((sum: number, item: any) => sum + (parseFloat(String(item.currval).replace(/,/g, "")) || 0), 0);
+                }
+            }
+        } catch (error) {
+            logger.warn(`Failed to fetch Finnsys portfolio for user ${user_id}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        try {
+            // Fetch Fixed Deposits with FD_CREATED status
+            const fd_res = await user_service.get_user_fd_data({
+                user_id,
+                query: { status: "FD_CREATED" }
+            });
+            actual_fd = fd_res.fd_transactions.reduce((sum, tx) => sum + (parseFloat(String(tx.amount)) || 0), 0);
+        } catch (error) {
+            logger.warn(`Failed to fetch FD transactions for user ${user_id}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        // 2. Generate Projected Report (Onboarding data)
+        const projected = this.generate_report_with_assets(data, projection_years);
+
+        // 3. Generate Actual Report (Real transaction data for MF & FD)
+        const actual_assets: ProjectionAssets = {
+            mutual_funds: this.to_num(data.user_assets?.mutual_funds) + actual_mf,
+            fd: this.to_num(data.user_assets?.fd) + actual_fd,
+            stocks: this.to_num(data.user_assets?.stocks),
+            gold: this.to_num(data.user_assets?.gold),
+            cash_saving: this.to_num(data.user_assets?.cash_saving),
+            nps: 0,
+            ppf_epf: 0,
+        };
+
+        const actual = this.generate_report_with_assets(data, projection_years, actual_assets);
+
+        return {
+            actual,
+            projected,
+        };
+    }
+
+    private generate_report_with_assets(data: UserFireReportData, projection_years: number, override_assets?: ProjectionAssets): FireReportCoreResponse {
+        const computed_metrics = this.compute_metrics(data, override_assets);
 
         const monthly_expenses_total = computed_metrics.total_annual_expenses / 12;
 
@@ -117,7 +169,7 @@ class FireReportServiceClass {
             monthly_expenses_total,
         );
 
-        const projection = this.compute_projection(data, computed_metrics, goals, projection_years);
+        const projection = this.compute_projection(data, computed_metrics, goals, projection_years, override_assets);
 
         return {
             user_profile: {
@@ -128,7 +180,7 @@ class FireReportServiceClass {
             computed_metrics,
             goals,
             projection,
-            assets_breakdown: this.extract_assets_breakdown(data),
+            assets_breakdown: this.extract_assets_breakdown(data, override_assets),
             liabilities: this.extract_liabilities(data),
             expense_breakdown: this.extract_expense_breakdown(data),
             insurance_summary: this.compute_insurance_summary(data, computed_metrics),
@@ -138,17 +190,17 @@ class FireReportServiceClass {
     }
 
     // Compute Metrics 
-    private compute_metrics(data: UserFireReportData): ComputedMetrics {
+    private compute_metrics(data: UserFireReportData, override_assets?: ProjectionAssets): ComputedMetrics {
         const finance = data.user_finance;
         const assets = data.user_assets;
         const loans = data.user_loan ?? [];
 
         // User assets
-        const mutual_funds = this.to_num(assets?.mutual_funds);
-        const stocks = this.to_num(assets?.stocks);
-        const fd = this.to_num(assets?.fd);
-        const gold = this.to_num(assets?.gold);
-        const cash_saving = this.to_num(assets?.cash_saving);
+        const mutual_funds = override_assets ? override_assets.mutual_funds : this.to_num(assets?.mutual_funds);
+        const stocks = override_assets ? override_assets.stocks : this.to_num(assets?.stocks);
+        const fd = override_assets ? override_assets.fd : this.to_num(assets?.fd);
+        const gold = override_assets ? override_assets.gold : this.to_num(assets?.gold);
+        const cash_saving = override_assets ? override_assets.cash_saving : this.to_num(assets?.cash_saving);
 
         // User finance
         const annual_income = this.to_num(finance?.annual_income);
@@ -274,12 +326,12 @@ class FireReportServiceClass {
     }
 
     //  Projection ( per-asset growth, SIP goals, partial EMI — dual-track: emi_include / emi_exclude)
-    private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number): ProjectionRow[] {
+    private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number, override_assets?: ProjectionAssets): ProjectionRow[] {
         const current_year = new Date().getFullYear();
         const loans = this.normalize_loans(data.user_loan ?? []);
         const g = FIRE_CONSTANTS.asset_growth;
 
-        const initial_assets: ProjectionAssets = {
+        const initial_assets: ProjectionAssets = override_assets ?? {
             mutual_funds: this.to_num(data.user_assets?.mutual_funds),
             stocks: this.to_num(data.user_assets?.stocks),
             fd: this.to_num(data.user_assets?.fd),
@@ -506,12 +558,12 @@ class FireReportServiceClass {
 
     // ── 6 Enrichment helpers ──────────────────────────────────────────────────
 
-    private extract_assets_breakdown(data: UserFireReportData): AssetsBreakdown {
-        const mf = this.to_num(data.user_assets?.mutual_funds);
-        const stocks = this.to_num(data.user_assets?.stocks);
-        const fd = this.to_num(data.user_assets?.fd);
-        const gold = this.to_num(data.user_assets?.gold);
-        const cash_saving = this.to_num(data.user_assets?.cash_saving);
+    private extract_assets_breakdown(data: UserFireReportData, override_assets?: ProjectionAssets): AssetsBreakdown {
+        const mf = override_assets ? override_assets.mutual_funds : this.to_num(data.user_assets?.mutual_funds);
+        const stocks = override_assets ? override_assets.stocks : this.to_num(data.user_assets?.stocks);
+        const fd = override_assets ? override_assets.fd : this.to_num(data.user_assets?.fd);
+        const gold = override_assets ? override_assets.gold : this.to_num(data.user_assets?.gold);
+        const cash_saving = override_assets ? override_assets.cash_saving : this.to_num(data.user_assets?.cash_saving);
         const total_liquid = mf + stocks + fd + cash_saving;
         const total_illiquid = gold;
         return { mutual_funds: mf, stocks, fd, gold, cash_saving, total_liquid, total_illiquid, total: total_liquid + total_illiquid };

@@ -176,3 +176,8 @@ export interface FireReportCoreResponse {
     quarterly_simulation: QuarterlyPoint[];
     yearly_goal_requirements: YearlyGoalRequirement[];
 }
+
+export interface FireReportFinalResponse {
+    actual: FireReportCoreResponse;
+    projected: FireReportCoreResponse;
+}
