@@ -339,7 +339,7 @@ class JobServiceClass {
                                 is_default_selection, is_tax_saver, "updatedAt"
                             )
                             VALUES ${Prisma.join(rateValues)}
-                            ON CONFLICT (fd_product_id, payout_frequency, tenure_days, customer_type) 
+                            ON CONFLICT (fd_product_id, payout_frequency, tenure_label, customer_type) 
                             DO UPDATE SET 
                                 interest_rate = EXCLUDED.interest_rate,
                                 annualized_yield = EXCLUDED.annualized_yield, 

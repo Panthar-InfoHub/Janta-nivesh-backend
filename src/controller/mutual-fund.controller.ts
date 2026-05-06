@@ -241,7 +241,7 @@ class MutualFundControllerClass {
             const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt } = req.body;
             if (!amount || !mf_product_id || !sip_st_date || !sip_en_date || !sip_freq || !sip_day || !sip_amt) {
                 logger.warn("Missing required fields in add_to_sip_cart request body");
-                throw new AppError("Missing required fields: amount and mf_product_id are required", 400);
+                throw new AppError("Missing required fields: amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, and sip_amt are required", 400);
             }
 
             const mf_product = await mutual_funds_service.get_mutual_fund_by_id(mf_product_id);

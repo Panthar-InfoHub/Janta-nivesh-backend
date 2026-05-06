@@ -1,100 +1,80 @@
 model MfProduct {
-    id              String  @id @default(cuid())
-    scheme_id       String
-    isin            String?
-    mapping_code    String // Remember this is real schema code : Unique code needed for most MF apis and NSE Apis : It's just Finnsys mother fuckers that mess with this so complain to them
-    nse_scheme_code String?
-    platform_code   String?
+  id                 String                    @id @default(cuid())
+  scheme_id          String
+  isin               String?
+  mapping_code       String
+  scheme_name        String
+  amc_id             String?
+  amc_code           String?
+  amc_name           String?
+  asset_type         String?
+  scheme_type        String?
+  structure          String?
+  risk_name          String?
+  risk_level         Int?
+  latest_nav         Decimal?                  @db.Decimal(12, 4)
+  latest_nav_date    DateTime?
+  purchase_allowed   Boolean                   @default(false)
+  sip_allowed        Boolean                   @default(false)
+  redemption_allowed Boolean                   @default(false)
+  switch_allowed     Boolean                   @default(false)
+  maturity_date      DateTime?
+  nfo_end_date       DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @default(now()) @updatedAt
+  nse_scheme_code    String?
+  platform_code      String?
+  bundle_products    BundleProduct[]
+  metrics            MfMetrics?
+  nav_history        MfNavHistory[]
+  transaction_rules  MfSchemeTransactionRules?
 
-    scheme_name String
-
-    amc_id   String?
-    amc_code String?
-    amc_name String?
-
-    asset_type  String? // Hybrid, Equity, Debt, Liquid, etc
-    scheme_type String?
-    structure   String?
-    risk_name   String?
-    risk_level  Int?
-
-    latest_nav      Decimal?  @db.Decimal(12, 4)
-    latest_nav_date DateTime?
-
-    purchase_allowed   Boolean @default(false)
-    sip_allowed        Boolean @default(false)
-    redemption_allowed Boolean @default(false)
-    switch_allowed     Boolean @default(false)
-
-    maturity_date DateTime?
-    nfo_end_date  DateTime?
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    nav_history       MfNavHistory[]
-    transaction_rules MfSchemeTransactionRules?
-    metrics           MfMetrics?
-    bundle_products   BundleProduct[]
-
-    @@unique([scheme_id, isin, nse_scheme_code]) // Only for bulk upsert operations, individual fetches will use scheme_id or isin as needed
-    @@index([amc_code])
-    @@index([scheme_type])
-    @@index([latest_nav_date])
-    @@index([risk_level])
+  @@unique([scheme_id, isin, nse_scheme_code])
+  @@index([amc_code])
+  @@index([scheme_type])
+  @@index([latest_nav_date])
+  @@index([risk_level])
+  @@index([amc_name(ops: raw("gist_trgm_ops"))], map: "mf_amc_name_trgm_idx", type: Gist)
+  @@index([scheme_name(ops: raw("gist_trgm_ops"))], map: "mf_scheme_name_trgm_idx", type: Gist)
 }
 
 model MfNavHistory {
-    id            String @id @default(cuid())
-    mf_product_id String
-    scheme_id     String
+  id            String    @id @default(cuid())
+  mf_product_id String
+  scheme_id     String
+  nav           Decimal   @db.Decimal(12, 4)
+  nav_date      DateTime
+  daily_change  Float?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  mf_product    MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 
-    nav          Decimal  @db.Decimal(12, 4)
-    nav_date     DateTime
-    daily_change Float?
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
-
-    @@unique([mf_product_id, nav_date])
-    // @@index([scheme_id, nav_date])
-    @@index([mf_product_id, nav_date])
+  @@unique([mf_product_id, nav_date])
+  @@index([mf_product_id, nav_date])
 }
 
 model MfSchemeTransactionRules {
-    id            String @id @default(uuid())
-    mf_product_id String @unique
-
-    sip_allowed_dates Int[]
-    sip_frequencies   String[]
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+  id                String    @id @default(uuid())
+  mf_product_id     String    @unique
+  sip_allowed_dates Int[]
+  sip_frequencies   String[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+  mf_product        MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 }
 
 model MfMetrics {
-    id            String @id @default(uuid())
-    mf_product_id String @unique
+  id             String    @id @default(uuid())
+  mf_product_id  String    @unique
+  return_30d     Float?
+  return_90d     Float?
+  return_6m      Float?
+  return_1y      Float?
+  return_3y      Float?
+  nav_change_pct Float?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+  mf_product     MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 
-    return_30d     Float?
-    return_90d     Float?
-    return_6m      Float?
-    return_1y      Float?
-    return_3y      Float?
-    nav_change_pct Float?
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
-
-    @@index([mf_product_id])
+  @@index([mf_product_id])
 }

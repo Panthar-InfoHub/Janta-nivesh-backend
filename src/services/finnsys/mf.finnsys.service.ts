@@ -46,7 +46,7 @@ class MutualFundFinnsysServiceClass {
      * @param payload - Purchase payload with transaction details
      * @returns API response from Finnsys
      */
-    purchase_lumpsum_finnsys = async (payload: PurchasePayload) => {
+    purchase_finnsys = async (payload: PurchasePayload) => {
         try {
             logger.info(`Submitting purchase order to Finnsys. Transactions: ${payload.data.transaction_details.length}`);
             // logger.debug(`Purchase payload ==> `, payload);

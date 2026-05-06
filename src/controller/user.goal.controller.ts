@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { user_goal_zod_schema, UserGoalInput } from "../lib/zod-schemas/goal.schema.js";
+import { goal_map_res, goal_map_zod_schema, GoalMapInput, user_goal_zod_schema, UserGoalInput } from "../lib/zod-schemas/goal.schema.js";
 import logger from "../middleware/logger.js";
 import { user_goal_service } from "../services/onboarding/user.goal.service.js";
 import AppError from "../middleware/error.middleware.js";
@@ -103,6 +103,60 @@ class UserGoalControllerClass {
 
         } catch (error) {
             logger.error("Error in Delete goal api:", error);
+            next(error);
+        }
+    }
+
+    map_goal = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            const goal_map_data: GoalMapInput = goal_map_zod_schema.parse(req.body);
+
+            logger.debug(`Mapping scheme to goal for User ID: ${user.id} with data ==> `, goal_map_data);
+            const { goal_id, map_data } = goal_map_data;
+
+            const goal_res: goal_map_res[] = [];
+
+            for (const mapping of map_data) {
+                logger.debug(`Mapping scheme_id ${mapping.scheme_id} with folio ${mapping.folio} to goal_id ${goal_id} for user ${user.id}`);
+                const result = await user_goal_service.map_scheme_to_goal(user.log!, user.pwd!, goal_map_data.goal_id, "ADD", {
+                    folio: mapping.folio,
+                    scheme_id: mapping.scheme_id
+                });
+
+                if (result.code === 0) {
+                    logger.warn(`Scheme ${mapping.scheme_id} already mapped`)
+                    goal_res.push({
+                        code: 0,
+                        message: `Scheme ${mapping.scheme_id} already mapped`,
+                        folio: mapping.folio,
+                        scheme_id: mapping.scheme_id
+                    })
+                }
+                else if (result.code === 1) {
+                    logger.info(`Scheme ${mapping.scheme_id} mapped successfully`)
+                    goal_res.push({
+                        code: 1,
+                        message: `Scheme ${mapping.scheme_id} mapped successfully`,
+                        folio: mapping.folio,
+                        scheme_id: mapping.scheme_id
+                    })
+                } else {
+                    logger.error(`Failed to map scheme ${mapping.scheme_id}. Response from FinSys ==> `, result);
+                    throw new AppError(`Failed to map scheme ${mapping.scheme_id} to goal`, 500, "GOAL_MAPPING_FAILED", result);
+                }
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Goal mapped successfully",
+                data: goal_res
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in Map goal api:", error);
             next(error);
         }
     }

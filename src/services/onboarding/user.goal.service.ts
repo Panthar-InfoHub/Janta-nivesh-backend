@@ -201,6 +201,32 @@ class UserGoalServiceClass {
             },
         });
     }
+
+
+    map_scheme_to_goal = async (user_log: string, user_pwd: string, goal_id: number, operation: "ADD" | "DEL", data: {
+        folio: string,
+        scheme_id: string,
+    }) => {
+        try {
+            const response = await axios.post(this.finsys_api, null, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: "goalmapping",
+                    todo: operation === "ADD" ? 1 : 2,
+                    gid: goal_id,
+                    folio: data.folio,
+                    scheme_id: data.scheme_id,
+                }
+            });
+
+            logger.debug(`FinSys map_scheme_to_goal response for goal_id ${goal_id} ==> `, response.data);
+            return response.data;
+
+        } catch (error) {
+            throw error;
+        }
+    }
 }
 
 

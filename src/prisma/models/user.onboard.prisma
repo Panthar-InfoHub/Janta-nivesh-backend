@@ -1,117 +1,93 @@
 model UserFinance {
-    id                     String  @id @default(cuid())
-    user_id                String  @unique
-    annual_income          Decimal @default(0.00) @db.Decimal(12, 2)
-    expense_house          Decimal @default(0.00) @db.Decimal(12, 2)
-    expense_food           Decimal @default(0.00) @db.Decimal(12, 2)
-    expense_transportation Decimal @default(0.00) @db.Decimal(12, 2)
-    expense_others         Decimal @default(0.00) @db.Decimal(12, 2)
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                     String   @id @default(cuid())
+  user_id                String   @unique
+  annual_income          Decimal  @default(0.00) @db.Decimal(12, 2)
+  expense_house          Decimal  @default(0.00) @db.Decimal(12, 2)
+  expense_food           Decimal  @default(0.00) @db.Decimal(12, 2)
+  expense_transportation Decimal  @default(0.00) @db.Decimal(12, 2)
+  expense_others         Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now()) @updatedAt
+  user                   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model UserBankDetails {
-    id           String  @id @default(cuid())
-    user_id      String
-    account_no   String
-    ifsc_code    String
-    bank_name    String?
-    account_type String // SB, CA, NRE, NRO
-    is_primary   Boolean @default(false)
+  id           String   @id @default(cuid())
+  user_id      String
+  account_no   String
+  ifsc_code    String
+  bank_name    String?
+  account_type String
+  is_primary   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-    @@unique([user_id, account_no], name: "user_account_no_idx")
+  @@unique([user_id, account_no], name: "user_account_no_idx")
 }
 
 model UserAssets {
-    id           String  @id @default(cuid())
-    user_id      String  @unique
-    mutual_funds Decimal @default(0.00) @db.Decimal(12, 2)
-    stocks       Decimal @default(0.00) @db.Decimal(12, 2)
-    fd           Decimal @default(0.00) @db.Decimal(12, 2)
-    real_estate  Decimal @default(0.00) @db.Decimal(12, 2)
-    gold         Decimal @default(0.00) @db.Decimal(12, 2)
-    cash_saving  Decimal @default(0.00) @db.Decimal(12, 2)
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  user_id      String   @unique
+  stocks       Decimal  @default(0.00) @db.Decimal(12, 2)
+  fd           Decimal  @default(0.00) @db.Decimal(12, 2)
+  real_estate  Decimal  @default(0.00) @db.Decimal(12, 2)
+  gold         Decimal  @default(0.00) @db.Decimal(12, 2)
+  cash_saving  Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+  mutual_funds Decimal  @default(0.00) @db.Decimal(12, 2)
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model UserInsurance {
-    id               String  @id @default(cuid())
-    user_id          String  @unique
-    life_insurance   Decimal @default(0.00) @db.Decimal(12, 2)
-    health_insurance Decimal @default(0.00) @db.Decimal(12, 2)
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  user_id          String   @unique
+  life_insurance   Decimal  @default(0.00) @db.Decimal(12, 2)
+  health_insurance Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model UserLoan {
-    id                 String  @id @default(cuid())
-    user_id            String
-    loan_type          String
-    loan_name          String?
-    outstanding_amount Decimal @default(0.00) @db.Decimal(12, 2)
-    monthly_emi        Decimal @default(0.00) @db.Decimal(12, 2)
-    tenure_months      Int
+  id                 String   @id @default(cuid())
+  user_id            String
+  loan_type          String
+  loan_name          String?
+  outstanding_amount Decimal  @default(0.00) @db.Decimal(12, 2)
+  monthly_emi        Decimal  @default(0.00) @db.Decimal(12, 2)
+  tenure_months      Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-    @@unique([user_id, loan_type], name: "user_loan_type_idx")
+  @@unique([user_id, loan_type], name: "user_loan_type_idx")
 }
 
 model UserGoals {
-    id                   String  @id @default(cuid())
-    user_id              String
-    goal_id              Int? // Finsys Goal ID
-    goal_type_id         Int // 1 - child education, 2 - child marriage, 3 - retirement, 4 - buying a car or any wealth goal
-    inflation_rate       Int
-    return_rate          Int
-    current_saved_amount Decimal @default(0.00) @db.Decimal(12, 2)
+  id                      String   @id @default(cuid())
+  user_id                 String
+  goal_id                 Int?
+  goal_type_id            Int
+  inflation_rate          Int
+  return_rate             Int
+  current_saved_amount    Decimal  @default(0.00) @db.Decimal(12, 2)
+  goal_name               String?
+  goal_item_id            Int?
+  goal_item_name          String?
+  child_name              String?
+  child_age               Int?
+  years_left              Int?
+  current_goal_cost       Decimal? @db.Decimal(12, 2)
+  current_age             Int?
+  retirement_age          Int?
+  life_expectancy         Int?
+  current_monthly_expense Decimal? @db.Decimal(12, 2)
+  post_retirement_return  Decimal? @db.Decimal(12, 2)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now()) @updatedAt
+  user                    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-    goal_name      String? // in case goal type id is 4
-    goal_item_id   Int? // 1-5 | 5 - othe , 2 - home, 3 -r | 1 - car vacactions, 4 - Celebrations
-    goal_item_name String? // in case above is 5 just for db and ux purpose
-
-    // In case of goal_type is 1 or 2
-    child_name String?
-    child_age  Int?
-    years_left Int?
-
-    current_goal_cost Decimal? @db.Decimal(12, 2)
-
-    // In case of goal_type is 3
-    current_age             Int?
-    retirement_age          Int?
-    life_expectancy         Int?
-    current_monthly_expense Decimal? @db.Decimal(12, 2)
-    post_retirement_return  Decimal? @db.Decimal(12, 2)
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-    @@index([user_id, goal_type_id], name: "user_goal_type_idx")
+  @@index([user_id, goal_type_id], map: "user_goal_type_idx")
 }

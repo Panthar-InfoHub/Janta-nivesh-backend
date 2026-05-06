@@ -428,7 +428,7 @@ class MutualFundServiceClass {
         logger.info(`Executing Lumpsum Purchase for User ${user_id}. Payload ==> `, payload);
 
         // 6. Submit to Finnsys API
-        const finnsys_response = await mutual_fund_finnsys_service.purchase_lumpsum_finnsys(payload);
+        const finnsys_response = await mutual_fund_finnsys_service.purchase_finnsys(payload);
         const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
 
 
@@ -474,7 +474,7 @@ class MutualFundServiceClass {
 
         logger.info(`Executing SIP Purchase for User ${user_id}. Payload ==> `, payload);
 
-        const finnsys_response = await mutual_fund_finnsys_service.purchase_lumpsum_finnsys(payload);
+        const finnsys_response = await mutual_fund_finnsys_service.purchase_finnsys(payload);
         const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
 
 

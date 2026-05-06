@@ -41,4 +41,22 @@ export const user_goal_zod_schema = z.discriminatedUnion("goal_type_id", [
     itemGoalSchema
 ]);
 
+
+export const goal_map_zod_schema = z.object({
+    goal_id: z.number(),
+    map_data: z.array(z.object({
+        folio: z.string(),
+        scheme_id: z.string()
+    })).min(1)
+})
+
+export type goal_map_res = {
+    folio: string,
+    scheme_id: string,
+    code: number,
+    message: string
+}
+
+export type GoalMapInput = z.infer<typeof goal_map_zod_schema>;
+
 export type UserGoalInput = z.infer<typeof user_goal_zod_schema>;
