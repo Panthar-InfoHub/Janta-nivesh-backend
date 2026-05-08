@@ -2,6 +2,7 @@ model MfProduct {
   id                 String                    @id @default(cuid())
   scheme_id          String
   isin               String?
+  img_url            String?                   @default("")
   mapping_code       String
   scheme_name        String
   amc_id             String?
@@ -54,13 +55,14 @@ model MfNavHistory {
 }
 
 model MfSchemeTransactionRules {
-  id                String    @id @default(uuid())
-  mf_product_id     String    @unique
-  sip_allowed_dates Int[]
-  sip_frequencies   String[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @default(now()) @updatedAt
-  mf_product        MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+  id                    String    @id @default(uuid())
+  mf_product_id         String    @unique
+  sip_allowed_dates     Int[]
+  sip_frequencies       String[]
+  min_investment_amount Decimal   @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+  mf_product            MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 }
 
 model MfMetrics {

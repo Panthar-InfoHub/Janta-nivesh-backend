@@ -23,6 +23,7 @@ import { webhook_router } from "./routes/webhook.router.js"
 import { fd_router } from "./routes/fd.router.js"
 import { bundle_router } from "./routes/bundle.router.js"
 import { frontend_router } from "./routes/frontend.router.js"
+import { migration_router } from "./routes/migration.router.js"
 
 
 //Configurations
@@ -49,6 +50,7 @@ if (process.env.ENVIRONMENT === "dev") {
 //Routes
 
 app.use("/api/v1/auth", auth_router)
+// app.use("/api/v1/migration", migration_router)
 app.use("/api/v1/user", user_router)
 app.use("/api/v1/jobs", job_router)
 app.use("/api/v1/frontend", frontend_router)

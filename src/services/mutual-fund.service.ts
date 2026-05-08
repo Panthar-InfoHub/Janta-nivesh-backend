@@ -228,7 +228,8 @@ class MutualFundServiceClass {
                 transaction_rules: {
                     select: {
                         sip_allowed_dates: true,
-                        sip_frequencies: true
+                        sip_frequencies: true,
+                        min_investment_amount: true
                     }
                 }
             }
