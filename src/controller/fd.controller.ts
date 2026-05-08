@@ -188,8 +188,18 @@ class FdControllerClass {
             logger.info(`Creating purchase URL for User ID: ${user_id}...`);
 
             const VALID_REDIRECT_STATES = {
-                "PAYMENT": ["PAYMENT_PENDING", "PAYMENT_FAILED"],
-                "VKYC": ["VKYC_PENDING", "VKYC_FAILED"]
+                "PAYMENT": [
+                    "INITIATED",
+                    "ONBOARDING_COMPLETED",
+                    "PAYMENT_PENDING",
+                    "PAYMENT_FAILED",
+                    "FD_CREATED"  // Can retry/recover payment even after FD created
+                ],
+                "VKYC": [
+                    "PAYMENT_SUCCESS",
+                    "VKYC_PENDING",
+                    "VKYC_FAILED"
+                ]
             };
 
             const { fd_trans_id, event } = req.body;

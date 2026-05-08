@@ -37,12 +37,16 @@ class JobControllerClass {
 
             logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
             logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`);
-            const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
-                email: env.BLOSTEM_USERNAME,
-                password: env.BLOSTEM_DASH_PASSWORD,
-            },
-            );
-
+            const res = env.ENVIRONMENT === "dev"
+                ? await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_DASH_PASSWORD,
+                })
+                : await axios.post(`https://binvestt-api.blostem.com/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_PASSWORD,
+                },
+                );
             logger.debug("Blostem login response: ", res.data);
             return res.data.data.access.token;
         } catch (error: any) {
