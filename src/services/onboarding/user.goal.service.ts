@@ -120,6 +120,21 @@ class UserGoalServiceClass {
         return res.data;
     }
 
+    get_goal_by_id = async (user: any, goal_record_id: string) => {
+        const goal = await db.userGoals.findFirst({
+            where: {
+                user_id: user.id,
+                id: goal_record_id,
+            },
+        });
+
+        if (!goal) {
+            throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
+        }
+
+        return goal;
+    }
+
 
     delete_goal = async (user: any, goal_record_id: string) => {
         const existing_goal = await db.userGoals.findFirst({
@@ -221,6 +236,26 @@ class UserGoalServiceClass {
             });
 
             logger.debug(`FinSys map_scheme_to_goal response for goal_id ${goal_id} ==> `, response.data);
+            return response.data;
+
+        } catch (error) {
+            throw error;
+        }
+    }
+
+
+    get_goal_scheme_mappings = async (user_log: string, user_pwd: string, goal_id: number) => {
+        try {
+            const response = await axios.post(this.finsys_api, null, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: "goalinvestments",
+                    gid: goal_id,
+                }
+            });
+
+            logger.debug(`FinSys get_goal_scheme_mappings response for goal_id ${goal_id} ==> `, response.data);
             return response.data;
 
         } catch (error) {

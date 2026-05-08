@@ -247,7 +247,7 @@ class UserFinanceControllerClass {
                 xirr: item.xirr,
                 current_nav: this.toNumber(item.currnav),
                 avg_nav: this.toNumber(item.avgcost),
-                folio: item.folio,
+                folio: item.actualfolio,
                 balance_units: item.balunits
             })) : [];
 

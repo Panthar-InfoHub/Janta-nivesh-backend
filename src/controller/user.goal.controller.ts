@@ -160,6 +160,53 @@ class UserGoalControllerClass {
             next(error);
         }
     }
+
+    get_goal_by_id = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            const goal_id = req.params.id as string;
+
+            logger.debug(`Getting goal details for User ID: ${user.id} with goal_id ==> ${goal_id}`);
+
+            const goal = await user_goal_service.get_goal_by_id(user, goal_id);
+
+            const goal_schemes = await user_goal_service.get_goal_scheme_mappings(user.log!, user.pwd!, Number(goal.goal_id));
+
+            let schemes = [];
+
+            if (goal_schemes && (goal_schemes.code != 1 && goal_schemes.code != 0)) {
+                logger.error(`Failed to get goal scheme mappings for goal_id ${goal_id}. Response from FinSys ==> `, goal_schemes);
+                throw new AppError(`Failed to get goal scheme mappings for goal_id ${goal_id}`, 500, "GET_GOAL_SCHEMES_FAILED", goal_schemes);
+            }
+
+            schemes = goal_schemes?.results?.map((scheme: any) => ({
+                scheme_id: scheme.schemeid,
+                folio: scheme.folio,
+                actualfolio: scheme.actualfolio,
+                scheme_name: scheme.schemename,
+                bal_units: scheme.balunits,
+                nav: scheme.nav,
+                current_val: scheme.currval,
+            }));
+
+            const response = {
+                ...goal,
+                schemes: schemes ?? []
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Goal mapped successfully",
+                data: response
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in Map goal api:", error);
+            next(error);
+        }
+    }
 }
 
 export const user_goal_controller = new UserGoalControllerClass();
