@@ -42,8 +42,8 @@ class JobControllerClass {
                     email: env.BLOSTEM_USERNAME,
                     password: env.BLOSTEM_DASH_PASSWORD,
                 })
-                : await axios.post(`https://binvestt-api.blostem.com/partner/login`, {
-                    email: env.BLOSTEM_USERNAME,
+                : await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                    email: env.BLOSTEM_USERNAME, //nitin@adgrid.ai
                     password: env.BLOSTEM_PASSWORD,
                 },
                 );
