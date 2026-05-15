@@ -18,6 +18,13 @@ function fontB64(filename: string): string {
   return buf.toString("base64");
 }
 
+function logoB64(filename: string): string {
+  const buf = fs.readFileSync(path.join(__dirname, "fonts", filename));
+  return `data:image/png;base64,${buf.toString("base64")}`;
+}
+
+const logoData = logoB64("logo.png");
+
 const fmt_cr = (v: number): string =>
   v >= 10_000_000 ? `${(v / 10_000_000).toFixed(2)} Cr` : `${(v / 100_000).toFixed(1)} L`;
 
@@ -33,7 +40,9 @@ function header(quarter: string, name: string, age: number, city: string): strin
   return `
     <div class="page-header">
       <div class="header-left">
-        <div class="logo">VI</div>
+        <div class="logo">
+        <img src="${logoData}" alt="Logo" style="width: 100%; height: 100%; object-fit: cover;"> </img>
+        </div>
         <div>
           <div class="brand-name">Velvet Investing</div>
           <div class="brand-sub">Wealth Health Report &bull; ${quarter}</div>
@@ -84,9 +93,10 @@ function sparkline(
   const dots = data.map((d, i) =>
     `<circle cx="${px(i).toFixed(1)}" cy="${py(d.value).toFixed(1)}" r="3" fill="${color}"/>`
   ).join("");
-  const xLabels = data.map((d, i) =>
-    `<text x="${px(i).toFixed(1)}" y="${height - 4}" text-anchor="middle" font-size="8" fill="${GRAY}">${d.label}</text>`
-  ).join("");
+  const xLabels = data.map((d, i) => {
+    const anchor = i === 0 ? "start" : i === data.length - 1 ? "end" : "middle";
+    return `<text x="${px(i).toFixed(1)}" y="${height - 4}" text-anchor="${anchor}" font-size="8" fill="${GRAY}">${d.label}</text>`;
+  }).join("");
   const yLabels = showYAxis
     ? [...yTicks].reverse().map((tv, i) => {
       const y = (TOP + i * (chartH / 2)).toFixed(1);
@@ -843,12 +853,12 @@ function page6(data: VelvetReportViewData): string {
       </div>
 
       <div style="margin:16px">
-        <div class="fn" >&bull; Term Life = Max(15&times; Annual Income, Total Liabilities + 10yr Family Expenses)</div>
-        <div class="fn" >&bull; Health = 4&times; Annual Income or ₹20L minimum for family</div>
-        <div class="fn" ><b>26. Term Life:</b> Pure life cover without investment component</div>
-        <div class="fn" ><b>27. Health Insurance:</b> Medical expense coverage for hospitalization</div>
-        <div class="fn" ><b>28. Super Top-up:</b> Additional health coverage after base sum exhausts</div>
-        <div class="fn" ><b>29. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases</div>
+        <div class="fn" >&bull; Term Life = Age-based income multiplier (10x - 30x)</div>
+        <div class="fn" >&bull; Health = Age-based minimum cover (₹10L - ₹40L)</div>
+        <div class="fn" ><b>26. Term Life Recommended:</b> Coverage based on age: 30x Annual Income (Age 20-30), 20x (31-40), 15x (41-50), and 10x (50+).</div>
+        <div class="fn" ><b>27. Health Recommended:</b> Coverage based on age: ₹10L (Age 20-30), ₹15L (31-40), ₹25L (41-50), and ₹40L (51+).</div>
+        <div class="fn" ><b>28. Super Top-up:</b> Additional health coverage after base sum exhausts. Recommendation assumes family floater cover.</div>
+        <div class="fn" ><b>29. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases. Recommended at ₹50L standard.</div>
       </div>
 
       <div class="summary-box" style="margin:12px 0">

@@ -9,10 +9,6 @@ interface PortfolioData {
         return_percent: number | null;
     };
     mutual_funds: any[];
-    user_fd: {
-        fd_transactions: any[];
-        pagination: any;
-    };
 }
 
 interface MonthlyMetric {
@@ -31,6 +27,7 @@ interface AverageSavingsPattern {
 interface SpendingCategory {
     amount: number;
     percent: number;
+    breakdown?: Record<string, { amount: number; percent: number }>;
 }
 
 interface InvestmentRateResponse {
@@ -56,13 +53,12 @@ class UserSavingsServiceClass {
         for (let i = 0; i < months; i++) {
             const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
             const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-            const monthLabel = date.toLocaleString("en-US", { month: "short", year: "numeric" });
-            const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+            const monthLabel = date.toLocaleString("en-US", { month: "short", year: "2-digit" });
 
             result.push({
                 start: date,
                 end: new Date(nextMonth.getTime() - 1),
-                label: `${monthLabel} ${date.getFullYear()}`,
+                label: `${monthLabel}`,
             });
         }
 
@@ -84,7 +80,7 @@ class UserSavingsServiceClass {
      * Get month key for grouping (YYYY-MM format)
      */
     private getMonthKey(date: Date): string {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        return date.toLocaleString("en-US", { month: "short", year: "2-digit" });
     }
 
     /**
@@ -105,23 +101,28 @@ class UserSavingsServiceClass {
         const fd_transactions = await db.fdTransaction.findMany({
             where: {
                 user_id,
-                payment_completed_at: {
+                fd_issued_at: {
                     gte: months[months.length - 1].start,
                     lte: months[0].end,
                 },
-                status: "FD_CREATED",
+                // status: "FD_CREATED",
+                status: { in: ["FD_CREATED", "MATURED"] }
             },
             select: {
                 amount: true,
-                payment_completed_at: true,
+                fd_issued_at: true,
             },
         });
 
+        console.log("fd in service layer ==> ", fd_transactions)
         // Group by month
         fd_transactions.forEach((txn) => {
-            if (txn.payment_completed_at) {
-                const monthKey = this.getMonthKey(txn.payment_completed_at);
+            console.log("Fd each transaction ==> ", txn)
+            if (txn.fd_issued_at) {
+                const monthKey = this.getMonthKey(txn.fd_issued_at);
+                console.log("Month key ==> ", monthKey)
                 const current = fd_by_month.get(monthKey) || 0;
+                console.log("Current value key ==> ", current)
                 fd_by_month.set(monthKey, current + this.toNumber(txn.amount));
             }
         });
@@ -174,10 +175,6 @@ class UserSavingsServiceClass {
             where: { user_id },
         });
 
-        const user_assets = await db.userAssets.findUnique({
-            where: { user_id },
-        });
-
         if (!user_finance) {
             logger.warn(`No financial data found for user ${user_id}`);
             throw new Error("User financial data not found");
@@ -201,10 +198,10 @@ class UserSavingsServiceClass {
 
         // Aggregate investments by month
         const fd_by_month = await this.aggregateFdByMonth(user_id, last_months);
-        logger.debug("FD investments by month:", Array.from(fd_by_month.entries()));
+        // logger.debug("FD investments by month:", Array.from(fd_by_month.entries()));
 
         const mf_by_month = this.aggregateMfByMonth(portfolio_data.mutual_funds, last_months);
-        logger.debug("MF investments by month:", Array.from(mf_by_month.entries()));
+        // logger.debug("MF investments by month:", Array.from(mf_by_month.entries()));
 
         // Build monthly trend data
         const monthly_trends: MonthlyMetric[] = [];
@@ -248,13 +245,59 @@ class UserSavingsServiceClass {
         // Calculate spending categories
         const total_current_portfolio = this.toNumber(portfolio_data.investment_data.current_value);
         const total_expenses_annual = annual_expenses;
+
+        // Fetch current active FD total for breakdown
+        const active_fds = await db.fdTransaction.findMany({
+            where: {
+                user_id,
+                status: { in: ["FD_CREATED", "MATURED"] }
+            },
+            select: { amount: true }
+        });
+        const current_fd_value = active_fds.reduce((sum, fd) => sum + this.toNumber(fd.amount), 0);
+        const current_mf_value = total_current_portfolio - current_fd_value > 0 ? total_current_portfolio - current_fd_value : total_current_portfolio;
+
         const total_savings_annual =
             annual_income - annual_expenses - (total_current_portfolio || portfolio_data.investment_data.invested_amount);
 
         const total_allocation = total_current_portfolio + total_expenses_annual + total_savings_annual;
-        let spending_categories = {
-            investments: { amount: Math.round(total_current_portfolio), percent: 0 },
-            essentials: { amount: Math.round(total_expenses_annual), percent: 0 },
+        let spending_categories: InvestmentRateResponse["spending_categories"] = {
+            investments: {
+                amount: Math.round(total_current_portfolio),
+                percent: 0,
+                breakdown: {
+                    mutual_funds: {
+                        amount: Math.round(current_mf_value),
+                        percent: total_current_portfolio > 0 ? Math.round((current_mf_value / total_current_portfolio) * 100) : 0
+                    },
+                    fixed_deposits: {
+                        amount: Math.round(current_fd_value),
+                        percent: total_current_portfolio > 0 ? Math.round((current_fd_value / total_current_portfolio) * 100) : 0
+                    }
+                }
+            },
+            essentials: {
+                amount: Math.round(total_expenses_annual),
+                percent: 0,
+                breakdown: {
+                    house: {
+                        amount: Math.round(this.toNumber(user_finance.expense_house) * 12),
+                        percent: annual_expenses > 0 ? Math.round((this.toNumber(user_finance.expense_house) * 12 / annual_expenses) * 100) : 0
+                    },
+                    food: {
+                        amount: Math.round(this.toNumber(user_finance.expense_food) * 12),
+                        percent: annual_expenses > 0 ? Math.round((this.toNumber(user_finance.expense_food) * 12 / annual_expenses) * 100) : 0
+                    },
+                    transportation: {
+                        amount: Math.round(this.toNumber(user_finance.expense_transportation) * 12),
+                        percent: annual_expenses > 0 ? Math.round((this.toNumber(user_finance.expense_transportation) * 12 / annual_expenses) * 100) : 0
+                    },
+                    others: {
+                        amount: Math.round(this.toNumber(user_finance.expense_others) * 12),
+                        percent: annual_expenses > 0 ? Math.round((this.toNumber(user_finance.expense_others) * 12 / annual_expenses) * 100) : 0
+                    }
+                }
+            },
             savings: { amount: Math.round(total_savings_annual), percent: 0 },
         };
 

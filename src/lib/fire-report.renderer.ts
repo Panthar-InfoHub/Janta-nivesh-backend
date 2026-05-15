@@ -26,7 +26,7 @@ export async function renderPDF(htmlContent: string): Promise<Buffer> {
     try {
         // Use a larger viewport for clearer chart/text rasterization before PDF print.
         await page.setViewport({ width: 1200, height: 1700, deviceScaleFactor: 1.5 });
-        await page.setContent(htmlContent, { waitUntil: "networkidle0", timeout: 30000 });
+        await page.setContent(htmlContent, { waitUntil: "domcontentloaded", timeout: 30000 });
         // Wait for all custom fonts (base64 @font-face) to be fully loaded before printing.
         // window.__fontsReady is set by a <script> in the HTML once document.fonts.ready resolves.
         await page.waitForFunction("window.__fontsReady === true", { timeout: 10000 });

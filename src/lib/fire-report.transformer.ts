@@ -1,3 +1,4 @@
+import logger from "../middleware/logger.js";
 import { FireReportCoreResponse, YearlyGoalRequirement } from "./fire-report.types.js";
 
 // ─── View-model interfaces (consumed by the TSX report component + PDF) ───────
@@ -103,6 +104,7 @@ export interface VelvetReportViewData {
 export function to_report_view_data(report: FireReportCoreResponse): VelvetReportViewData {
     const { computed_metrics: m, projection, quarterly_simulation: qs, goals, assets_breakdown: ab, liabilities, expense_breakdown: eb, insurance_summary: ins } = report;
 
+    logger.debug("Quarterly Simulation Data:", qs);
     // ── Quarter labels from simulation ────────────────────────────────────────
     const currentQuarter = qs[5]?.quarter ?? "Q1 2026";
     const previousQuarter = qs[4]?.quarter ?? "Q4 2025";
@@ -151,7 +153,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         emi: l.monthly_emi,
         tenure_months: l.tenure_months,
     }));
-    const qoqNwPct = netWorthPrevQ > 0
+    const qoqNwPct = (netWorthPrevQ > 0 && netWorth !== netWorthPrevQ)
         ? ((netWorth - netWorthPrevQ) / netWorthPrevQ * 100).toFixed(1)
         : "0.0";
 
@@ -211,8 +213,9 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     }));
 
     // ── QoQ Changes ───────────────────────────────────────────────────────────
-    const cur = qs[5];
-    const prev = qs[4];
+    const cur = qs[qs.length - 1];
+    const prev = qs[qs.length - 2];
+    logger.debug(`Current ${cur} and prev quarter nw ${prev}`)
     const pct_change = (c: number, p: number) =>
         p > 0 ? ((c - p) / p * 100).toFixed(1) : "0.0";
     const qoqChanges = {

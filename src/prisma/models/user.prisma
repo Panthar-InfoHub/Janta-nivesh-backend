@@ -1,18 +1,18 @@
 model User {
-  id                String            @id @default(uuid())
+  id                String                 @id @default(uuid())
   full_name         String?
-  inv_id            Int?              @unique
-  usr               String?           @unique
+  inv_id            Int?                   @unique
+  usr               String?                @unique
   pwd               String?
-  email             String?           @unique
-  phone_no          String?           @unique
+  email             String?                @unique
+  phone_no          String?                @unique
   city              String?
   dob               DateTime?
   fcm_token         String?
   meta_data         Json?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @default(now()) @updatedAt
-  nse_client_code   String?           @unique
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @default(now()) @updatedAt
+  nse_client_code   String?                @unique
   refresh_token     String?
   mpin              String?
   fds               FdTransaction[]
@@ -24,4 +24,19 @@ model User {
   user_goals        UserGoals[]
   user_insurance    UserInsurance?
   user_loan         UserLoan[]
+  net_worth_history UserNetWorthSnapshot[]
+}
+
+model UserNetWorthSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  netWorth    Float
+  assets      Float // Sum of MF + FD + Cash
+  liabilities Float // Sum of Loans
+  month       Int // 1-12
+  year        Int // 2024
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, month, year]) // Prevents duplicate entries for the same month
 }

@@ -20,6 +20,7 @@ import { user_finnsys_service } from "./user.finnsys.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
 import { FireReportFinalResponse } from "../lib/fire-report.types.js";
+import { db } from "../server.js";
 
 class FireReportServiceClass {
 
@@ -126,10 +127,10 @@ class FireReportServiceClass {
         }
 
         try {
-            // Fetch Fixed Deposits with FD_CREATED status
+            // Fetch Fixed Deposits with FD_CREATED and MATURED status
             const fd_res = await user_service.get_user_fd_data({
                 user_id,
-                query: { status: "FD_CREATED" }
+                query: { status: { in: ["FD_CREATED", "MATURED"] } }
             });
             actual_fd = fd_res.fd_transactions.reduce((sum, tx) => sum + (parseFloat(String(tx.amount)) || 0), 0);
         } catch (error) {
@@ -137,7 +138,7 @@ class FireReportServiceClass {
         }
 
         // 2. Generate Projected Report (Onboarding data)
-        const projected = this.generate_report_with_assets(data, projection_years);
+        const projected = await this.generate_report_with_assets(data, projection_years);
 
         // 3. Generate Actual Report (Real transaction data for MF & FD)
         const actual_assets: ProjectionAssets = {
@@ -150,7 +151,7 @@ class FireReportServiceClass {
             ppf_epf: 0,
         };
 
-        const actual = this.generate_report_with_assets(data, projection_years, actual_assets);
+        const actual = await this.generate_report_with_assets(data, projection_years, actual_assets);
 
         return {
             actual,
@@ -158,7 +159,7 @@ class FireReportServiceClass {
         };
     }
 
-    private generate_report_with_assets(data: UserFireReportData, projection_years: number, override_assets?: ProjectionAssets): FireReportCoreResponse {
+    private async generate_report_with_assets(data: UserFireReportData, projection_years: number, override_assets?: ProjectionAssets): Promise<FireReportCoreResponse> {
         const computed_metrics = this.compute_metrics(data, override_assets);
 
         const monthly_expenses_total = computed_metrics.total_annual_expenses / 12;
@@ -170,6 +171,7 @@ class FireReportServiceClass {
         );
 
         const projection = this.compute_projection(data, computed_metrics, goals, projection_years, override_assets);
+        const quarterly_simulation = await this.generate_quarterly_simulation(data.id, computed_metrics, projection);
 
         return {
             user_profile: {
@@ -184,7 +186,7 @@ class FireReportServiceClass {
             liabilities: this.extract_liabilities(data),
             expense_breakdown: this.extract_expense_breakdown(data),
             insurance_summary: this.compute_insurance_summary(data, computed_metrics),
-            quarterly_simulation: this.generate_quarterly_simulation(computed_metrics, projection),
+            quarterly_simulation,
             yearly_goal_requirements: this.generate_yearly_goal_table(projection),
         };
     }
@@ -643,30 +645,80 @@ class FireReportServiceClass {
         };
     }
 
-    /** Deterministic backward simulation of 6 quarterly data points for trend charts.
-     *  Uses: nw(i) = net_worth × 0.98^i   fire_number(i) = fn_now × 0.985^i
-     *  where i=5 is 5 quarters ago and i=0 is the current quarter. */
-    private generate_quarterly_simulation(metrics: ComputedMetrics, projection: ProjectionRow[]): QuarterlyPoint[] {
-        const net_worth = metrics.net_worth;
+    /** Deterministic historical simulation combined with real Snapshots. 
+     *  Uses UserNetWorthSnapshot table for actual past data. 
+     *  Falls back to 0 for periods before account creation. */
+    private async generate_quarterly_simulation(user_id: string, metrics: ComputedMetrics, projection: ProjectionRow[]): Promise<QuarterlyPoint[]> {
+        const current_net_worth = metrics.net_worth;
         const fire_number_now = projection[0]?.fire_number.emi_include ?? 0;
         const now = new Date();
-        const current_q = Math.floor(now.getMonth() / 3); // 0-3
         const current_year = now.getFullYear();
 
-        const quarter_label = (q_offset: number): string => {
-            let q = current_q - q_offset;
-            let y = current_year;
-            while (q < 0) { q += 4; y--; }
-            return `Q${q + 1} ${y}`;
-        };
+        // 1. Fetch real historical snapshots
+        const snapshots = await db.userNetWorthSnapshot.findMany({
+            where: { userId: user_id },
+            orderBy: [{ year: 'desc' }, { month: 'desc' }],
+            take: 24 // Last 2 years of possible months
+        });
+
+        // 2. Fetch User to get createdAt (baseline)
+        const user = await db.user.findUnique({ where: { id: user_id }, select: { createdAt: true } });
+        const joined_date = user?.createdAt ?? new Date();
+
+        const quarter_label = (y: number, q: number): string => `Q${q + 1} ${y}`;
 
         const points: QuarterlyPoint[] = [];
+
+        // Generate last 6 quarters
         for (let i = 5; i >= 0; i--) {
-            const nw = net_worth * Math.pow(0.98, i);
-            const fn = fire_number_now * Math.pow(0.985, i);
+            // Calculate target Quarter/Year
+            let target_q = Math.floor(now.getMonth() / 3) - i;
+            let target_y = current_year;
+            while (target_q < 0) { target_q += 4; target_y--; }
+
+            // NEW: Skip quarters that end before the user joined
+            const quarter_end_date = new Date(target_y, target_q * 3 + 3, 0); // Last day of quarter
+            if (quarter_end_date < joined_date && i !== 0) {
+                // If this is the quarter immediately before onboarding, we keep it as a baseline
+                // to avoid -100% QoQ change for new users.
+                const next_q_date = new Date(target_y, target_q * 3 + 6, 0);
+                if (next_q_date < joined_date) {
+                    continue;
+                }
+            }
+
+            let nw = 0;
+            const is_current_quarter = i === 0;
+
+            if (is_current_quarter) {
+                nw = current_net_worth;
+            } else {
+                // Look for a snapshot in this quarter
+                const q_months = [target_q * 3 + 1, target_q * 3 + 2, target_q * 3 + 3];
+                const snapshot = snapshots.find(s => s.year === target_y && q_months.includes(s.month));
+
+                if (snapshot) {
+                    nw = snapshot.netWorth;
+                } else {
+                    // Fallback logic for missing snapshots
+                    const quarter_start_date = new Date(target_y, target_q * 3, 1);
+                    if (quarter_start_date < joined_date) {
+                        // If it's the "baseline" quarter (just before onboarding), we match current NW
+                        // to ensure a 0% change instead of -100%.
+                        nw = current_net_worth;
+                    } else {
+                        nw = current_net_worth; // Post-onboarding but missing snapshot
+                    }
+                }
+            }
+
+            // Fire number simulation (we don't snapshot this, so we simulate progress)
+            const fn_growth = Math.pow(0.985, i);
+            const fn = fire_number_now * fn_growth;
             const fp = fn > 0 ? (nw / fn) * 100 : 0;
+
             points.push({
-                quarter: quarter_label(i),
+                quarter: quarter_label(target_y, target_q),
                 net_worth: parseFloat((nw / 100_000).toFixed(2)),
                 fire_number: parseFloat((fn / 100_000).toFixed(2)),
                 fire_percentage: parseFloat(fp.toFixed(2)),

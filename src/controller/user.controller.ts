@@ -344,17 +344,10 @@ class UserFinanceControllerClass {
                 }))
                 : [];
 
-            // Fetch FD transactions
-            const user_fd_transactions = await user_service.get_user_fd_data({
-                user_id: user.id,
-                order: { fd_issued_at: "desc" },
-            });
-
             // Build portfolio data structure for savings service
             const portfolio_data = {
                 investment_data,
                 mutual_funds: mf_investment_items,
-                user_fd: user_fd_transactions,
             };
 
             // Step 2: Call savings service with portfolio data

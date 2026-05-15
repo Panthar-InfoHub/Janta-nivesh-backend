@@ -8,9 +8,22 @@ import logger from "../middleware/logger.js";
 import { db } from "../server.js";
 import pLimit from "p-limit";
 import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
+import { user_snapshot_service } from "./user/user.snapshot.service.js";
 
 
 class JobServiceClass {
+
+    monthly_user_snapshot_job = async () => {
+        logger.info("Starting monthly user net worth snapshot job...");
+        try {
+            const result = await user_snapshot_service.capture_all_users_snapshots();
+            logger.info(`Monthly snapshot job completed. Results: ${JSON.stringify(result)}`);
+            return result;
+        } catch (error) {
+            logger.error("Error in monthly_user_snapshot_job:", error);
+            throw error;
+        }
+    }
 
     daily_mf_product_job = async () => {
 

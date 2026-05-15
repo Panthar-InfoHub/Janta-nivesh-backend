@@ -7,3 +7,4 @@ job_router.post("/mf-daily", job_controller.daily_mf_job);
 job_router.post("/mf-nav-history", job_controller.mf_nav_history_job);
 job_router.post("/fd-daily", job_controller.daily_fd_product_sync_job);
 job_router.post("/mf-single-nav/:id", job_controller.mf_single_nav_history_job);
+job_router.post("/user-snapshot", job_controller.monthly_user_snapshot_job);
