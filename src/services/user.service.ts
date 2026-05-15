@@ -268,7 +268,7 @@ class UserServiceClass {
         const where: FdTransactionWhereInput = {
             ...(query ?? {}),
             user_id,
-            status: { notIn: ["INITIATED"] }
+            status: { in: ["PAYMENT_SUCCESS", "VKYC_COMPLETED", "FD_CREATED", "MATURED", "PREMATURE_WITHDRAWN"] }
         };
 
         const [total, fd_transactions] = await Promise.all([

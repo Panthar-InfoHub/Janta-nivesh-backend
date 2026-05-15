@@ -2,21 +2,21 @@ import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
 
-import type { MfNavHistoryCreateManyInput, MfProductOrderByWithRelationInput, MfProductWhereInput } from "../prisma/generated/prisma/models.js";
-import { Lumpsum_cart_data, Sip_cart_data, Redeem_request_data } from "../lib/types.js";
-import { env } from "../lib/config-env.js";
-import AppError from "../middleware/error.middleware.js";
-import { redis_buffer_client } from "../lib/redis.js";
-import { decompressAndFilter } from "../lib/utils.js";
-import { gzip, gunzip } from "zlib";
 import { promisify } from "util";
-import { user_service } from "./user.service.js";
+import { gzip } from "zlib";
 import { generate_unique_code } from "../helpers/unique.code.js";
+import { env } from "../lib/config-env.js";
+import { redis_buffer_client } from "../lib/redis.js";
+import { Lumpsum_cart_data, Redeem_request_data, Sip_cart_data } from "../lib/types.js";
+import { decompressAndFilter } from "../lib/utils.js";
+import { AddBundleToCartInput } from "../lib/zod-schemas/bundle.schema.js";
+import AppError from "../middleware/error.middleware.js";
+import { Prisma } from "../prisma/generated/prisma/client.js";
+import type { MfProductOrderByWithRelationInput, MfProductWhereInput } from "../prisma/generated/prisma/models.js";
+import { bundle_service } from "./bundle.services.js";
 import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
 import { nse_service } from "./nse.service.js";
-import { Prisma } from "../prisma/generated/prisma/client.js";
-import { AddBundleToCartInput } from "../lib/zod-schemas/bundle.schema.js";
-import { bundle_service } from "./bundle.services.js";
+import { user_service } from "./user.service.js";
 const gzipAsync = promisify(gzip);
 
 export type pagination = {
@@ -34,9 +34,29 @@ class MutualFundServiceClass {
         this.finnsys_base_url = env.finsys_base_api;
     }
 
+    /**
+     * Maps frequency code to readable frequency type
+     * @param freq_code - Frequency code (DZ, D, OM, Q, WD, OW, H, Y)
+     * @returns Readable frequency type string
+     */
+    private map_frequency_code_to_type(freq_code: string): string {
+        const frequency_map: { [key: string]: string } = {
+            'DZ': 'DAILY',
+            'D': 'DAILY',
+            'WD': 'WEEKLY',
+            'OW': 'FORTNIGHTLY',
+            'OM': 'MONTHLY',
+            'Q': 'QUARTERLY',
+            'H': 'SEMI-ANNUAL',
+            'Y': 'ANNUAL'
+        };
 
-
-
+        const mapped_type = frequency_map[freq_code];
+        if (!mapped_type) {
+            throw new AppError(`Invalid frequency code: ${freq_code}`, 400, "INVALID_FREQUENCY_CODE");
+        }
+        return mapped_type;
+    }
 
     /**
      * Retrieves a paginated list of mutual funds with optional filtering, sorting, and fuzzy search capabilities.
@@ -353,6 +373,267 @@ class MutualFundServiceClass {
         return primary_bank;
     }
 
+    private extract_date_range_from_sip_items(sip_items: any[]): { start_date: string; end_date: string } {
+        if (!sip_items || sip_items.length === 0) {
+            throw new AppError("No SIP items found", 400, "NO_SIP_ITEMS");
+        }
+
+        // Parse date string to comparable format (YYYY-MM-DD for comparison)
+        const parse_date = (date_str: string): { comparable: string; formatted: string } => {
+            // Format 1: DD-MMM-YYYY (e.g., "30-Jul-2026")
+            if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(date_str)) {
+                const months: { [key: string]: string } = {
+                    'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+                    'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+                };
+                const [day, mon, year] = date_str.split('-');
+                const month = months[mon];
+                if (!month) throw new AppError(`Invalid month in date: ${date_str}`, 400, "INVALID_DATE_FORMAT");
+                const comparable = `${year}-${month}-${day}`;
+                const formatted = `${day}/${month}/${year}`;
+                return { comparable, formatted };
+            }
+            // Format 2: DD/MM/YYYY (e.g., "30/07/2026")
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(date_str)) {
+                const [day, month, year] = date_str.split('/');
+                const comparable = `${year}-${month}-${day}`;
+                const formatted = date_str;
+                return { comparable, formatted };
+            }
+            // Format 3: YYYY-MM-DD (e.g., "2026-07-30")
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date_str)) {
+                const [year, month, day] = date_str.split('-');
+                const comparable = date_str;
+                const formatted = `${day}/${month}/${year}`;
+                return { comparable, formatted };
+            }
+            throw new AppError(`Invalid date format: ${date_str}. Expected DD-MMM-YYYY, DD/MM/YYYY, or YYYY-MM-DD`, 400, "INVALID_DATE_FORMAT");
+        };
+
+        // Parse all start and end dates
+        const all_dates = sip_items.map((item: any) => ({
+            start: parse_date(item.sip_st_date),
+            end: parse_date(item.sip_en_date)
+        }));
+
+        // Find minimum start date and maximum end date
+        const min_start = all_dates.reduce((min, curr) =>
+            curr.start.comparable < min.start.comparable ? curr : min
+        ).start;
+
+        const max_end = all_dates.reduce((max, curr) =>
+            curr.end.comparable > max.end.comparable ? curr : max
+        ).end;
+
+        return {
+            start_date: min_start.formatted,
+            end_date: max_end.formatted
+        };
+    }
+
+    private calculate_total_sip_amount(sip_items: any[]): string {
+        if (!sip_items || sip_items.length === 0) {
+            throw new AppError("No SIP items found", 400, "NO_SIP_ITEMS");
+        }
+
+        const total = sip_items.reduce((sum: number, item: any) => {
+            const amount = parseFloat(item.sip_amt || item.txn_amount || "0");
+            if (isNaN(amount)) {
+                throw new AppError(`Invalid amount in cart item: ${item.sip_amt || item.txn_amount}`, 400, "INVALID_AMOUNT");
+            }
+            return sum + amount;
+        }, 0);
+
+        return total.toString();
+    }
+
+    private calculate_installments_count(sip_items: any[], start_date: string, end_date: string): { [key: number]: number } {
+        if (!sip_items || sip_items.length === 0) {
+            throw new AppError("No SIP items found", 400, "NO_SIP_ITEMS");
+        }
+
+        // Parse dates to comparable format (YYYY-MM-DD)
+        const parse_date = (date_str: string): Date => {
+            // Format 1: DD-MMM-YYYY (e.g., "30-Jul-2026")
+            if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(date_str)) {
+                const months: { [key: string]: number } = {
+                    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                    'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                };
+                const [day, mon, year] = date_str.split('-');
+                const month = months[mon];
+                if (month === undefined) throw new AppError(`Invalid month: ${mon}`, 400, "INVALID_DATE_FORMAT");
+                return new Date(parseInt(year), month, parseInt(day));
+            }
+            // Format 2: DD/MM/YYYY (e.g., "30/07/2026")
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(date_str)) {
+                const [day, month, year] = date_str.split('/');
+                return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+            }
+            // Format 3: YYYY-MM-DD (e.g., "2026-07-30")
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date_str)) {
+                const [year, month, day] = date_str.split('-');
+                return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+            }
+            throw new AppError(`Invalid date format: ${date_str}`, 400, "INVALID_DATE_FORMAT");
+        };
+
+        const start = parse_date(start_date);
+        const end = parse_date(end_date);
+
+        if (end < start) {
+            throw new AppError("End date cannot be before start date", 400, "DATE_RANGE_INVALID");
+        }
+
+        // Calculate days difference
+        const days_diff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+        const result: { [key: number]: number } = {};
+
+        sip_items.forEach((item: any, index: number) => {
+            const freq = item.sip_freq;
+            const freq_type = this.map_frequency_code_to_type(freq);
+            let installments = 1;
+
+            switch (freq) {
+                case "DZ": // DAILY (Daily Zoned)
+                case "D": // DAILY
+                    installments = days_diff;
+                    break;
+                case "WD": // WEEKLY
+                case "OW": // FORTNIGHTLY
+                    installments = Math.ceil(days_diff / 7);
+                    break;
+                case "OM": // MONTHLY
+                    // For monthly: count months inclusive
+                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+                    installments = months;
+                    break;
+                case "Q": // QUARTERLY
+                    const q_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                    installments = Math.floor(q_months / 3) + (q_months % 3 > 0 ? 1 : 0);
+                    break;
+                case "H": // SEMI-ANNUAL
+                    const h_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                    installments = Math.floor(h_months / 6) + (h_months % 6 > 0 ? 1 : 0);
+                    break;
+                case "Y": // ANNUAL
+                    installments = (end.getFullYear() - start.getFullYear()) + 1;
+                    break;
+                default:
+                    throw new AppError(`Invalid SIP frequency: ${freq}`, 400, "INVALID_FREQUENCY");
+            }
+
+            result[index] = Math.max(1, installments);
+        });
+
+        return result;
+    }
+
+    execute_xsip_purchase = async (user_id: string, user_log: string, user_pwd: string, mandate_id: string) => {
+        // 1. Fetch user and cart
+        const [user, cart_res] = await Promise.all([
+            user_service.get_all_user_data(user_id, { user_bank_details: true }),
+            user_service.get_user_cart_finnsys(user_log, user_pwd)
+        ]);
+
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+        if (!user.nse_client_code) throw new AppError("Trading account not set up", 400, "TRADING_ACCOUNT_MISSING");
+
+        if (cart_res.code != 1) {
+            throw new AppError("Failed to fetch cart from Finnsys", 502, "CART_FETCH_FAILED");
+        }
+
+        // 2. Filter SIP items
+        const sip_items = cart_res.results.filter((item: any) => item.sub_txn_type === "S");
+
+        if (sip_items.length === 0) {
+            throw new AppError("No SIP items found in cart", 400, "CART_EMPTY");
+        }
+
+        // 3. Extract date range and calculate installments
+        const { start_date, end_date } = this.extract_date_range_from_sip_items(sip_items);
+        const installment_counts = this.calculate_installments_count(sip_items, start_date, end_date);
+
+        // 4. Get primary bank details
+        const primary_bank = this.get_primary_bank_details(user);
+
+        // 5. Build xSIP reg_data for each item
+        const reg_data = await Promise.all(
+            sip_items.map(async (item: any, index: number) => ({
+                amc_code: item.amc_code || "",
+                sch_code: item.prod_code || "",
+                client_code: user.nse_client_code,
+                bank_ref_no: primary_bank.account_no || "",
+                trans_mode: "P",
+                dp_txn_mode: "P",
+                start_date,
+                frequency_type: this.map_frequency_code_to_type(item.sip_freq),
+                frequency_allowed: "1",
+                installment_amount: (item.sip_amt || item.txn_amount).toString(),
+                status: "1",
+                member_code: env.NSE_MEMBER_ID,
+                folio_no: item.folio || "",
+                sip_remarks: "VELVET INVEST APP",
+                installment_no: installment_counts[index] || 1,
+                xsip_mandate_id: mandate_id,
+                sub_broker_code: "",
+                euin_number: env.EUIN || "",
+                euin_declaration: "Y",
+                dpc_flag: "Y",
+                first_order_today: "N",
+                sub_broker_arn: "",
+                end_date: "",
+                primary_holder_mobile: user.phone_no || "",
+                primary_holder_email: user.email || "",
+                step_up_required: "N",
+                step_up_start_date: "",
+                step_up_end_date: "",
+                step_up_frequency: "",
+                step_up_amout: "",
+                filler_1: "",
+                filler_2: "",
+                filler_3: "",
+                filler_4: "",
+                filler_5: ""
+            }))
+        );
+
+        // 6. Create xSIP payload
+        const xsip_payload = {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
+            data: {
+                reg_data
+            }
+        };
+
+        logger.info(`Creating xSIP orders for User ${user_id}. Mandate ID: ${mandate_id}, Items: ${sip_items.length}`);
+
+        // 7. Submit to Finnsys
+        const xsip_response = await mutual_fund_finnsys_service.create_xsip_purchase(xsip_payload);
+
+        // 8. Extract order ID
+        const order_id = xsip_response.data?.reg_data?.[0]?.reg_id || xsip_response.data?.orderId;
+
+        if (!order_id) {
+            logger.error("xSIP response missing order ID: ", xsip_response);
+            throw new AppError("xSIP created but order ID not found in response", 500, "XSIP_ORDER_ID_MISSING");
+        }
+
+        logger.info(`xSIP orders created successfully. Order ID: ${order_id}`);
+
+        // 9. Generate short URL
+        const xsip_url_res = await nse_service.get_short_url('XSIP_REG', order_id, user_log, user_pwd);
+        logger.debug("xSIP short URL response ==> ", xsip_url_res);
+
+        return {
+            xsip_short_url: xsip_url_res.data?.firstHolderLink || "",
+            order_id
+        };
+    }
+
     private construct_transaction_payload(cart_items: any[], user: any) {
         const primary_bank = this.get_primary_bank_details(user);
 
@@ -430,7 +711,7 @@ class MutualFundServiceClass {
 
         // 6. Submit to Finnsys API
         const finnsys_response = await mutual_fund_finnsys_service.purchase_finnsys(payload);
-        const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
+        const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id, user_log, user_pwd)
 
 
         if (short_url.code != 1) {
@@ -441,50 +722,77 @@ class MutualFundServiceClass {
         return short_url.data.firstHolderLink;
     }
 
-    execute_sip_purchase = async (user_id: string, user_log: string, user_pwd: string) => {
-        // 1. Fetch User with Bank Details
-        const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
-        if (!user) throw new AppError("User not found", 404);
+    initiate_sip_purchase = async (user_id: string, user_log: string, user_pwd: string) => {
+        // 1. Fetch User with Bank Details and User Cart
+        const [user, cart_res] = await Promise.all([
+            user_service.get_all_user_data(user_id, { user_bank_details: true }),
+            user_service.get_user_cart_finnsys(user_log, user_pwd)
+        ]);
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
         if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
-        // 2. Fetch Cart
-        const cart_res = await user_service.get_user_cart_finnsys(user_log, user_pwd);
+        // const cart_res = await user_service.get_user_cart_finnsys(user_log, user_pwd);
         if (cart_res.code != 1) {
             throw new AppError("Failed to fetch cart from Finnsys", 502, "CART_FETCH_FAILED");
         }
 
-        // 3. Filter SIP Items (sub_txn_type = "S")
+        // 2. Filter SIP Items (sub_txn_type = "S")
         const sip_items = cart_res.results.filter((item: any) => item.sub_txn_type === "S");
 
         if (sip_items.length === 0) {
             throw new AppError("No SIP items found in cart", 400, "CART_EMPTY");
         }
+        // 3. Extract date range and validate consistency
+        const { start_date, end_date } = this.extract_date_range_from_sip_items(sip_items);
 
-        // 4. Construct Payload
-        const transaction_details = await Promise.all(this.construct_transaction_payload(sip_items, user));
+        // 4. Calculate total amount (sum of all SIP amounts)
+        const total_amount = this.calculate_total_sip_amount(sip_items);
 
-        // 5. Call Upstream API
-        const payload = {
+        // 5. Get primary bank details
+        const primary_bank = this.get_primary_bank_details(user);
+
+        // 6. Create mandate registration payload
+        const mandate_payload = {
             arn: env.ARN,
             username: user_log,
             password: user_pwd,
             data: {
-                transaction_details
+                reg_data: [
+                    {
+                        client_code: user.nse_client_code,
+                        amount: total_amount,
+                        mandate_type: "E" as const,
+                        account_no: primary_bank.account_no,
+                        ac_type: primary_bank.ac_type || "SB",
+                        ifsc_code: primary_bank.ifsc_code,
+                        micr_code: primary_bank.micr_code || "",
+                        start_date,
+                        end_date,
+                        member_mandate_no: ""
+                    }
+                ]
             }
         };
 
-        logger.info(`Executing SIP Purchase for User ${user_id}. Payload ==> `, payload);
+        logger.info(`Creating SIP Mandate for User ${user_id}. Amount: ${total_amount}, Dates: ${start_date} to ${end_date}`);
 
-        const finnsys_response = await mutual_fund_finnsys_service.purchase_finnsys(payload);
-        const short_url = await nse_service.get_short_url("PUR", finnsys_response.data.transaction_details[0].trxn_order_id)
+        // 7. Submit mandate registration to Finnsys
+        const mandate_response = await mutual_fund_finnsys_service.create_mandate_registration(mandate_payload);
 
+        // 8. Extract mandate_id from response
+        const mandate_id = mandate_response.data.reg_data[0]?.reg_id;
 
-        if (short_url.code != 1) {
-            logger.warn("Failed to generate short URL for lumpsum purchase. Response from NSE ==> ", short_url);
-            throw new AppError("Lumpsum purchase initiated but failed to generate short URL, Check your registered mail for order confirmation", 500, "SHORT_URL_ERROR");
+        if (!mandate_id) {
+            logger.error("Mandate response missing mandate_id: ", mandate_response);
+            throw new AppError("Mandate created but mandate_id not found in response", 500, "MANDATE_ID_MISSING");
         }
 
-        return short_url.data.firstHolderLink;
+        logger.info(`SIP Mandate created successfully. Mandate ID: ${mandate_id}`);
+
+        // 9. Return mandate details to caller (Controller) for short URL generation and user redirection
+        return {
+            mandate_id,
+        };
     }
 
 
@@ -521,7 +829,7 @@ class MutualFundServiceClass {
         };
     }
 
-    execute_redemption = async (user_id: string, redem_data: Redeem_request_data) => {
+    execute_redemption = async (user_id: string, redem_data: Redeem_request_data, user_log: string, user_pwd: string) => {
         // 1. Fetch user with primary bank details
         const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
@@ -565,7 +873,8 @@ class MutualFundServiceClass {
         // 5. Get short URL for OTP / confirmation
         const short_url = await nse_service.get_short_url(
             "RED",
-            finnsys_response.data.transaction_details[0].trxn_order_id
+            finnsys_response.data.transaction_details[0].trxn_order_id,
+            user_log, user_pwd
         );
 
         if (short_url.code != 1) {
@@ -719,6 +1028,31 @@ class MutualFundServiceClass {
             logger.error("Error removing item from cart ==> ", error);
             throw new AppError("Failed to remove item from cart", 500, "REMOVE_FROM_CART_ERROR");
         }
+    }
+
+
+    // ==================== Mandate ==========================
+
+    check_mandate_status = async (mandate_id: string, user_log: string, user_pwd: string, user_id: string) => {
+        const user = await user_service.get_user_by_id(user_id);
+
+        const mandate_status_payload = {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
+            data: {
+                mandate_id: mandate_id,
+                client_code: user.nse_client_code
+            }
+        };
+
+        logger.info(`Checking mandate status for User ${user_id}, Mandate ID: ${mandate_id}`);
+
+        const mandate_status_res = await mutual_fund_finnsys_service.check_mandate_status(mandate_status_payload);
+
+        logger.info(`Mandate status response for User ${user_id}, Mandate ID: ${mandate_id} ==> `, mandate_status_res);
+
+        return mandate_status_res;
     }
 
 }

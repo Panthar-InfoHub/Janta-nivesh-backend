@@ -34,6 +34,81 @@ interface PurchasePayload {
     };
 }
 
+interface MandateRegistrationPayload {
+    arn: string;
+    username: string;
+    password: string;
+    data: {
+        reg_data: Array<{
+            client_code: string;
+            amount: string;
+            mandate_type: "E";
+            account_no: string;
+            ac_type: string;
+            ifsc_code: string;
+            micr_code: string;
+            start_date: string;
+            end_date: string;
+            member_mandate_no: string;
+        }>;
+    };
+}
+
+interface MandateStatusPayload {
+    arn: string;
+    username: string;
+    password: string;
+    data: {
+        mandate_id: string;
+        client_code: string;
+    };
+}
+
+interface XSIPRegistrationPayload {
+    arn: string;
+    username: string;
+    password: string;
+    data: {
+        reg_data: Array<{
+            amc_code: string;
+            sch_code: string;
+            client_code: string;
+            bank_ref_no: string;
+            trans_mode: string;
+            dp_txn_mode: string;
+            start_date: string;
+            frequency_type: string;
+            frequency_allowed: string;
+            installment_amount: string;
+            status: string;
+            member_code: string;
+            folio_no: string;
+            sip_remarks: string;
+            installment_no: number;
+            xsip_mandate_id: string;
+            sub_broker_code: string;
+            euin_number: string;
+            euin_declaration: string;
+            dpc_flag: string;
+            first_order_today: string;
+            sub_broker_arn: string;
+            end_date: string;
+            primary_holder_mobile: string;
+            primary_holder_email: string;
+            step_up_required: string;
+            step_up_start_date: string;
+            step_up_end_date: string;
+            step_up_frequency: string;
+            step_up_amout: string;
+            filler_1: string;
+            filler_2: string;
+            filler_3: string;
+            filler_4: string;
+            filler_5: string;
+        }>;
+    };
+}
+
 class MutualFundFinnsysServiceClass {
 
     FINNSYS_BASE_URL: string;
@@ -128,6 +203,138 @@ class MutualFundFinnsysServiceClass {
                 "Failed to submit redemption order to Finnsys",
                 500,
                 "REDEEM_ORDER_ERROR"
+            );
+        }
+    }
+
+    /**
+     * Create mandate registration for SIP via Finnsys NSE API
+     * @param payload - Mandate registration payload with ARN, credentials, and registration details
+     * @returns API response containing mandate_id
+     */
+    create_mandate_registration = async (payload: MandateRegistrationPayload) => {
+        try {
+            logger.info(`Submitting mandate registration to Finnsys. Client: ${payload.data.reg_data[0]?.client_code}`);
+            logger.debug(`Mandate registration payload ==> `, payload);
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/registration/mandate-registration`,
+                payload,
+            );
+
+            if (response.data?.code !== 1) {
+                logger.error("Finnsys mandate registration API returned failure: ", response.data);
+                throw new AppError(
+                    response.data?.message || "Failed to create mandate",
+                    500,
+                    "MANDATE_REGISTRATION_FAILED"
+                );
+            }
+
+            logger.info("Mandate registration submitted successfully");
+            logger.debug(`Mandate registration response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error submitting mandate registration to Finnsys: ", error);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to register mandate",
+                    error.response.status || 500,
+                    "MANDATE_REGISTRATION_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to register mandate with Finnsys",
+                500,
+                "MANDATE_REGISTRATION_ERROR"
+            );
+        }
+    }
+
+    /**
+     * Check mandate status via Finnsys NSE API
+     * @param payload - Mandate status check payload with mandate_id and client_code
+     * @returns API response containing mandate status
+     */
+    check_mandate_status = async (payload: MandateStatusPayload) => {
+        try {
+            logger.info(`Checking mandate status. Mandate ID: ${payload.data.mandate_id}`);
+            logger.debug(`Mandate status payload ==> `, payload);
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/reports/mandate-status-report`,
+                payload,
+            );
+
+            logger.info("Mandate status retrieved successfully");
+            logger.debug(`Mandate status response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error checking mandate status from Finnsys: ", error);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to check mandate status",
+                    error.response.status || 500,
+                    "MANDATE_STATUS_CHECK_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to check mandate status with Finnsys",
+                500,
+                "MANDATE_STATUS_ERROR"
+            );
+        }
+    }
+
+    /**
+     * Create xSIP purchase via Finnsys NSE API
+     * @param payload - xSIP registration payload with mandate-based order details
+     * @returns API response containing order IDs
+     */
+    create_xsip_purchase = async (payload: XSIPRegistrationPayload) => {
+        try {
+            logger.info(`Submitting xSIP registration to Finnsys. Orders: ${payload.data.reg_data.length}`);
+            logger.debug(`xSIP payload ==> `, payload);
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/registration/xsip-registration`,
+                payload,
+            );
+
+            if (response.data?.code !== 1) {
+                logger.error("Finnsys xSIP API returned failure: ", response.data);
+                throw new AppError(
+                    response.data?.message || "Failed to create xSIP orders",
+                    500,
+                    "XSIP_CREATION_FAILED"
+                );
+            }
+
+            logger.info("xSIP registration submitted successfully");
+            logger.debug(`xSIP response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error submitting xSIP registration to Finnsys: ", error.response.data);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to submit xSIP orders",
+                    error.response.status || 500,
+                    "XSIP_CREATION_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to create xSIP orders with Finnsys",
+                500,
+                "XSIP_CREATION_ERROR"
             );
         }
     }

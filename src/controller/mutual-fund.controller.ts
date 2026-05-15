@@ -6,6 +6,7 @@ import { get_mf_search_query } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import { mutual_funds_service } from "../services/mutual-fund.service.js";
+import { nse_service } from "../services/nse.service.js";
 
 
 
@@ -26,7 +27,7 @@ class MutualFundControllerClass {
 
             if (fund_category && direct_categories.includes(fund_category)) {
                 logger.info(`Fetching mutual funds by fund_category: ${fund_category} - Page: ${page}, Limit: ${limit}`);
-                
+
                 const result = await mutual_funds_service.get_funds_by_category({
                     category: fund_category as any,
                     page,
@@ -211,21 +212,27 @@ class MutualFundControllerClass {
         }
     }
 
-    purchase_sip = async (req: Request, res: Response, next: NextFunction) => {
+    initiate_sip = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
             logger.info(`Purchasing SIP items for user: ${user.id}`);
 
-            const result = await mutual_funds_service.execute_sip_purchase(user.id, user.log!, user.pwd!);
+            const result = await mutual_funds_service.initiate_sip_purchase(user.id, user.log!, user.pwd!);
+
+            const mandate_short_url_res = await nse_service.get_short_url('MANDATE_AUTH', result.mandate_id, user.log!, user.pwd!);
 
             res.status(200).json({
                 success: true,
-                message: "SIP purchase initiated",
-                data: result
+                message: "SIP mandate registration initiated. Please approve the mandate to proceed.",
+                data: {
+                    mandate_id: result.mandate_id,
+                    mandate_short_url: mandate_short_url_res.data.firstHolderLink,
+                    status: "MANDATE_PENDING_APPROVAL"
+                }
             });
             return;
         } catch (error) {
-            logger.error("Error in purchase_sip:", error);
+            logger.error("Error in initiate_sip:", error);
             next(error);
             return;
         }
@@ -303,6 +310,73 @@ class MutualFundControllerClass {
     }
 
 
+    mandate_status = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const user = req.user!;
+            logger.info(`Checking mandate status for user: ${user.id}`);
+
+            const mandate_id = req.query.mandate_id as string;
+            logger.info(`Checking mandate status for mandate ID: ${mandate_id}`);
+
+            if (!mandate_id) {
+                logger.warn("Missing mandate_id in mandate_status request query");
+                throw new AppError("Missing required query parameter: mandate_id", 400);
+            }
+
+            const result = await mutual_funds_service.check_mandate_status(mandate_id, user.log!, user.pwd!, user.id);
+
+            res.status(200).json({
+                success: true,
+                message: "Mandate status retrieved successfully",
+                data: {
+                    mandate_id,
+                    status: result.data.report_data[0]?.status,
+                    enach_status: result.data.report_data[0]?.enachStatus,
+                    umrn_no: result.data.report_data[0]?.umrnNo,
+                }
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in mandate_status controller:", error);
+            next(error);
+            return;
+        }
+    }
+
+    purchase_sip = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const { mandate_id } = req.body;
+
+            logger.info(`Executing xSIP purchase for user: ${user.id}. Mandate ID: ${mandate_id}`);
+
+            if (!mandate_id) {
+                logger.warn("Missing mandate_id in purchase_sip request body");
+                throw new AppError("Missing required field: mandate_id", 400);
+            }
+
+            const result = await mutual_funds_service.execute_xsip_purchase(user.id, user.log!, user.pwd!, mandate_id);
+
+            res.status(200).json({
+                success: true,
+                message: "xSIP orders created successfully. Please complete payment to execute.",
+                data: {
+                    xsip_short_url: result.xsip_short_url,
+                    order_id: result.order_id,
+                    status: "XSIP_INITIATED"
+                }
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in purchase_sip controller:", error);
+            next(error);
+            return;
+        }
+    }
+
+
     // ─── Redemption ──────────────────────────────────────────────────────────────
 
     redeem = async (req: Request, res: Response, next: NextFunction) => {
@@ -316,7 +390,7 @@ class MutualFundControllerClass {
                 throw new AppError("Validation failed for redemption data", 400, "VALIDATION_ERROR", validation.error);
             }
 
-            const result = await mutual_funds_service.execute_redemption(user.id, validation.data);
+            const result = await mutual_funds_service.execute_redemption(user.id, validation.data, user.log!, user.pwd!);
 
             res.status(200).json({
                 success: true,

@@ -67,7 +67,7 @@ class TradingAccountControllerClass {
             await trading_account_service.client_registration(req.user!.id, result.data, user.log!, user.pwd!);
             const [_user, short_url_res] = await Promise.all([
                 user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
-                nse_service.get_short_url("CL_ACT", raw_payload.client_code)
+                nse_service.get_short_url("CL_ACT", raw_payload.client_code, user.log!, user.pwd!)
             ]);
 
             logger.info(`Trading account created successfully for user id ==> ${req.user?.id} with NSE client code ==> ${raw_payload.client_code}`);
