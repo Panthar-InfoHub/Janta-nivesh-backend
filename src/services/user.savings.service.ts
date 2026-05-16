@@ -182,14 +182,14 @@ class UserSavingsServiceClass {
 
         // Convert decimals to numbers
         const annual_income = this.toNumber(user_finance.annual_income);
-        const annual_expenses =
+        const monthly_expenses =
             this.toNumber(user_finance.expense_house) +
             this.toNumber(user_finance.expense_food) +
             this.toNumber(user_finance.expense_transportation) +
             this.toNumber(user_finance.expense_others);
 
         const monthly_income = annual_income / 12;
-        const monthly_expenses = annual_expenses / 12;
+        const annual_expenses = monthly_expenses * 12;
 
         logger.debug(`User ${user_id} - Monthly Income: ${monthly_income}, Monthly Expenses: ${monthly_expenses}`);
 
@@ -242,10 +242,6 @@ class UserSavingsServiceClass {
                 : 0;
         const total_saved_vs_prev_month = Math.round(current_month_savings - previous_month_savings);
 
-        // Calculate spending categories
-        const total_current_portfolio = this.toNumber(portfolio_data.investment_data.current_value);
-        const total_expenses_annual = annual_expenses;
-
         // Fetch current active FD total for breakdown
         const active_fds = await db.fdTransaction.findMany({
             where: {
@@ -255,12 +251,18 @@ class UserSavingsServiceClass {
             select: { amount: true }
         });
         const current_fd_value = active_fds.reduce((sum, fd) => sum + this.toNumber(fd.amount), 0);
-        const current_mf_value = total_current_portfolio - current_fd_value > 0 ? total_current_portfolio - current_fd_value : total_current_portfolio;
+        const current_mf_value = this.toNumber(portfolio_data.investment_data.current_value);
+
+        // Calculate spending categories
+        const total_current_portfolio = current_mf_value + current_fd_value;
+        logger.debug(`Total current portfolio value for user ${user_id}: ${total_current_portfolio}`);
+        const total_expenses_annual = annual_expenses;
 
         const total_savings_annual =
-            annual_income - annual_expenses - (total_current_portfolio || portfolio_data.investment_data.invested_amount);
+            annual_income - annual_expenses - (total_current_portfolio || (portfolio_data.investment_data.invested_amount + current_fd_value));
 
         const total_allocation = total_current_portfolio + total_expenses_annual + total_savings_annual;
+        logger.debug(`Total allocation for user ${user_id}: ${total_allocation} (Investments: ${total_current_portfolio}, Expenses: ${total_expenses_annual}, Savings: ${total_savings_annual})`);
         let spending_categories: InvestmentRateResponse["spending_categories"] = {
             investments: {
                 amount: Math.round(total_current_portfolio),
@@ -306,12 +308,6 @@ class UserSavingsServiceClass {
             spending_categories.essentials.percent = Math.round((total_expenses_annual / total_allocation) * 1000) / 10;
             spending_categories.savings.percent = Math.round((total_savings_annual / total_allocation) * 1000) / 10;
         }
-
-        logger.debug("Calculated investment rate data:", {
-            current_savings_percent,
-            month_over_month_delta,
-            total_saved_vs_prev_month,
-        });
 
         return {
             average_savings_pattern: {

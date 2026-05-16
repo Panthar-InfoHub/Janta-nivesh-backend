@@ -862,7 +862,7 @@ class MutualFundServiceClass {
         const payload = {
             arn: env.ARN,
             username: user.usr,
-            password: user.pwd,
+            password: user_pwd,
             data: { transaction_details: [transaction_detail] }
         };
         logger.info(`Executing Redemption for User ${user_id}. Source: ${redem_data.source}. Payload: ${JSON.stringify(payload)}`);

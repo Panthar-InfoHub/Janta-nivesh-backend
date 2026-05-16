@@ -344,6 +344,7 @@ class UserFinanceControllerClass {
                 }))
                 : [];
 
+            logger.debug("Investment data ==> ", investment_data);
             // Build portfolio data structure for savings service
             const portfolio_data = {
                 investment_data,

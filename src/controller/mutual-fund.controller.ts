@@ -357,6 +357,15 @@ class MutualFundControllerClass {
                 throw new AppError("Missing required field: mandate_id", 400);
             }
 
+            // Verify mandate is approved before proceeding
+            const mandate_status_res = await mutual_funds_service.check_mandate_status(mandate_id, user.log!, user.pwd!, user.id);
+            const status = mandate_status_res.data?.report_data?.[0]?.enachStatus;
+
+            if (status !== "SUCCESS") {
+                logger.warn(`Mandate ${mandate_id} is not approved yet. Current status: ${status}`);
+                throw new AppError(`Mandate is not approved yet. Current status: ${status || 'UNKNOWN'}. Please approve the mandate before executing SIP purchase.`, 400, "MANDATE_NOT_APPROVED");
+            }
+
             const result = await mutual_funds_service.execute_xsip_purchase(user.id, user.log!, user.pwd!, mandate_id);
 
             res.status(200).json({
