@@ -109,7 +109,7 @@ class UserFinanceControllerClass {
 
             logger.debug(`User data fetched successfully ==> `, user_cart_res);
 
-            if (user_cart_res.code != 1) {
+            if (user_cart_res.code != 1 && user_cart_res.code != 0) {
                 logger.warn(`Failed to fetch user cart from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_cart_res.code}`);
                 throw new AppError("Failed to fetch user cart from Finnsys", 502, "FINNSYS_CART_FETCH_FAILED");
             }
@@ -233,6 +233,7 @@ class UserFinanceControllerClass {
             investment_data.return_percent = Number(
                 ((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2)
             );
+            investment_data.items_count = user_mf_data.length;
             logger.debug(`Calculated user investment data ==> `, investment_data);
 
             const mf_investment_items = user_mf_data.length > 0 ? user_mf_data.map((item: any) => ({
@@ -251,16 +252,36 @@ class UserFinanceControllerClass {
                 balance_units: item.balunits
             })) : [];
 
-            logger.debug("Mapped user mututal fund now proceeding to user fd transactions...");
-            const user_fd_transactions = await user_service.get_user_fd_data({ user_id: user.id, order: { fd_issued_at: 'desc' } });
+            logger.debug("Mapped user mutual fund now proceeding to user fd transactions...");
+            const user_fd_response = await user_service.get_user_fd_data({ user_id: user.id, order: { fd_issued_at: 'desc' } });
+            const fd_transactions = user_fd_response.fd_transactions || [];
+
+            // Map FD transactions to portfolio items
+            const fd_investment_items = fd_transactions.map((fd: any) => ({
+                id: fd.id,
+                title: fd.product?.issuer?.display_name || "Fixed Deposit",
+                category: "Fixed Deposit",
+                amount: Number(fd.amount),
+                start_date: fd.fd_issued_at,
+                maturity_date: fd.maturity_date,
+                return: Number(fd.maturity_amount || 0) - Number(fd.amount),
+                roi: Number(fd.roi_at_booking) || 0,
+                tenure_days: fd.tenure_at_booking || 0,
+                status: fd.status,
+                maturity_amount: Number(fd.maturity_amount) || 0,
+                issuer_logo: fd.product?.issuer?.logo_url
+            }));
+
+            // Aggregate portfolio data with allocation breakdown
+            const portfolio_aggregates = user_service.aggregate_portfolio_data(investment_data, fd_transactions);
 
             res.status(200).json({
                 code: 200,
                 message: "User portfolio fetched successfully",
                 data: {
-                    investment_data,
+                    ...portfolio_aggregates,
                     mutual_funds: mf_investment_items,
-                    user_fd: user_fd_transactions
+                    fixed_deposits: fd_investment_items
                 }
             });
             return;
