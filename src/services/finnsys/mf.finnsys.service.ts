@@ -339,5 +339,44 @@ class MutualFundFinnsysServiceClass {
         }
     }
 
+    /**
+     * Get order status report for provisional/confirmed lumpsum orders
+     */
+    get_order_status_report = async (payload: any) => {
+        try {
+            logger.info(`Fetching order status report from Finnsys for type: ${payload.type}`);
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/reports/order-status-report`,
+                payload
+            );
+
+            logger.debug("Order status report response from Finnsys: ", response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching order status report from Finnsys", error);
+            throw new AppError("Failed to fetch order status report", 500, "ORDER_STATUS_REPORT_ERROR");
+        }
+    }
+
+    /**
+     * Get xSIP registration report
+     */
+    get_xsip_registration_report = async (payload: any) => {
+        try {
+            logger.info(`Fetching xSIP registration report from Finnsys`);
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/reports/xsip-registration-report`,
+                payload
+            );
+
+            logger.debug("xSIP registration report response from Finnsys: ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching xsip registration report from Finnsys", error);
+            throw new AppError("Failed to fetch xsip registration report", 500, "XSIP_REPORT_ERROR");
+        }
+    }
+
 }
 export const mutual_fund_finnsys_service = new MutualFundFinnsysServiceClass();

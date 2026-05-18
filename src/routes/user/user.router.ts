@@ -24,6 +24,7 @@ user_router.get("/portfolio", login_require, user_controller.get_user_portfolio)
 user_router.get("/investment-rate", login_require, user_controller.get_investment_rate)
 user_router.get("/iin", login_require, user_controller.get_user_iin)
 user_router.get("/cart", login_require, user_controller.get_user_cart)
+user_router.get("/pending-orders", login_require, user_controller.get_pending_orders)
 
 user_router.patch("/discard-onboard", login_require, user_controller.discard_onboard)
 user_router.patch("/", login_require, user_controller.patch_user)

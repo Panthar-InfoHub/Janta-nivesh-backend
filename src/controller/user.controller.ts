@@ -6,6 +6,7 @@ import { fire_report_service } from "../services/fire.report.service.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
 import { user_savings_service } from "../services/user.savings.service.js";
 import { user_service } from "../services/user.service.js";
+import { pending_orders_service } from "../services/pending_orders.service.js";
 
 class UserFinanceControllerClass {
 
@@ -184,6 +185,37 @@ class UserFinanceControllerClass {
 
         } catch (error) {
             logger.error(`Error in getting user iin: `, error);
+            next(error);
+            return;
+        }
+    }
+
+
+    get_pending_orders = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const usr = req.user;
+            logger.info(`Fetching pending orders for User ID: ${usr.id}`);
+
+            const user = await user_service.get_user_by_id(usr.id);
+
+            if (!user || !user.nse_client_code) {
+                throw new AppError("User Finnsys credentials or client code not found", 400, "MISSING_FINNSYS_CREDENTIALS");
+            }
+
+            const data = await pending_orders_service.get_pending_orders(
+                usr.log!,
+                usr.pwd!,
+                user.nse_client_code
+            );
+
+            res.status(200).json({
+                code: 200,
+                message: "Pending orders fetched successfully",
+                data
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in get_pending_orders: `, error);
             next(error);
             return;
         }
