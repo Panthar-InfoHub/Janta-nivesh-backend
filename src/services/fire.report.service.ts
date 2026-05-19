@@ -221,7 +221,7 @@ class FireReportServiceClass {
         console.log("Total assest ==> ", total_assets)
         const net_worth = total_assets - total_liabilities;
         const monthly_income = annual_income / 12;
-        const total_annual_expenses = expense_house + expense_food + expense_transportation + expense_others;
+        const total_annual_expenses = (expense_house + expense_food + expense_transportation + expense_others) * 12;
         const annual_savings = annual_income - total_annual_expenses - (total_monthly_emi * 12);
         const savings_rate = annual_income === 0 ? 0 : (annual_savings / annual_income) * 100;
         const monthly_available_surplus = monthly_income - (total_annual_expenses / 12) - total_monthly_emi;
@@ -382,7 +382,7 @@ class FireReportServiceClass {
 
             // 3. Income and base expenses (same for both tracks)
             const income = annual_income_base * Math.pow(1 + FIRE_CONSTANTS.income_growth, i);
-            const expenses_raw = annual_expenses_base * Math.pow(1 + FIRE_CONSTANTS.expense_growth, i);
+            const expenses_raw = annual_expenses_base * Math.pow(1 + FIRE_CONSTANTS.expense_growth, i); // annual_expenses_base is monthly expense
 
             // 4. EMI — partial-year aware
             let yearly_emi = 0;
@@ -586,7 +586,7 @@ class FireReportServiceClass {
         const transportation = this.to_num(data.user_finance?.expense_transportation);
         const others = this.to_num(data.user_finance?.expense_others);
         const total_annual = house + food + transportation + others;
-        return { house, food, transportation, others, total_monthly: Math.round(total_annual / 12), total_annual };
+        return { house, food, transportation, others, total_monthly: Math.round(total_annual), total_annual: total_annual * 12 };
     }
 
     private compute_insurance_summary(data: UserFireReportData, metrics: ComputedMetrics): InsuranceSummary {

@@ -534,7 +534,7 @@ function page3(data: VelvetReportViewData): string {
       <div class="section-title" style="text-align:center">Profit / Loss (Monthly)</div>
       <div class="row2" style="min-height:0">
         <div class="ins-box" style="background:#F0FDF4;border:1.5px solid ${GREEN}">
-          <div class="card-label" style="font-size:9px">Income&sup1;&sup3;</div>
+          <div class="card-label" style="font-size:9px">Income<sup>13</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN};margin-top:4px">${rs(fmt_in(monthlyIncome), GREEN)}</div>
           <div class="divider"></div>
           <div class="metric-row"><span class="metric-label" style="font-size:9px">Monthly Income</span><span class="metric-value">${rs(fmt_in(monthlyIncome), "#1F2937")}</span></div>
@@ -542,7 +542,7 @@ function page3(data: VelvetReportViewData): string {
           <div class="metric-row" style="font-weight:bold;font-family:'Inter',sans-serif"><span style="font-size:9px">Total Income</span><span style="font-size:9px">${rs(fmt_in(monthlyIncome), "#1F2937")}</span></div>
         </div>
         <div class="ins-box" style="background:#FEF2F2;border:1.5px solid ${RED}">
-          <div class="card-label" style="font-size:9px">Expenses&sup1;&sup4;</div>
+          <div class="card-label" style="font-size:9px">Expenses<sup>14</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${RED};margin-top:4px">${rs(fmt_in(monthlyExpense), RED)}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -555,16 +555,16 @@ function page3(data: VelvetReportViewData): string {
 
       <div style="padding:0 40px;margin-bottom:10px;flex-shrink:0;margin-top:16px">
         <div class="card" style="display:flex;justify-content:space-around;border:2px solid ${GREEN};padding:12px">
-          <div style="text-align:center"><div class="metric-label">Surplus&sup1;&sup5;</div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${rs(fmt_in(monthlySurplus), GREEN)}</div></div>
-          <div style="text-align:center"><div class="metric-label">Savings Rate&sup1;&sup6;</div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${pct(savingsRate)}</div></div>
-          <div style="text-align:center"><div class="metric-label">Annual Surplus</div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(incomeExpense.annualSurplus), "#1F2937")}</div></div>
+          <div style="text-align:center"><div class="metric-label">Surplus<sup>15</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${rs(fmt_in(monthlySurplus), GREEN)}</div></div>
+          <div style="text-align:center"><div class="metric-label">Savings Rate<sup>16</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${pct(savingsRate)}</div></div>
+          <div style="text-align:center"><div class="metric-label">Annual Surplus<sup>17</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(incomeExpense.annualSurplus), "#1F2937")}</div></div>
         </div>
       </div>
 
       <div class="section-title" style="text-align:center;margin-top:20px">Balance Sheet (As on ${currentQuarter})</div>
       <div class="row2" style="min-height:0">
         <div class="ins-box" style="background:#EFF6FF;border:1.5px solid ${NAVY}">
-          <div class="card-label" style="font-size:9px">Assets&sup1;&sup7;</div>
+          <div class="card-label" style="font-size:9px">Assets<sup>17</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${NAVY};margin-top:4px">${rs(fmt_cr(balanceSheet.totalAssets), NAVY)}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -574,7 +574,7 @@ function page3(data: VelvetReportViewData): string {
           <div class="metric-row" style="font-weight:bold;font-family:'Inter',sans-serif"><span style="font-size:9px">Total Assets</span><span style="font-size:9px">${rs(fmt_cr(balanceSheet.totalAssets), "#1F2937")}</span></div>
         </div>
         <div class="ins-box" style="background:#FFF7ED;border:1.5px solid #F97316">
-          <div class="card-label" style="font-size:9px">Liabilities&sup1;&sup8;</div>
+          <div class="card-label" style="font-size:9px">Liabilities<sup>18</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:#F97316;margin-top:4px">${rs(fmt_cr(balanceSheet.totalLiabilities), "#F97316")}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -587,9 +587,9 @@ function page3(data: VelvetReportViewData): string {
 
       <div style="padding:0 40px;flex-shrink:0;margin-top:16px">
         <div class="card" style="display:flex;justify-content:space-around;border:2px solid ${GOLD};padding:12px">
-          <div style="text-align:center"><div class="metric-label">Net Worth&sup1;&sup9;</div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GOLD}">${rs(fmt_cr(balanceSheet.netWorth), GOLD)}</div></div>
-          <div style="text-align:center"><div class="metric-label">QoQ Change</div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${nwPos ? GREEN : RED}">${nwPos ? "+" : ""}${balanceSheet.qoqNwPct}%</div></div>
-          <div style="text-align:center"><div class="metric-label">Previous Quarter</div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(balanceSheet.netWorthPrevQ), "#1F2937")}</div></div>
+          <div style="text-align:center"><div class="metric-label">Net Worth<sup>19</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GOLD}">${rs(fmt_cr(balanceSheet.netWorth), GOLD)}</div></div>
+          <div style="text-align:center"><div class="metric-label">QoQ Change<sup>20</sup></div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${nwPos ? GREEN : RED}">${nwPos ? "+" : ""}${balanceSheet.qoqNwPct}%</div></div>
+          <div style="text-align:center"><div class="metric-label">Previous Quarter<sup>21</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(balanceSheet.netWorthPrevQ), "#1F2937")}</div></div>
         </div>
       </div>
 

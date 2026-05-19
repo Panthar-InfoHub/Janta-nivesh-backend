@@ -133,10 +133,10 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const savingsRate = parseFloat(m.savings_rate.toFixed(1));
     const totalExp = eb.total_annual || 1;
     const expenseBreakdown = [
-        { category: "Housing", amount: Math.round(eb.house / 12), percentage: Math.round((eb.house / totalExp) * 100) },
-        { category: "Food & Groceries", amount: Math.round(eb.food / 12), percentage: Math.round((eb.food / totalExp) * 100) },
-        { category: "Transport", amount: Math.round(eb.transportation / 12), percentage: Math.round((eb.transportation / totalExp) * 100) },
-        { category: "Others", amount: Math.round(eb.others / 12), percentage: Math.round((eb.others / totalExp) * 100) },
+        { category: "Housing", amount: Math.round(eb.house), percentage: Math.round((eb.house / totalExp) * 100) },
+        { category: "Food & Groceries", amount: Math.round(eb.food), percentage: Math.round((eb.food / totalExp) * 100) },
+        { category: "Transport", amount: Math.round(eb.transportation), percentage: Math.round((eb.transportation / totalExp) * 100) },
+        { category: "Others", amount: Math.round(eb.others), percentage: Math.round((eb.others / totalExp) * 100) },
     ];
 
     // ── Balance Sheet ─────────────────────────────────────────────────────────
