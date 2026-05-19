@@ -7,7 +7,7 @@ import AppError from "../middleware/error.middleware.js";
 
 export const data_migrate = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filePath = path.join(process.cwd(), 'migration_data.json');
+        const filePath = path.join(process.cwd(), 'logo_data.json');
 
         logger.debug(`Starting data migration from file: ${filePath}`);
 
@@ -23,9 +23,9 @@ export const data_migrate = async (req: Request, res: Response, next: NextFuncti
         // Process EVERYTHING now, no slicing.
         for (const row of data) {
             try {
-                await db.mfSchemeTransactionRules.update({
-                    where: { mf_product_id: row.id },
-                    data: { min_investment_amount: row.min_investment_amount }
+                await db.mfProduct.updateMany({
+                    where: { amc_name: row.mutual_fund_name },
+                    data: { img_url: row.logo_url }
                 });
                 successCount++;
 

@@ -501,13 +501,14 @@ class UserFinanceControllerClass {
     private extract_cart_items = (finnsys_cart_response: any) => {
         const sip_items: any = [];
         const lump_sum_items: any = [];
-        finnsys_cart_response.results.map((item: any) => {
+
+        finnsys_cart_response.length > 0 ? finnsys_cart_response.results.map((item: any) => {
             if (item.sub_txn_type === "S") {
                 sip_items.push(item);
             } else {
                 lump_sum_items.push(item);
             }
-        })
+        }) : null;
         return { sip_items, lump_sum_items };
     }
 
