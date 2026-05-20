@@ -90,7 +90,7 @@ class AuthControllerClass {
 
             logger.info(`Validating OTP for Mobile: ${mob}, Device: ${device_params.did}`);
             const auth_res: AuthResponse = await auth_service.validate_otp(mob, otp, device_params);
-
+            logger.debug("OTP Validation Response:", auth_res);
 
             if (auth_res.code !== 1) {
                 throw new AppError("OTP validation failed", 401, "OTP_VALIDATION_FAILED");

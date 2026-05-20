@@ -227,36 +227,89 @@ class MutualFundServiceClass {
     }
 
     get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others', limit?: number, page?: number }) => {
-        let query: Prisma.MfProductWhereInput = {};
+        const baseQuery: Prisma.MfProductWhereInput = {
+            metrics: {
+                AND: {
+                    return_3y: { not: null },
+                    return_1y: { not: null }
+                }
+            }
+        };
+
+        let query: Prisma.MfProductWhereInput = { ...baseQuery };
 
         switch (category) {
             case 'flexi_cap':
-                query = { scheme_type: { contains: 'Flexi-cap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'Flexi-cap Fund',
+                        mode: 'insensitive'
+                    },
+                    asset_type: 'Equity'
+                };
                 break;
             case 'large_Mid_cap':
-                query = { scheme_type: { contains: 'Large & Mid Cap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'Large & Mid Cap Fund',
+                        mode: 'insensitive'
+                    },
+                    asset_type: 'Equity'
+                };
                 break;
             case 'large_cap':
-                query = { scheme_type: { contains: 'Largecap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'Largecap Fund',
+                        mode: 'insensitive'
+                    },
+                    asset_type: 'Equity'
+                };
                 break;
             case 'mid_cap':
-                query = { scheme_type: { contains: 'Midcap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'Midcap Fund',
+                        mode: 'insensitive'
+                    },
+                    asset_type: 'Equity'
+                };
                 break;
             case 'small_cap':
-                query = { scheme_type: { contains: 'Smallcap Fund', mode: 'insensitive' }, asset_type: 'Equity' };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'Smallcap Fund',
+                        mode: 'insensitive'
+                    },
+                    asset_type: 'Equity'
+                };
                 break;
             case 'index':
-                query = { scheme_type: { contains: 'ETF/Index', mode: 'insensitive' } };
+                query = {
+                    ...baseQuery,
+                    scheme_type: {
+                        contains: 'ETF/Index',
+                        mode: 'insensitive'
+                    }
+                };
                 break;
             case 'global_others':
-                query = { asset_type: 'Others - Mutual Funds' };
+                query = {
+                    ...baseQuery,
+                    asset_type: 'Others - Mutual Funds'
+                };
                 break;
         }
 
         return await this.get_mutual_funds({
             pagination: { page, limit },
             query,
-            order: { metrics: { return_3y: 'desc' } }
+            order: { metrics: { return_1y: 'desc' } }
         });
     }
 

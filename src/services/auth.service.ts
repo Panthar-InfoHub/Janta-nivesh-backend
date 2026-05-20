@@ -102,7 +102,6 @@ class AuthServiceClass {
             const request_duration = Date.now() - request_start;
             const iso_end = new Date().toISOString();
             logger.info(`[OTP_VAL_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms at ${iso_end}`);
-            logger.debug("OTP Validation Response:", res.data);
             return res.data;
 
         } catch (error: any) {

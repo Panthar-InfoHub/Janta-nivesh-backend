@@ -68,12 +68,12 @@ model MfSchemeTransactionRules {
 model MfMetrics {
   id             String    @id @default(uuid())
   mf_product_id  String    @unique
-  return_30d     Float?
-  return_90d     Float?
-  return_6m      Float?
-  return_1y      Float?
-  return_3y      Float?
-  nav_change_pct Float?
+  return_30d     Float? //1 month return
+  return_90d     Float? //3 month return
+  return_6m      Float? //6 month return
+  return_1y      Float? //1 year return
+  return_3y      Float? //3 year return
+  nav_change_pct Float? // NAV change percentage
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @default(now()) @updatedAt
   mf_product     MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
