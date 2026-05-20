@@ -502,7 +502,7 @@ class UserFinanceControllerClass {
         const sip_items: any = [];
         const lump_sum_items: any = [];
 
-        finnsys_cart_response.length > 0 ? finnsys_cart_response.results.map((item: any) => {
+        finnsys_cart_response.results.length > 0 ? finnsys_cart_response.results.map((item: any) => {
             if (item.sub_txn_type === "S") {
                 sip_items.push(item);
             } else {

@@ -44,7 +44,7 @@ class PendingOrdersServiceClass {
      */
     async get_pending_orders(user_log: string, user_pwd: string, nse_client_code: string) {
         // Prepare payloads
-        const dateRange = this.getDateRange(30);
+        const lumpsum_date_range = this.getDateRange(6); // last 7 days, can be adjusted as needed
 
         const lumpsumPayload = {
             arn: env.ARN,
@@ -52,13 +52,15 @@ class PendingOrdersServiceClass {
             password: user_pwd,
             type: "P", // PROVISIONAL
             data: {
-                from_date: dateRange.from_date,
-                to_date: dateRange.to_date,
+                from_date: lumpsum_date_range.from_date,
+                to_date: lumpsum_date_range.to_date,
                 trans_type: "ALL",
                 order_type: "ALL",
                 sub_order_type: "ALL"
             }
         };
+
+        logger.debug("Lumpsum payload for pending orders", lumpsumPayload);
 
         const sipPayload = {
             arn: env.ARN,
@@ -68,6 +70,7 @@ class PendingOrdersServiceClass {
                 client_code: nse_client_code
             }
         };
+        logger.debug("SIP payload for pending orders", sipPayload);
 
         try {
             // Fetch both in parallel
