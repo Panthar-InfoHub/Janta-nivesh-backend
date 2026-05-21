@@ -24,6 +24,7 @@ import { fd_router } from "./routes/fd.router.js"
 import { bundle_router } from "./routes/bundle.router.js"
 import { frontend_router } from "./routes/frontend.router.js"
 import { migration_router } from "./routes/migration.router.js"
+import { report_router } from "./routes/report.router.js"
 
 
 //Configurations
@@ -68,6 +69,7 @@ app.use("/api/v1/webhook", webhook_router)
 
 app.use("/api/v1/kyc", kyc_router)
 app.use("/api/v1/bundles", bundle_router)
+app.use("/api/v1/report", report_router)
 //Health check
 app.get("/api/v1/ping", (_req, res) => {
     // throw new AppError("Service is running...", 501, "SERVER_RUNNING")

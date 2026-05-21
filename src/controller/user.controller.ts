@@ -295,7 +295,11 @@ class UserFinanceControllerClass {
                 category: "Fixed Deposit",
                 amount: Number(fd.amount),
                 start_date: fd.fd_issued_at,
-                maturity_date: fd.maturity_date,
+                maturity_date: new Date(fd.maturity_date).toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric"
+                }),
                 return: Number(fd.maturity_amount || 0) - Number(fd.amount),
                 roi: Number(fd.roi_at_booking) || 0,
                 tenure_days: fd.tenure_at_booking || 0,

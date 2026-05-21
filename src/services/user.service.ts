@@ -283,6 +283,7 @@ class UserServiceClass {
                     fd_issued_at: true,
                     status: true,
                     maturity_amount: true,
+                    maturity_date: true,
                     user: {
                         select: {
                             id: true,
