@@ -72,22 +72,29 @@ const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
 export const get_mf_search_query = (params: any): { query: MfProductWhereInput, order: MfProductOrderByWithRelationInput, search?: string } => {
-
+    logger.debug("Query for get_mf_search_query ==> ", params);
     const { category, risk, sort_by, search } = params;
     const normalized_category = map_mf_asset_type(category, category);
 
     const query: MfProductWhereInput = {
         ...(normalized_category && { asset_type: { equals: normalized_category } }),
         ...(risk && { risk_level: { equals: risk } }),
+        ...(sort_by === "3m" && { metrics: { return_90d: { not: null } } }),
+        ...(sort_by === "6m" && { metrics: { return_6m: { not: null } } }),
+        ...(sort_by === "1y" && { metrics: { return_1y: { not: null } } }),
+        ...(sort_by === "3y" && { metrics: { return_3y: { not: null } } }),
+        ...(sort_by === "5y" && { metrics: { return_5y: { not: null } } }),
     }
 
+    logger.debug("Query for sort by ==> ", sort_by)
     const order: MfProductOrderByWithRelationInput = {
-        ...(sort_by === "3m" && { metrics: { return_90d: 'desc' } }),
-        ...(sort_by === "6m" && { metrics: { return_6m: 'desc' } }),
-        ...(sort_by === "1y" && { metrics: { return_1y: 'desc' } }),
-        ...(sort_by === "3y" && { metrics: { return_3y: 'desc' } }),
+        ...(sort_by === "3m" && { metrics: { return_90d: { sort: 'desc', nulls: 'last' } } }),
+        ...(sort_by === "6m" && { metrics: { return_6m: { sort: 'desc', nulls: 'last' } } }),
+        ...(sort_by === "1y" && { metrics: { return_1y: { sort: 'desc', nulls: 'last' } } }),
+        ...(sort_by === "3y" && { metrics: { return_3y: { sort: 'desc', nulls: 'last' } } }),
+        ...(sort_by === "5y" && { metrics: { return_5y: { sort: 'desc', nulls: 'last' } } }),
     }
-
+    logger.debug("Query for order by ==> ", order)
     return { query, order, search };
 }
 

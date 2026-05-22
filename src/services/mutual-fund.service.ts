@@ -72,6 +72,7 @@ class MutualFundServiceClass {
         const { page, limit } = pagination;
         const offset = (page - 1) * limit;
 
+        logger.debug("Order in service layer ==> ", order)
         const where: any = query ? { ...query } : {};
 
         // Globally exclude these terms from all results
@@ -213,7 +214,7 @@ class MutualFundServiceClass {
                 },
                 skip: offset,
                 take: limit,
-                orderBy: order ? order : { scheme_name: 'asc' }
+                orderBy: (order && Object.keys(order).length > 0) ? order : { scheme_name: 'asc' }
             })
         ]);
 

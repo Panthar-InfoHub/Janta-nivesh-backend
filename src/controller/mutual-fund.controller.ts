@@ -45,6 +45,7 @@ class MutualFundControllerClass {
             }
 
             //Filters
+            logger.debug("Query for sort by ==> ", req.query)
             const sort_by = req.query.sort_by as string
             const search = req.query.search as string
             const category = req.query.category as string
