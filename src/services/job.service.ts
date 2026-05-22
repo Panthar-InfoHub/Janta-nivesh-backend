@@ -520,7 +520,8 @@ class JobServiceClass {
                             latest_nav_date - INTERVAL '3 months' AS date_3m,
                             latest_nav_date - INTERVAL '6 months' AS date_6m,
                             latest_nav_date - INTERVAL '1 year' AS date_1y,
-                            latest_nav_date - INTERVAL '3 years' AS date_3y
+                            latest_nav_date - INTERVAL '3 years' AS date_3y,
+                            latest_nav_date - INTERVAL '5 years' AS date_5y
                         FROM "MfProduct"
                         WHERE id = ANY(ARRAY[${Prisma.join(productIds)}]::text[])
                     )
@@ -532,7 +533,8 @@ class JobServiceClass {
                         n_3m.nav AS nav_3m,
                         n_6m.nav AS nav_6m,
                         n_1y.nav AS nav_1y,
-                        n_3y.nav AS nav_3y
+                        n_3y.nav AS nav_3y,
+                        n_5y.nav AS nav_5y
                     FROM TargetDates t
                     LEFT JOIN LATERAL (
                         SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date < t.latest_nav_date ORDER BY nav_date DESC LIMIT 1
@@ -551,7 +553,10 @@ class JobServiceClass {
                     ) n_1y ON true
                     LEFT JOIN LATERAL (
                         SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_3y ORDER BY nav_date DESC LIMIT 1
-                    ) n_3y ON true;
+                    ) n_3y ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_5y ORDER BY nav_date DESC LIMIT 1
+                    ) n_5y ON true;
                 `;
 
                 const results: any[] = await db.$queryRaw(query);
@@ -567,6 +572,7 @@ class JobServiceClass {
                     const nav6m = row.nav_6m ? parseFloat(row.nav_6m) : null;
                     const nav1y = row.nav_1y ? parseFloat(row.nav_1y) : null;
                     const nav3y = row.nav_3y ? parseFloat(row.nav_3y) : null;
+                    const nav5y = row.nav_5y ? parseFloat(row.nav_5y) : null;
 
                     return Prisma.sql`(
                         ${cuid()}, 
@@ -577,13 +583,14 @@ class JobServiceClass {
                         ${absReturn(latest, nav6m)}, 
                         ${absReturn(latest, nav1y)}, 
                         ${cagrReturn(latest, nav3y, 3)}, 
+                        ${cagrReturn(latest, nav5y, 5)}, 
                         NOW()
                     )`;
                 });
 
                 if (metricsValues.length > 0) {
                     await db.$executeRaw`
-                        INSERT INTO "MfMetrics" (id, mf_product_id, nav_change_pct, return_30d, return_90d, return_6m, return_1y, return_3y, "updatedAt")
+                        INSERT INTO "MfMetrics" (id, mf_product_id, nav_change_pct, return_30d, return_90d, return_6m, return_1y, return_3y, return_5y, "updatedAt")
                         VALUES ${Prisma.join(metricsValues)}
                         ON CONFLICT (mf_product_id) DO UPDATE SET
                             nav_change_pct = EXCLUDED.nav_change_pct,
@@ -592,6 +599,7 @@ class JobServiceClass {
                             return_6m = EXCLUDED.return_6m,
                             return_1y = EXCLUDED.return_1y,
                             return_3y = EXCLUDED.return_3y,
+                            return_5y = EXCLUDED.return_5y,
                             "updatedAt" = NOW();
                     `;
                 }

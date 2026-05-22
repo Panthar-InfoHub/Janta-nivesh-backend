@@ -665,12 +665,21 @@ class FireReportServiceClass {
         const user = await db.user.findUnique({ where: { id: user_id }, select: { createdAt: true } });
         const joined_date = user?.createdAt ?? new Date();
 
+        // NEW: Detect if user is new (< 3 months old)
+        const months_since_join = (now.getTime() - joined_date.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        const is_new_user = months_since_join < 3; // Less than 3 months = new user
+
         const quarter_label = (y: number, q: number): string => `Q${q + 1} ${y}`;
 
         const points: QuarterlyPoint[] = [];
 
         // Generate last 6 quarters
         for (let i = 5; i >= 0; i--) {
+            // NEW: Skip historical quarters for new users (only show current quarter)
+            if (is_new_user && i !== 0) {
+                continue;
+            }
+
             // Calculate target Quarter/Year
             let target_q = Math.floor(now.getMonth() / 3) - i;
             let target_y = current_year;

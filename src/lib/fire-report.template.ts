@@ -70,7 +70,18 @@ function sparkline(
   height = 130,
   showYAxis = false
 ): string {
-  if (data.length < 2) return "";
+  if (data.length < 1) return "";
+
+
+  // if (data.length === 1) {
+  //   // Single point: just show a dot centered in the SVG
+  //   const cx = width / 2;
+  //   const cy = height / 2;
+  //   return `<svg width="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="display:block;margin-top:6px">
+  //     <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="${color}"/>
+  //     <text x="${cx.toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="9" fill="${color}">${data[0].label}</text>
+  //   </svg>`;
+  // }
   const PAD_L = showYAxis ? 52 : 12;
   const PAD_R = 12;
   const TOP = 10;
@@ -81,7 +92,7 @@ function sparkline(
   const minV = Math.min(...vals);
   const maxV = Math.max(...vals);
   const range = maxV - minV || 1;
-  const px = (i: number) => PAD_L + (i / (data.length - 1)) * chartW;
+  const px = (i: number) => PAD_L + (i / Math.max(1, data.length - 1)) * chartW;
   const py = (v: number) => TOP + (1 - (v - minV) / range) * chartH;
   const pts = data.map((d, i) => `${px(i).toFixed(1)},${py(d.value).toFixed(1)}`).join(" ");
   const fmt = (v: number) => `${Math.round(v)} L`;
@@ -317,7 +328,7 @@ function page1(data: VelvetReportViewData): string {
   const { currentQuarter, clientData, snapshot, qoqChanges } = data;
   const nwPos = parseFloat(qoqChanges.netWorth) >= 0;
   const firePos = parseFloat(qoqChanges.firePercent) >= 0;
-  const fireBarW = Math.min(snapshot.firePercentage, 100);
+  const fireBarW = Math.max(0, Math.min(snapshot.firePercentage, 100));
   const page1CardBg = "rgba(249, 250, 251, 1)";
   const page1CardBorder = "rgba(249, 250, 251, 1)";
   const nwHistory = snapshot.netWorthHistory.map(h => ({ label: h.quarter, value: h.value }));
@@ -430,7 +441,7 @@ function page1(data: VelvetReportViewData): string {
 // ─── Page 2: FIRE Calculations ────────────────────────────────────────────────
 function page2(data: VelvetReportViewData): string {
   const { currentQuarter, clientData, snapshot, thirtyYearProjection } = data;
-  const fireBarW = Math.min(snapshot.firePercentage, 100);
+  const fireBarW = Math.max(0, Math.min(snapshot.firePercentage, 100));
 
   const rows = thirtyYearProjection.map((row) => `
       <tr>
@@ -494,9 +505,8 @@ function page2(data: VelvetReportViewData): string {
       <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year</div>
       <div class="fn"><b>8. Total Expenses:</b> Projected annual expenses adjusted for 6% inflation</div>
       <div class="fn"><b>9. Goal Payouts:</b> Lump-sum goal funding due that year</div>
-      <div class="fn"><b>10. FIRE Number:</b> Annual Expenses &times; 30 (based on 4% safe withdrawal rate)</div>
+      <div class="fn"><b>10. FIRE Number:</b> Annual Expenses &times; 30</div>
       <div class="fn"><b>11. FIRE %:</b> (Current Portfolio Value / FIRE Number) &times; 100</div>
-      <div class="fn"><b>12. Safe Withdrawal Rate:</b> Percentage of portfolio withdrawn annually without depleting capital over 30 years (4% rule)</div>
     </div>
     ${footer(2)}
   </div>`;
@@ -534,7 +544,7 @@ function page3(data: VelvetReportViewData): string {
       <div class="section-title" style="text-align:center">Profit / Loss (Monthly)</div>
       <div class="row2" style="min-height:0">
         <div class="ins-box" style="background:#F0FDF4;border:1.5px solid ${GREEN}">
-          <div class="card-label" style="font-size:9px">Income<sup>13</sup></div>
+          <div class="card-label" style="font-size:9px">Income<sup>12</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN};margin-top:4px">${rs(fmt_in(monthlyIncome), GREEN)}</div>
           <div class="divider"></div>
           <div class="metric-row"><span class="metric-label" style="font-size:9px">Monthly Income</span><span class="metric-value">${rs(fmt_in(monthlyIncome), "#1F2937")}</span></div>
@@ -542,7 +552,7 @@ function page3(data: VelvetReportViewData): string {
           <div class="metric-row" style="font-weight:bold;font-family:'Inter',sans-serif"><span style="font-size:9px">Total Income</span><span style="font-size:9px">${rs(fmt_in(monthlyIncome), "#1F2937")}</span></div>
         </div>
         <div class="ins-box" style="background:#FEF2F2;border:1.5px solid ${RED}">
-          <div class="card-label" style="font-size:9px">Expenses<sup>14</sup></div>
+          <div class="card-label" style="font-size:9px">Expenses<sup>13</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${RED};margin-top:4px">${rs(fmt_in(monthlyExpense), RED)}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -555,16 +565,16 @@ function page3(data: VelvetReportViewData): string {
 
       <div style="padding:0 40px;margin-bottom:10px;flex-shrink:0;margin-top:16px">
         <div class="card" style="display:flex;justify-content:space-around;border:2px solid ${GREEN};padding:12px">
-          <div style="text-align:center"><div class="metric-label">Surplus<sup>15</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${rs(fmt_in(monthlySurplus), GREEN)}</div></div>
-          <div style="text-align:center"><div class="metric-label">Savings Rate<sup>16</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${pct(savingsRate)}</div></div>
-          <div style="text-align:center"><div class="metric-label">Annual Surplus<sup>17</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(incomeExpense.annualSurplus), "#1F2937")}</div></div>
+          <div style="text-align:center"><div class="metric-label">Surplus<sup>14</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${rs(fmt_in(monthlySurplus), GREEN)}</div></div>
+          <div style="text-align:center"><div class="metric-label">Savings Rate<sup>15</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GREEN}">${pct(savingsRate)}</div></div>
+          <div style="text-align:center"><div class="metric-label">Annual Surplus<sup>16</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(incomeExpense.annualSurplus), "#1F2937")}</div></div>
         </div>
       </div>
 
       <div class="section-title" style="text-align:center;margin-top:20px">Balance Sheet (As on ${currentQuarter})</div>
       <div class="row2" style="min-height:0">
         <div class="ins-box" style="background:#EFF6FF;border:1.5px solid ${NAVY}">
-          <div class="card-label" style="font-size:9px">Assets<sup>17</sup></div>
+          <div class="card-label" style="font-size:9px">Assets<sup>16</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:${NAVY};margin-top:4px">${rs(fmt_cr(balanceSheet.totalAssets), NAVY)}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -574,7 +584,7 @@ function page3(data: VelvetReportViewData): string {
           <div class="metric-row" style="font-weight:bold;font-family:'Inter',sans-serif"><span style="font-size:9px">Total Assets</span><span style="font-size:9px">${rs(fmt_cr(balanceSheet.totalAssets), "#1F2937")}</span></div>
         </div>
         <div class="ins-box" style="background:#FFF7ED;border:1.5px solid #F97316">
-          <div class="card-label" style="font-size:9px">Liabilities<sup>18</sup></div>
+          <div class="card-label" style="font-size:9px">Liabilities<sup>17</sup></div>
           <div style="font-size:32px;font-weight:bold;font-family:'Inter',sans-serif;color:#F97316;margin-top:4px">${rs(fmt_cr(balanceSheet.totalLiabilities), "#F97316")}</div>
           <div class="divider"></div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -587,9 +597,9 @@ function page3(data: VelvetReportViewData): string {
 
       <div style="padding:0 40px;flex-shrink:0;margin-top:16px">
         <div class="card" style="display:flex;justify-content:space-around;border:2px solid ${GOLD};padding:12px">
-          <div style="text-align:center"><div class="metric-label">Net Worth<sup>19</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GOLD}">${rs(fmt_cr(balanceSheet.netWorth), GOLD)}</div></div>
-          <div style="text-align:center"><div class="metric-label">QoQ Change<sup>20</sup></div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${nwPos ? GREEN : RED}">${nwPos ? "+" : ""}${balanceSheet.qoqNwPct}%</div></div>
-          <div style="text-align:center"><div class="metric-label">Previous Quarter<sup>21</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(balanceSheet.netWorthPrevQ), "#1F2937")}</div></div>
+          <div style="text-align:center"><div class="metric-label">Net Worth<sup>18</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GOLD}">${rs(fmt_cr(balanceSheet.netWorth), GOLD)}</div></div>
+          <div style="text-align:center"><div class="metric-label">QoQ Change<sup>19</sup></div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${nwPos ? GREEN : RED}">${nwPos ? "+" : ""}${balanceSheet.qoqNwPct}%</div></div>
+          <div style="text-align:center"><div class="metric-label">Previous Quarter<sup>20</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(balanceSheet.netWorthPrevQ), "#1F2937")}</div></div>
         </div>
       </div>
 
@@ -597,13 +607,13 @@ function page3(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn"><b>13. Income:</b> Total monthly income from all sources</div>
-      <div class="fn"><b>14. Expenses:</b> Housing + Food + Transport + Others = ${rs(fmt_in(monthlyExpense), "#111", "7px")}/month</div>
-      <div class="fn"><b>15. Surplus:</b> Income &minus; Expenses = ${rs(fmt_in(monthlyIncome), "#111", "7px")} &minus; ${rs(fmt_in(monthlyExpense), "#111", "7px")} = ${rs(fmt_in(monthlySurplus), "#111", "7px")}/month</div>
-      <div class="fn"><b>16. Savings Rate:</b> (Surplus / Income) &times; 100 = ${pct(savingsRate)}</div>
-      <div class="fn"><b>17. Assets:</b> All resources owned with economic value = ${rs(fmt_cr(balanceSheet.totalAssets), "#111", "7px")}</div>
-      <div class="fn"><b>18. Liabilities:</b> All financial obligations = ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111", "7px")}</div>
-      <div class="fn"><b>19. Net Worth:</b> Total Assets &minus; Total Liabilities = ${rs(fmt_cr(balanceSheet.netWorth), "#111", "7px")}</div>
+      <div class="fn"><b>12. Income:</b> Total monthly income from all sources</div>
+      <div class="fn"><b>13. Expenses:</b> Housing + Food + Transport + Others = ${rs(fmt_in(monthlyExpense), "#111", "7px")}/month</div>
+      <div class="fn"><b>14. Surplus:</b> Income &minus; Expenses = ${rs(fmt_in(monthlyIncome), "#111", "7px")} &minus; ${rs(fmt_in(monthlyExpense), "#111", "7px")} = ${rs(fmt_in(monthlySurplus), "#111", "7px")}/month</div>
+      <div class="fn"><b>15. Savings Rate:</b> (Surplus / Income) &times; 100 = ${pct(savingsRate)}</div>
+      <div class="fn"><b>16. Assets:</b> All resources owned with economic value = ${rs(fmt_cr(balanceSheet.totalAssets), "#111", "7px")}</div>
+      <div class="fn"><b>17. Liabilities:</b> All financial obligations = ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111", "7px")}</div>
+      <div class="fn"><b>18. Net Worth:</b> Total Assets &minus; Total Liabilities = ${rs(fmt_cr(balanceSheet.netWorth), "#111", "7px")}</div>
     </div>
     ${footer(3)}
   </div>`;
@@ -653,7 +663,7 @@ function page4(data: VelvetReportViewData): string {
 
       <div class="row2" style="min-height:0;margin-bottom:20px">
         <div class="card" style="flex:1;text-align:center; background:rgba(249, 250, 251, 1) !important; display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:8px">
-          <div class="card-label">Current Net Worth&sup2;&sup0;</div>
+          <div class="card-label">Current Net Worth<sup>19</sup></div>
           <div style="font-size:48px;font-weight:700;color:rgba(30, 58, 95, 1);line-height:1">${rs(fmt_cr(balanceSheet.netWorth), NAVY)}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
             <span class="${nwPos ? "badge-pos" : "badge-neg"}" style="font-size:9px;padding:2px 10px">${nwPos ? "↑" : "↓"} ${Math.abs(parseFloat(String(balanceSheet.qoqNwPct)))}%</span>
@@ -662,7 +672,7 @@ function page4(data: VelvetReportViewData): string {
           <div style="font-size:8.5px;color:${GRAY};margin-top:4px">Previous Quarter: ${rs(fmt_cr(balanceSheet.netWorthPrevQ), GRAY)}</div>
         </div>
         <div class="card" style="flex:1;display:flex; background:rgba(249, 250, 251, 1) !important;flex-direction:column;padding:20px;justify-content:center">
-          <div class="card-label" style="margin-bottom:12px;text-align:left">Net Worth Distribution&sup2;&sup1;</div>
+          <div class="card-label" style="margin-bottom:12px;text-align:left">Net Worth Distribution<sup>20</sup></div>
           ${pieChart(netWorthPage.pieData, 110)}
         </div>
       </div>
@@ -674,8 +684,8 @@ function page4(data: VelvetReportViewData): string {
     </div>
 
     <div style="padding-top: 24px">
-      <div class="fn"><b>20. Net Worth:</b> Total Assets &minus; Total Liabilities</div>
-      <div class="fn"><b>21. Asset Allocation:</b> Distribution shows percentage of net worth invested in each asset class. Trend lines estimated via deterministic backward simulation.</div>
+      <div class="fn"><b>19. Net Worth:</b> Total Assets &minus; Total Liabilities</div>
+      <div class="fn"><b>20. Asset Allocation:</b> Distribution shows percentage of net worth invested in each asset class. Trend lines estimated via deterministic backward simulation.</div>
       <div class="fn">&bull; <b>Equity:</b> Mutual Funds + Direct Stocks</div>
       <div class="fn">&bull; <b>Debt:</b> Debt Funds + PPF/EPF</div>
       <div class="fn">&bull; <b>Real Estate:</b> Primary residence valued at ${rs(fmt_cr(8000000), "#111")}</div>
@@ -721,9 +731,9 @@ function page5(data: VelvetReportViewData): string {
             <th style="width:22%">Goal Name</th>
             <th class="text-right" style="width:12%">Target Year</th>
             <th class="text-right" style="width:7%">Yrs</th>
-            <th class="text-right" style="width:16%">Monthly SIP&sup2;&sup2;</th>
+            <th class="text-right" style="width:16%">Monthly SIP\<sup>21</sup></th>
             <th class="text-right" style="width:16%">Yearly</th>
-            <th class="text-right" style="width:16%">Future Value&sup2;&sup3;</th>
+            <th class="text-right" style="width:16%">Future Value<sup>22</sup></th>
           </tr>
         </thead>
         <tbody>
@@ -755,11 +765,11 @@ function page5(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn">Assumptions: Inflation&sup2;&sup5; 6% | SIP Return 10% | FV Growth 8%</div>
-      <div class="fn"><b>22. Monthly SIP:</b> PMT formula to accumulate future value at assumed returns and inflation</div>
-      <div class="fn"><b>23. Future Value:</b> Today's cost &times; (1.08)^years</div>
-      <div class="fn"><b>24. Year-by-Year Requirement:</b> Aggregated monthly and yearly commitment across all active goals</div>
-      <div class="fn"><b>25. Inflation:</b> 6% annual cost-of-living increase applied to all goals</div>
+      <div class="fn">Assumptions: Inflation<sup>24</sup> 6% | SIP Return 10% | FV Growth 8%</div>
+      <div class="fn"><b>21. Monthly SIP:</b> PMT formula to accumulate future value at assumed returns and inflation</div>
+      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1.08)^years</div>
+      <div class="fn"><b>23. Year-by-Year Requirement:</b> Aggregated monthly and yearly commitment across all active goals</div>
+      <div class="fn"><b>24. Inflation:</b> 6% annual cost-of-living increase applied to all goals</div>
     </div>
     ${footer(5)}
   </div>`;
@@ -783,11 +793,11 @@ function page6(data: VelvetReportViewData): string {
       <div class="section-title">Term Life Insurance</div>
       <div style="margin-bottom:6px;flex-shrink:0;background:rgba(249, 250, 251, 1);border-radius:8px;padding:8px">
         <div style="display:flex;gap:12px">
-          <div style="flex:1;display:flex;justify-content:center">${barChart(insurance.termLife.have, insurance.termLife.recommended, GOLD, NAVY, "Cr")}</div>
+          <div style="flex:1;display:flex;justify-content:center">${barChart(insurance.termLife.have, insurance.termLife.recommended, termGap ? RED : GREEN, NAVY, "Cr")}</div>
           <div style="flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center">
             <div class="ins-box" style="background:rgba(220, 252, 231, 1);display:flex;justify-content:space-between;align-items:center">
               <span style="font-size:9px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif">Current Coverage</span>
-              <span style="font-size:16px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:rgba(34, 197, 94, 1)">${rs(fmt_cr(insurance.termLife.have), GOLD, "14px")}</span>
+              <span style="font-size:16px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:rgba(34, 197, 94, 1)">${rs(fmt_cr(insurance.termLife.have), termGap ? RED : GREEN, "14px")}</span>
             </div>
             <div class="ins-box" style="background:rgba(239, 246, 255, 1);display:flex;justify-content:space-between;align-items:center">
               <span style="font-size:9px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif">Recommended</span>
@@ -855,10 +865,10 @@ function page6(data: VelvetReportViewData): string {
       <div style="margin:16px">
         <div class="fn" >&bull; Term Life = Age-based income multiplier (10x - 30x)</div>
         <div class="fn" >&bull; Health = Age-based minimum cover (₹10L - ₹40L)</div>
-        <div class="fn" ><b>26. Term Life Recommended:</b> Coverage based on age: 30x Annual Income (Age 20-30), 20x (31-40), 15x (41-50), and 10x (50+).</div>
-        <div class="fn" ><b>27. Health Recommended:</b> Coverage based on age: ₹10L (Age 20-30), ₹15L (31-40), ₹25L (41-50), and ₹40L (51+).</div>
-        <div class="fn" ><b>28. Super Top-up:</b> Additional health coverage after base sum exhausts. Recommendation assumes family floater cover.</div>
-        <div class="fn" ><b>29. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases. Recommended at ₹50L standard.</div>
+        <div class="fn" ><b>25. Term Life Recommended:</b> Coverage based on age: 30x Annual Income (Age 20-30), 20x (31-40), 15x (41-50), and 10x (50+).</div>
+        <div class="fn" ><b>26. Health Recommended:</b> Coverage based on age: ₹10L (Age 20-30), ₹15L (31-40), ₹25L (41-50), and ₹40L (51+).</div>
+        <div class="fn" ><b>27. Super Top-up:</b> Additional health coverage after base sum exhausts. Recommendation assumes family floater cover.</div>
+        <div class="fn" ><b>28. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases. Recommended at ₹50L standard.</div>
       </div>
 
       <div class="summary-box" style="margin:12px 0">

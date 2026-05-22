@@ -115,8 +115,8 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const netWorthHistory = qs.map(q => ({ quarter: q.quarter, value: q.net_worth }));
     const fireCurrentCorpus = projection[0]?.portfolio_value.emi_include ?? 0;
     const fireNumber = projection[0]?.fire_number.emi_include ?? 0;
-    const firePercentage = projection[0]?.fire_percentage.emi_include ?? 0;
-    const fireGap = Math.max(0, fireNumber - fireCurrentCorpus);
+    const firePercentage = fireNumber > 0 ? (netWorth * 100) / fireNumber : 0;
+    const fireGap = Math.max(0, fireNumber - netWorth);
     const annualExpenses = m.total_annual_expenses;
     // approximate previous quarter's annual expenses (monthly rate deflated by 6% p.a. ÷ 4 quarters)
     const annualExpensesPrevQ = Math.round(annualExpenses / Math.pow(1.06, 0.25));
@@ -215,14 +215,17 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     // ── QoQ Changes ───────────────────────────────────────────────────────────
     const cur = qs[qs.length - 1];
     const prev = qs[qs.length - 2];
+
+    const has_valid_previous = prev !== undefined;
     logger.debug(`Current ${cur} and prev quarter nw ${prev}`)
+
     const pct_change = (c: number, p: number) =>
         p > 0 ? ((c - p) / p * 100).toFixed(1) : "0.0";
     const qoqChanges = {
-        netWorth: pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1),
-        expenses: pct_change(annualExpenses, annualExpensesPrevQ),
-        fireNumber: pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1),
-        firePercent: pct_change(cur?.fire_percentage ?? 0, prev?.fire_percentage ?? 1),
+        netWorth: has_valid_previous ? pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1) : "0.0",
+        expenses: has_valid_previous ? pct_change(annualExpenses, annualExpensesPrevQ) : "0.0",
+        fireNumber: has_valid_previous ? pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1) : "0.0",
+        firePercent: has_valid_previous ? pct_change(cur?.fire_percentage ?? 0, prev?.fire_percentage ?? 1) : "0.0",
     };
 
     // ── Quarter-end Summary ───────────────────────────────────────────────────

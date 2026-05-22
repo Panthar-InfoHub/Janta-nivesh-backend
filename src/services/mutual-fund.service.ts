@@ -135,6 +135,7 @@ class MutualFundServiceClass {
                 else if (order?.metrics?.return_6m) sql_order_by = Prisma.sql`m.return_6m DESC NULLS LAST, score DESC`;
                 else if (order?.metrics?.return_1y) sql_order_by = Prisma.sql`m.return_1y DESC NULLS LAST, score DESC`;
                 else if (order?.metrics?.return_3y) sql_order_by = Prisma.sql`m.return_3y DESC NULLS LAST, score DESC`;
+                else if (order?.metrics?.return_5y) sql_order_by = Prisma.sql`m.return_5y DESC NULLS LAST, score DESC`;
 
                 // 4. Execute Main Search Query
                 const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
@@ -205,7 +206,8 @@ class MutualFundServiceClass {
                             return_3y: true,
                             return_1y: true,
                             return_90d: true,
-                            return_6m: true
+                            return_6m: true,
+                            return_5y: true,
                         }
                     }
                 },
@@ -231,7 +233,11 @@ class MutualFundServiceClass {
             metrics: {
                 AND: {
                     return_3y: { not: null },
-                    return_1y: { not: null }
+                    return_1y: { not: null },
+                    return_5y: { not: null },
+                    return_6m: { not: null },
+                    return_30d: { not: null },
+                    return_90d: { not: null },
                 }
             }
         };
@@ -324,6 +330,7 @@ class MutualFundServiceClass {
                         return_6m: true,
                         return_1y: true,
                         return_3y: true,
+                        return_5y: true,
                         nav_change_pct: true
                     }
                 },

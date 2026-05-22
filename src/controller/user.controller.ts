@@ -110,6 +110,19 @@ class UserFinanceControllerClass {
 
             logger.debug(`User data fetched successfully ==> `, user_cart_res);
 
+            if (user_cart_res.code === 0) {
+                logger.debug("Empty cart for User ID ==> ", user.id);
+                res.status(200).json({
+                    code: 200,
+                    message: "User cart fetched successfully",
+                    data: {
+                        sip_items: [],
+                        lump_sum_items: []
+                    }
+                });
+                return;
+            }
+
             if (user_cart_res.code != 1 && user_cart_res.code != 0) {
                 logger.warn(`Failed to fetch user cart from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_cart_res.code}`);
                 throw new AppError("Failed to fetch user cart from Finnsys", 502, "FINNSYS_CART_FETCH_FAILED");

@@ -73,6 +73,7 @@ model MfMetrics {
   return_6m      Float? //6 month return
   return_1y      Float? //1 year return
   return_3y      Float? //3 year return
+  return_5y      Float? //5 year return
   nav_change_pct Float? // NAV change percentage
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @default(now()) @updatedAt
