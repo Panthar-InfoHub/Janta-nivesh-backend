@@ -214,7 +214,10 @@ class MutualFundServiceClass {
                 },
                 skip: offset,
                 take: limit,
-                orderBy: (order && Object.keys(order).length > 0) ? order : { scheme_name: 'asc' }
+                orderBy: (order && Object.keys(order).length > 0) ? order : [
+                    { scheme_name: 'asc' },
+                    { id: 'asc' } // Tie-breaker
+                ]
             })
         ]);
 
