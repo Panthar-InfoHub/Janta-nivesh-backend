@@ -594,24 +594,34 @@ class MutualFundServiceClass {
                     installments = days_diff;
                     break;
                 case "WD": // WEEKLY
-                case "OW": // FORTNIGHTLY
                     installments = Math.ceil(days_diff / 7);
                     break;
+                case "OW": // FORTNIGHTLY
+                    installments = Math.ceil(days_diff / 14);
+                    break;
                 case "OM": // MONTHLY
-                    // For monthly: count months inclusive
-                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
-                    installments = months;
+                    {
+                        const total_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                        installments = total_months;
+                    }
                     break;
                 case "Q": // QUARTERLY
-                    const q_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-                    installments = Math.floor(q_months / 3) + (q_months % 3 > 0 ? 1 : 0);
+                    {
+                        const total_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                        installments = Math.floor(total_months / 3) + (total_months % 3 > 0 ? 1 : 0);
+                    }
                     break;
                 case "H": // SEMI-ANNUAL
-                    const h_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-                    installments = Math.floor(h_months / 6) + (h_months % 6 > 0 ? 1 : 0);
+                    {
+                        const total_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                        installments = Math.floor(total_months / 6) + (total_months % 6 > 0 ? 1 : 0);
+                    }
                     break;
                 case "Y": // ANNUAL
-                    installments = (end.getFullYear() - start.getFullYear()) + 1;
+                    {
+                        const total_months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                        installments = Math.floor(total_months / 12) + (total_months % 12 > 0 ? 1 : 0);
+                    }
                     break;
                 default:
                     throw new AppError(`Invalid SIP frequency: ${freq}`, 400, "INVALID_FREQUENCY");
