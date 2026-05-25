@@ -3,7 +3,7 @@ import logger from "../../middleware/logger.js";
 import { trading_account_service } from "../../services/kyc/trading.account.service.js";
 import { kyc_type_service } from "../../services/kyc/kyc.type.service.js";
 import { generate_unique_code } from "../../helpers/unique.code.js";
-import { NseRegistrationSchema } from "../../lib/zod-schemas/trading.account.schema.js";
+import { NseRegistrationSchema, ConfirmTradingAccountSchema } from "../../lib/zod-schemas/trading.account.schema.js";
 import { user_service } from "../../services/user.service.js";
 import AppError from "../../middleware/error.middleware.js";
 import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.service.js";
@@ -160,10 +160,67 @@ class TradingAccountControllerClass {
 
     confirm_trading_account = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            logger.info("Confirming trading account verification for user id ==> ", req.user?.id);
+            const user = req.user!;
+            logger.info("Confirming trading account verification for user id ==> ", user.id);
 
-            // Update KYC status to verified
-            await kyc_type_service.upsert_kyc_status(req.user!.id, "trading", "verified");
+            // 1. Validate request body
+            const result = ConfirmTradingAccountSchema.safeParse(req.body);
+            if (!result.success) {
+                logger.error("Validation failed for confirming trading account ==> ", result.error);
+                throw new AppError("Validation failed", 400, "VALIDATION_ERROR");
+            }
+
+            const { tax_status, holding_nature, jh1_name, jh2_name, guardian_name } = result.data;
+
+            // 2. Load user details
+            const user_data = await user_service.get_user_by_id(user.id);
+            if (!user_data) {
+                throw new AppError("User not found", 404, "USER_NOT_FOUND");
+            }
+
+            // Guard: ensure user.nse_client_code exists (this is the IIN)
+            if (!user_data.nse_client_code) {
+                logger.warn(`Trading account confirmation failed for user id: ${user.id} - nse_client_code is missing`);
+                throw new AppError("NSE client code (IIN) is missing. Please create a trading account first.", 400, "MISSING_CLIENT_CODE");
+            }
+
+            // 3. Load primary bank details
+            const primary_bank = await mfkyc_identity_service.get_primary_bank(user.id);
+            if (!primary_bank) {
+                logger.warn(`Trading account confirmation failed for user id: ${user.id} - primary bank details are missing`);
+                throw new AppError("Primary bank details are missing. Please add a bank account first.", 400, "MISSING_BANK_DETAILS");
+            }
+
+            // 4. Guard: ensure user.full_name exists
+            if (!user_data.full_name) {
+                logger.warn(`Trading account confirmation failed for user id: ${user.id} - full name is missing`);
+                throw new AppError("User full name is missing.", 400, "MISSING_FULL_NAME");
+            }
+
+            // 5. Call Finnsys SaveNSEIIN
+            const save_res = await kyc_finnsys_service.save_nse_iin(user.log!, user.pwd!, {
+                iin: user_data.nse_client_code,
+                tax_status,
+                holding_nature,
+                primary_name: user_data.full_name,
+                bank_ac_no: primary_bank.account_no,
+                bank_ifsc: primary_bank.ifsc_code,
+                bank_ac_type: primary_bank.account_type,
+                jh1_name,
+                jh2_name,
+                guardian_name,
+            });
+
+            // 6. Check response code (Finnsys APIs return code: 1 on success)
+            if (save_res.code != 1) {
+                logger.error(`Finnsys SaveNSEIIN failed for user id ${user.id} with response ==> `, save_res);
+                throw new AppError(save_res.message || "Failed to save NSE IIN with Finnsys", 400, "SAVE_NSE_IIN_FAILED");
+            }
+
+            logger.info(`Finnsys SaveNSEIIN succeeded for user id: ${user.id}`);
+
+            // 7. Update KYC status to verified
+            await kyc_type_service.upsert_kyc_status(user.id, "trading", "verified");
 
             res.status(200).json({
                 success: true,

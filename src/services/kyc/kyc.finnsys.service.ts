@@ -253,6 +253,49 @@ class KycFinnsysServiceClass {
         }
 
     }
+
+    save_nse_iin = async (
+        user_log: string,
+        user_pwd: string,
+        payload: {
+            iin: string;
+            tax_status: string;
+            holding_nature: string;
+            primary_name: string;
+            bank_ac_no: string;
+            bank_ifsc: string;
+            bank_ac_type: string;
+            jh1_name?: string;
+            jh2_name?: string;
+            guardian_name?: string;
+        }
+    ) => {
+        try {
+            const response = await axios.post(`${env.finsys_base_api}/finnsys/app/master.service.asp`, null, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: "savenseiin",
+                    iin: payload.iin,
+                    tax_status: payload.tax_status,
+                    holding_nature: payload.holding_nature,
+                    primary_name: payload.primary_name,
+                    bank_ac_no: payload.bank_ac_no,
+                    bank_ifsc: payload.bank_ifsc,
+                    bank_ac_type: payload.bank_ac_type,
+                    jh1_name: payload.jh1_name || "",
+                    jh2_name: payload.jh2_name || "",
+                    guardian_name: payload.guardian_name || "",
+                }
+            });
+
+            logger.debug("Finnsys SaveNSEIIN response ==> ", response.data);
+            return response.data;
+        } catch (error) {
+            logger.error("Error in calling SaveNSEIIN Finnsys API ==> ", error);
+            throw error;
+        }
+    }
 }
 
 export const kyc_finnsys_service = new KycFinnsysServiceClass()

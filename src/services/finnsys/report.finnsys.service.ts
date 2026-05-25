@@ -31,6 +31,7 @@ class ReportFinnsysServiceClass {
                     log: params.log,
                     pwd: params.pwd,
                     repname: params.repname,
+                    usrtyp: 'I',
                     ...(params.year && { year: params.year }),
                     ...(params.investor_id && { investor_id: params.investor_id }),
                     ...(params.group_id && { group_id: params.group_id }),

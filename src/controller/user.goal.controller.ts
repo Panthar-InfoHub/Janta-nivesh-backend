@@ -6,6 +6,7 @@ import AppError from "../middleware/error.middleware.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
 
 class UserGoalControllerClass {
+
     onboarding_create = async (req: Request) => {
         const user = req.user!;
         const data = req.body;
@@ -161,6 +162,59 @@ class UserGoalControllerClass {
         }
     }
 
+    remove_goal_mapping = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const { goal_id } = req.body;
+            logger.debug(`Removing scheme mapping for User ID: ${user.id} with data ==> `, goal_id);
+
+            const result = await user_goal_service.map_scheme_to_goal(user.log!, user.pwd!, Number(goal_id), "DEL");
+
+            if (result.code != 0 && result.code != 1) {
+                logger.error("Error while removing the mapping on goal ==> ", result)
+                throw new AppError("Failed to remove goal mapping", 500, "GOAL_MAPPING_FAILED", result);
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Goal unmapped successfully",
+                data: result
+            });
+            return;
+
+        } catch (error) {
+            logger.error("Error in Remove goal mapping api:", error);
+            next(error);
+        }
+    }
+
+    private calculate_corpus_value = (currentMonthlyExpense: number, inflationRate: number, returnRate: number, yearsToRetirement: number, yearsPostRetirement: number): number => {
+        if (yearsToRetirement <= 0 || yearsPostRetirement <= 0) {
+            return 0;
+        }
+
+        const annualExpenseNow = currentMonthlyExpense * 12;
+
+        const expenseAtRetirement =
+            annualExpenseNow * Math.pow(1 + inflationRate, yearsToRetirement);
+
+        const r = returnRate;
+        const g = inflationRate;
+        const n = yearsPostRetirement;
+
+        if (Math.abs(r - g) < 1e-9) {
+            const pv = expenseAtRetirement * (n / (1 + r));
+            return pv * (1 + r);
+        } else {
+            const growthFactor = (1 + g) / (1 + r);
+            const pv =
+                expenseAtRetirement *
+                (1 - Math.pow(growthFactor, n)) /
+                (r - g);
+            return pv * (1 + r);
+        }
+    }
+
     get_goal_by_id = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
@@ -190,9 +244,26 @@ class UserGoalControllerClass {
                 current_val: scheme.currval,
             }));
 
-            const response = {
+            const response: any = {
                 ...goal,
                 schemes: schemes ?? []
+            }
+
+            // For retirement goals (goal_type_id === 3), compute and append corpus value
+            if (goal.goal_type_id === 3) {
+                const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
+                const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
+
+                const corpus_value = this.calculate_corpus_value(
+                    Number(goal.current_monthly_expense ?? 0),
+                    Number(goal.inflation_rate ?? 0) / 100,       // stored as % (e.g. 7), formula needs 0.07
+                    Number(goal.post_retirement_return ?? 0) / 100, // stored as % (e.g. 6), formula needs 0.06
+                    years_to_retirement,
+                    years_post_retirement
+                );
+
+                response.current_goal_cost = Math.round(corpus_value * 100) / 100;
+                logger.debug(`Computed corpus value for retirement goal ${goal_id}: ${corpus_value}`);
             }
 
             res.status(200).json({

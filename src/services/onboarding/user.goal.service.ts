@@ -52,29 +52,36 @@ class UserGoalServiceClass {
     }
 
     createGoal = async (user: any, data: UserGoalInput) => {
-        const user_goal = await db.userGoals.create({
-            data: {
-                user_id: user.id,
-                ...data
-            }
-        });
 
         const params = this.extract_params(user, data);
         const res = await axios.get(this.finsys_api, { params });
-
         logger.debug("Finsys goal res ==> ", res.data);
 
-        if (res.data.results?.[0]?.gid) {
-            await db.userGoals.update({
-                where: {
-                    id: user_goal.id
-                },
-                data: {
-                    goal_id: parseInt(res.data.results[0]?.gid)
-                }
-            });
+        if (!res.data.results?.[0]?.gid) {
+            logger.error("Error in finnsys goal creation error");
+            throw new AppError("FinSys goal create failed", 500, "FINSYS_GOAL_CREATE_FAILED");
         }
 
+        const user_goal = await db.userGoals.create({
+            data: {
+                ...data,
+                user_id: user.id,
+                goal_id: parseInt(res.data.results[0]?.gid),
+                ...(data.goal_type_id === 3 && {
+                    goal_name: "Retirement",
+                    goal_item_name: "Retirement"
+                }),
+                ...(data.goal_type_id === 1 && {
+                    goal_name: "Child's Education",
+                    goal_item_name: `${data.child_name}'s Education`
+                }),
+                ...(data.goal_type_id === 2 && {
+                    goal_name: "Child's Marriage",
+                    goal_item_name: `${data.child_name}'s Marriage`
+                })
+            }
+        });
+        logger.debug(`User goal created successfully ==> `, user_goal)
         return res.data;
     }
 
@@ -218,7 +225,7 @@ class UserGoalServiceClass {
     }
 
 
-    map_scheme_to_goal = async (user_log: string, user_pwd: string, goal_id: number, operation: "ADD" | "DEL", data: {
+    map_scheme_to_goal = async (user_log: string, user_pwd: string, goal_id: number, operation: "ADD" | "DEL", data?: {
         folio: string,
         scheme_id: string,
     }) => {
@@ -230,8 +237,8 @@ class UserGoalServiceClass {
                     svc: "goalmapping",
                     todo: operation === "ADD" ? 1 : 2,
                     gid: goal_id,
-                    folio: data.folio,
-                    scheme_id: data.scheme_id,
+                    folio: operation === "ADD" ? data?.folio : "",
+                    scheme_id: operation === "ADD" ? data?.scheme_id : "",
                 }
             });
 

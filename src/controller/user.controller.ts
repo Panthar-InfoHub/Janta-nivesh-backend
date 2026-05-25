@@ -7,6 +7,7 @@ import { user_finnsys_service } from "../services/user.finnsys.service.js";
 import { user_savings_service } from "../services/user.savings.service.js";
 import { user_service } from "../services/user.service.js";
 import { pending_orders_service } from "../services/pending_orders.service.js";
+import { wrapper_service } from "../services/wrapper.service.js";
 
 class UserFinanceControllerClass {
 
@@ -130,12 +131,37 @@ class UserFinanceControllerClass {
 
             const { sip_items, lump_sum_items } = this.extract_cart_items(user_cart_res);
 
+            logger.info("Mapping logo img for funds...")
+            const amc_set = new Set<string>();
+            sip_items.forEach((item: any) => {
+                if (item.amc_name) amc_set.add(item.amc_name);
+            });
+            lump_sum_items.forEach((item: any) => {
+                if (item.amc_name) amc_set.add(item.amc_name);
+            });
+
+            const amc_names = Array.from(amc_set);
+            const logo_map = await wrapper_service.get_logos_of_amc(amc_names);
+
+            // Enrich items with img_url
+            const enriched_sip_items = sip_items.map((item: any) => ({
+                ...item,
+                img_url: logo_map.get(item.amc_name) || ""
+            }));
+
+            const enriched_lump_sum_items = lump_sum_items.map((item: any) => ({
+                ...item,
+                img_url: logo_map.get(item.amc_name) || ""
+            }));
+
+            logger.info("Mapping completed of logo funds")
+
             res.status(200).json({
                 code: 200,
                 message: "User cart fetched successfully",
                 data: {
-                    sip_items,
-                    lump_sum_items
+                    sip_items: enriched_sip_items,
+                    lump_sum_items: enriched_lump_sum_items
                 }
             });
             return;
@@ -281,6 +307,9 @@ class UserFinanceControllerClass {
             investment_data.items_count = user_mf_data.length;
             logger.debug(`Calculated user investment data ==> `, investment_data);
 
+            const mf_scheme_ids = user_mf_data.map((item: any) => String(item.schemeid)).filter(Boolean);
+            const logo_map = await wrapper_service.getLogosForSchemes(mf_scheme_ids);
+
             const mf_investment_items = user_mf_data.length > 0 ? user_mf_data.map((item: any) => ({
                 id: item.schemeid,
                 title: item.schemename,
@@ -294,7 +323,8 @@ class UserFinanceControllerClass {
                 current_nav: this.toNumber(item.currnav),
                 avg_nav: this.toNumber(item.avgcost),
                 folio: item.actualfolio,
-                balance_units: item.balunits
+                balance_units: item.balunits,
+                img_url: logo_map.get(String(item.schemeid)) || ""
             })) : [];
 
             logger.debug("Mapped user mutual fund now proceeding to user fd transactions...");
