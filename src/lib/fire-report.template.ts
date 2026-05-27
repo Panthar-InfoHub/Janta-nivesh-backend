@@ -415,7 +415,7 @@ function page1(data: VelvetReportViewData): string {
             </div>
             <div style="height:112px;margin-top:8px">${sparkline(fireHistory, GOLD, 430, 112)}</div>
             ${snapshot.fiYear
-    ? `<div style="font-size:8px;color:${GRAY};margin-top:4px;text-align:center">Projected FI: Year ${snapshot.fiYear} (Age ${snapshot.fiAge})</div>`
+      ? `<div style="font-size:8px;color:${GRAY};margin-top:4px;text-align:center">Projected FI: Year ${snapshot.fiYear} (Age ${snapshot.fiAge})</div>`
       : ""}
           </div>
         </div>
@@ -502,8 +502,8 @@ function page2(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year</div>
-      <div class="fn"><b>8. Total Expenses:</b> Projected annual expenses adjusted for 6% inflation</div>
+      <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year. Grows annually at: 10% for Mutual Funds/Stocks, 6.5% for FDs, 7% for Gold, and 4% for Cash.</div>
+      <div class="fn"><b>8. Total Expenses:</b> Projected annual expenses adjusted for 6% inflation. Assumes 5% annual growth on income.</div>
       <div class="fn"><b>9. Goal Payouts:</b> Lump-sum goal funding due that year</div>
       <div class="fn"><b>10. FIRE Number:</b> Annual Expenses &times; 30</div>
       <div class="fn"><b>11. FIRE %:</b> (Current Portfolio Value / FIRE Number) &times; 100</div>
@@ -678,7 +678,7 @@ function page4(data: VelvetReportViewData): string {
       </div>
 
       <div class="section-title" style="margin-top:20px;margin-bottom:12px">Quarterly Performance Trends (Last 3 Quarters)</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div style="display:grid;grid-template-columns:1fr;gap:16px;align-items:start">
         ${catCards}
       </div>
     </div>
@@ -687,8 +687,7 @@ function page4(data: VelvetReportViewData): string {
       <div class="fn"><b>19. Net Worth:</b> Total Assets &minus; Total Liabilities</div>
       <div class="fn"><b>20. Asset Allocation:</b> Distribution shows percentage of net worth invested in each asset class. Trend lines estimated via deterministic backward simulation.</div>
       <div class="fn">&bull; <b>Equity:</b> Mutual Funds + Direct Stocks</div>
-      <div class="fn">&bull; <b>Debt:</b> Debt Funds + PPF/EPF</div>
-      <div class="fn">&bull; <b>Real Estate:</b> Primary residence valued at ${rs(fmt_cr(8000000), "#111")}</div>
+      <div class="fn">&bull; <b>Debt:</b> Fixed Deposits (FD)</div>
       <div class="fn">&bull; <b>Gold & Cash:</b> Gold + Cash/Bank holdings</div>
     </div>
     ${footer(4)}
@@ -765,11 +764,11 @@ function page5(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn">Assumptions: Inflation<sup>24</sup> 6% | SIP Return 10% | FV Growth 8%</div>
+      <div class="fn">Assumptions: Retirement Inflation<sup>24</sup> 6% | SIP Return 10% | Goal FV Growth 8%</div>
       <div class="fn"><b>21. Monthly SIP:</b> PMT formula to accumulate future value at assumed returns and inflation</div>
-      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1.08)^years</div>
+      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1.08)^years (assumes 8% annual growth for standard goals)</div>
       <div class="fn"><b>23. Year-by-Year Requirement:</b> Aggregated monthly and yearly commitment across all active goals</div>
-      <div class="fn"><b>24. Inflation:</b> 6% annual cost-of-living increase applied to all goals</div>
+      <div class="fn"><b>24. Inflation:</b> 6% annual cost-of-living increase applied to retirement goal; 8% growth rate applied to standard goals</div>
     </div>
     ${footer(5)}
   </div>`;
@@ -851,10 +850,10 @@ function page6(data: VelvetReportViewData): string {
         <div style="display:grid; grid-template-columns:1fr 1fr; row-gap:16px; column-gap:32px">
           ${[
       { title: "Critical Illness Rider", desc: "50L coverage for serious illnesses (cancer, heart attack, stroke)" },
-    { title: "Accidental Death Benefit", desc: "Additional 1 Cr coverage in case of accidental death" },
+      { title: "Accidental Death Benefit", desc: "Additional 1 Cr coverage in case of accidental death" },
       { title: "Disability Income", desc: "Monthly income replacement if unable to work due to disability" },
-    { title: "Parents Health Cover", desc: "Separate 10L health insurance for parents if not already covered" },
-  ].map(r => `
+      { title: "Parents Health Cover", desc: "Separate 10L health insurance for parents if not already covered" },
+    ].map(r => `
             <div>
               <div style="font-size:10px;font-weight:700;color:${NAVY};margin-bottom:2px">${r.title}</div>
               <div style="font-size:8px;color:${GRAY};line-height:1.3">${r.desc}</div>

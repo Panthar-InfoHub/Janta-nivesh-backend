@@ -8,6 +8,8 @@ import { user_savings_service } from "../services/user.savings.service.js";
 import { user_service } from "../services/user.service.js";
 import { pending_orders_service } from "../services/pending_orders.service.js";
 import { wrapper_service } from "../services/wrapper.service.js";
+import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
+import { user_goal_controller } from "./user.goal.controller.js";
 
 class UserFinanceControllerClass {
 
@@ -46,13 +48,31 @@ class UserFinanceControllerClass {
 
             const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
-            // const fire_number_inc = (total_expenses_inc + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+            const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
+                if (goal.goal_type_id === 3) {
+                    const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
+                    const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
+
+                    const corpus_value = user_goal_controller.calculate_corpus_value(
+                        Number(goal.current_monthly_expense ?? 0),
+                        Number(goal.inflation_rate ?? 0) / 100,       // stored as % (e.g. 7), formula needs 0.07
+                        Number(goal.post_retirement_return ?? 0) / 100, // stored as % (e.g. 6), formula needs 0.06
+                        years_to_retirement,
+                        years_post_retirement
+                    );
+
+                    goal.current_goal_cost = new Prisma.Decimal(Math.round(corpus_value * 100) / 100);
+                    logger.debug(`Computed corpus value for retirement goal ${goal.goal_id}: ${corpus_value}`);
+                }
+                return goal;
+            }) : data.user_goals
 
             res.status(200).json({
                 code: 200,
                 message: "User data fetched successfully",
                 data: {
                     ...data,
+                    user_goals: wrapper_user_goal,
                     kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
                         acc[kyc.kyc_type] = {
                             status: kyc.status

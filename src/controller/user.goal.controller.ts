@@ -188,7 +188,7 @@ class UserGoalControllerClass {
         }
     }
 
-    private calculate_corpus_value = (currentMonthlyExpense: number, inflationRate: number, returnRate: number, yearsToRetirement: number, yearsPostRetirement: number): number => {
+    calculate_corpus_value = (currentMonthlyExpense: number, inflationRate: number, returnRate: number, yearsToRetirement: number, yearsPostRetirement: number): number => {
         if (yearsToRetirement <= 0 || yearsPostRetirement <= 0) {
             return 0;
         }
