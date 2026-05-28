@@ -61,7 +61,7 @@ class UserFinanceControllerClass {
                         years_post_retirement
                     );
 
-                    goal.current_goal_cost = new Prisma.Decimal(Math.round(corpus_value * 100) / 100);
+                    goal.current_goal_cost = new Prisma.Decimal(Math.round(corpus_value));
                     logger.debug(`Computed corpus value for retirement goal ${goal.goal_id}: ${corpus_value}`);
                 }
                 return goal;
