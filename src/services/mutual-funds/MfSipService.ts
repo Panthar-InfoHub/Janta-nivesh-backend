@@ -344,7 +344,7 @@ export class MfSipService {
                 await db.mandate.update({
                     where: { mandate_id: mandate_id },
                     data: {
-                        status: dbStatus,
+                        status: dbStatus as any,
                         umrn: umrnNo || null
                     }
                 });
