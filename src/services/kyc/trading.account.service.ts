@@ -4,12 +4,36 @@ import { NSEServiceClass } from "../nse.service.js";
 import { user_finance_service } from "../onboarding/user.finance.service.js";
 import { env } from "../../lib/config-env.js";
 import AppError from "../../middleware/error.middleware.js";
+import { db } from "../../server.js";
 
 class TradingAccountServiceClass extends NSEServiceClass {
 
     constructor() {
         super();
     }
+
+    get_trading_account = async (user_id: string) => {
+        try {
+            const data = await db.mfKycIdentity.findUnique({
+                where: { user_id },
+                select: {
+                    gender: true,
+                    pan_no: true,
+                    place_of_birth: true,
+                    full_address: true,
+                }
+            })
+
+            logger.debug("User data for trading account kyc form ==> ", data)
+            return data
+        } catch (error) {
+            logger.error("Error while fetching user data for trading account form ==> ", error)
+        }
+    }
+
+
+
+
 
 
     // Implement trading account related methods here
@@ -65,6 +89,7 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
         return response.data;
     }
+
 
 
 

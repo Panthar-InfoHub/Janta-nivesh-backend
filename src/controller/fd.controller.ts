@@ -8,6 +8,7 @@ import { fd_transaction_service } from "../services/fd.transaction.service.js";
 import { env } from "../lib/config-env.js";
 import { user_service } from "../services/user.service.js";
 import { redis_buffer_client } from "../lib/redis.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 import {
     build_fd_list_cache_key,
     compress_json,
@@ -164,6 +165,19 @@ class FdControllerClass {
 
 
             logger.debug("Purchase URL response from Blostem: ", response);
+
+            await zoho_webhook_service.send_event({
+                event_type: "FD_BOOKING_STARTED",
+                timestamp: new Date().toISOString(),
+                user_id: user_id,
+                fd_transaction_id: fd_transaction.id,
+                product_id: product_id,
+                issuer_name: fd_product.issuer?.display_name || fd_product.issuer?.full_name,
+                investment_amount: Number(investment_amount),
+                tenure_days: requested_tenure_days,
+                roi: Number(matched_rate.interest_rate),
+                payout_frequency: matched_rate.payout_frequency
+            });
 
             res.status(200).json({
                 success: true,

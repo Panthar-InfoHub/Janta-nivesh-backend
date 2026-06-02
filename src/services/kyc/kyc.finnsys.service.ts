@@ -68,22 +68,29 @@ class KycFinnsysServiceClass {
 
 
     private update_form = async (kyc_access_token: string, merchant_id: string, inv_id: string, type: string, data: object) => {
-        const payload = {
-            arn: env.ARN,
-            investorId: inv_id,
-            merchantId: merchant_id,
-            save: "formData",
-            type,
-            data
-        };
+        try {
 
-        logger.debug("Payload for updating form data ==> ", payload);
-        const response = await axios.post(`${this.kyc_base_url}/onboardings/updateForm`, payload, {
-            headers: { "Authorization": `${kyc_access_token}` }
-        });
 
-        logger.warn(`Response from updating ${type} form data ==> `, response.data);
-        return response.data;
+            const payload = {
+                arn: env.ARN,
+                investorId: inv_id,
+                merchantId: merchant_id,
+                save: "formData",
+                type,
+                data
+            };
+
+            logger.debug("Payload for updating form data ==> ", payload);
+            const response = await axios.post(`${this.kyc_base_url}/onboardings/updateForm`, payload, {
+                headers: { "Authorization": `${kyc_access_token}` }
+            });
+
+            logger.warn(`Response from updating ${type} form data ==> `, response.data);
+            return response.data;
+        } catch (error) {
+            logger.error("Error while updating form ==> ", error)
+            throw error
+        }
     }
 
     // Background hitting POI, POA and Corresponsing address apis of finnsys
@@ -105,7 +112,7 @@ class KycFinnsysServiceClass {
                 ...poa_data
             });
         } catch (error: any) {
-            console.log("Error in updating POA data ==> ", error?.response);
+            console.log("Error in updating POA data ==> ", error?.response?.data);
             // logger.error("Error in updating POA data ==> ", error?.response);
             // throw error;
         }

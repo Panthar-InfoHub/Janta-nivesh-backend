@@ -12,6 +12,27 @@ import { nse_service } from "../../services/nse.service.js";
 import { user_finnsys_service } from "../../services/user.finnsys.service.js";
 
 class TradingAccountControllerClass {
+
+    get_trading_account_data = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id!;
+            logger.info("Fetching trading account data for user id ==> ", user_id);
+
+            const trading_account_data = await trading_account_service.get_trading_account(user_id);
+
+            res.status(200).json({
+                success: true,
+                message: "Trading account data fetched successfully",
+                data: trading_account_data,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error while fetching trading account data controller ==> ", error);
+            next(error);
+        }
+    }
+
+
     create_trading_account = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;

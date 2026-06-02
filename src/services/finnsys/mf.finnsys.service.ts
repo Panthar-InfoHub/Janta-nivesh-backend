@@ -99,7 +99,7 @@ interface XSIPRegistrationPayload {
             step_up_start_date: string;
             step_up_end_date: string;
             step_up_frequency: string;
-            step_up_amout: string;
+            step_up_amount: string;
             filler_1: string;
             filler_2: string;
             filler_3: string;
@@ -311,7 +311,7 @@ class MutualFundFinnsysServiceClass {
                 logger.error("Finnsys xSIP API returned failure: ", response.data);
                 throw new AppError(
                     response.data?.message || "Failed to create xSIP orders",
-                    500,
+                    400,
                     "XSIP_CREATION_FAILED"
                 );
             }
@@ -321,7 +321,13 @@ class MutualFundFinnsysServiceClass {
 
             return response.data;
         } catch (error: any) {
-            logger.error("Error submitting xSIP registration to Finnsys: ", error.response.data);
+            // If the error is already an AppError (like from the code !== 1 check above), bubble it up directly!
+            if (error instanceof AppError) {
+                throw error;
+            }
+
+            // Safe navigation to prevent TypeError if error.response is undefined
+            logger.error("Error submitting xSIP registration to Finnsys: ", error.response?.data || error.message);
 
             if (error.response?.data) {
                 throw new AppError(

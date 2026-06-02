@@ -26,13 +26,13 @@ class FrontendControllerClass {
 
             const [bundle, flexi_cap, large_mid_cap, large_cap, mid_cap, small_cap, index, global_others] = await Promise.all([
                 bundle_service.get_bundles({ page: 1, limit: 4 }),
-                mutual_funds_service.get_funds_by_category({ category: 'flexi_cap' }),
-                mutual_funds_service.get_funds_by_category({ category: 'large_Mid_cap' }),
-                mutual_funds_service.get_funds_by_category({ category: 'large_cap' }),
-                mutual_funds_service.get_funds_by_category({ category: 'mid_cap' }),
-                mutual_funds_service.get_funds_by_category({ category: 'small_cap' }),
-                mutual_funds_service.get_funds_by_category({ category: 'index' }),
-                mutual_funds_service.get_funds_by_category({ category: 'global_others' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'flexi_cap' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'large_Mid_cap' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'large_cap' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'mid_cap' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'small_cap' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'index' }),
+                mutual_funds_service.query.get_funds_by_category({ category: 'global_others' }),
             ]);
 
             bundle.bundles = bundle.bundles.map(bundle => {

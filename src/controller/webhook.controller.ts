@@ -4,6 +4,7 @@ import logger from "../middleware/logger.js";
 import { TransactionStatus } from "../prisma/generated/prisma/enums.js";
 import { FdTransactionUpdateInput } from "../prisma/generated/prisma/models.js";
 import { fd_transaction_service } from "../services/fd.transaction.service.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 export const handleFdWebhook = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -61,6 +62,14 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                 status_to_update = TransactionStatus.PAYMENT_FAILED;
                 update_data.failure_reason = data.reason; // "Transaction failed due to customer pressing cancel" 
                 update_data.payment_tx_id = data.paymentTxId;
+
+                await zoho_webhook_service.send_event({
+                    event_type: "FD_BOOKING_FAILED",
+                    timestamp: new Date().toISOString(),
+                    fd_transaction_id: jid,
+                    failure_reason: data.reason || "Payment failed",
+                    payment_tx_id: data.paymentTxId
+                });
                 break;
 
             case "VKYC":
@@ -108,6 +117,17 @@ export const handleFdWebhook = async (req: Request, res: Response, next: NextFun
                 update_data.maturity_date = new Date(data.maturityDate);
                 update_data.is_vkyc_pending = false;
                 update_data.maturity_instruction = data.maturityInstructions || data.maturity_instruction;
+
+                await zoho_webhook_service.send_event({
+                    event_type: "FD_BOOKING_SUCCESSFUL",
+                    timestamp: new Date().toISOString(),
+                    fd_transaction_id: jid,
+                    fd_account_number: data.accountNumber || data.id,
+                    maturity_amount: Number(data.maturityAmount),
+                    maturity_date: data.maturityDate,
+                    maturity_instruction: data.maturityInstructions || data.maturity_instruction,
+                    fd_issued_at: req.body.createdAt
+                });
                 break;
 
             case "MATURITY_INSTRUCTION_UPDATED":

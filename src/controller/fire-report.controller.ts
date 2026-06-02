@@ -4,6 +4,7 @@ import { generateFireReportHTML } from "../lib/fire-report.template.js";
 import { to_report_view_data } from "../lib/fire-report.transformer.js";
 import logger from "../middleware/logger.js";
 import { fire_report_service } from "../services/fire.report.service.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -22,6 +23,14 @@ export const fire_report_controller = {
             logger.info(`Generating FIRE report for user_id: ${user_id} (projection_years=${projection_years})`);
 
             const reports = await fire_report_service.get_fire_report(user_id, projection_years);
+
+            await zoho_webhook_service.send_event({
+                event_type: "FIRE_REPORT_GENERATED",
+                timestamp: new Date().toISOString(),
+                user_id: user_id,
+                projection_years: Number(projection_years)
+            });
+
             res.status(200).json({
                 code: 200,
                 message: "FIRE report generated successfully",
@@ -51,6 +60,14 @@ export const fire_report_controller = {
                 "Content-Disposition": `attachment; filename="velvet-wealth-report-${user_id}.pdf"`,
                 "Content-Length": buffer.length.toString(),
             });
+
+            await zoho_webhook_service.send_event({
+                event_type: "FIRE_REPORT_DOWNLOADED",
+                timestamp: new Date().toISOString(),
+                user_id: user_id,
+                pdf_filename: `velvet-wealth-report-${user_id}.pdf`
+            });
+
             res.send(buffer);
         } catch (error) {
             logger.error(`Error generating FIRE PDF: ${error instanceof Error ? error.message : String(error)}`);
