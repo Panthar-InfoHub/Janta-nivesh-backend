@@ -7,7 +7,7 @@ export const mutual_fund_router = Router();
 
 mutual_fund_router.get("/", mutual_fund_controller.get_mutual_funds);
 mutual_fund_router.get("/history/:id", mutual_fund_controller.get_mutual_fund_history);
-mutual_fund_router.get("/:id", mutual_fund_controller.get_mutual_fund_by_id);
+
 
 
 // Add Mutualfunds to cart
@@ -37,9 +37,29 @@ mutual_fund_router.post("/purchase-lumpsum",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.purchase_lumpsum
 );
+
+
+
+// SIP purchase flow : mandate registration -> mandate approval by user ==> SIP purchase execution
+mutual_fund_router.post("/initiate-sip",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.initiate_sip
+);
+
+mutual_fund_router.get("/mandate-status",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.mandate_status
+);
+
+// Execute xSIP purchase after mandate approval
 mutual_fund_router.post("/purchase-sip",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.purchase_sip
+);
+
+mutual_fund_router.post("/invest-more",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.invest_more
 );
 
 // Redeeming Mutualfunds
@@ -47,3 +67,5 @@ mutual_fund_router.post("/redeem",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.redeem
 );
+
+mutual_fund_router.get("/:id", mutual_fund_controller.get_mutual_fund_by_id);

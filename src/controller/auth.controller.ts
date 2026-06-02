@@ -1,13 +1,13 @@
 import { NextFunction, Request, Response } from "express";
-import logger from "../middleware/logger.js";
-import { auth_service } from "../services/auth.service.js";
-import AppError from "../middleware/error.middleware.js";
-import { user_service } from "../services/user.service.js";
-import { generate_JWT } from "../middleware/jwt.js";
-import { User } from "../prisma/generated/prisma/client.js";
-import { env } from "../lib/config-env.js";
 import { AuthResponse } from "../lib/types.js";
+import AppError from "../middleware/error.middleware.js";
+import { generate_JWT } from "../middleware/jwt.js";
+import logger from "../middleware/logger.js";
+import { User } from "../prisma/generated/prisma/client.js";
 import { deviceParamsSchema, reqOtpSchema, validateOtpSchema } from "../schemas/auth.schema.js";
+import { auth_service } from "../services/auth.service.js";
+import { user_service } from "../services/user.service.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 class AuthControllerClass {
 
@@ -90,7 +90,7 @@ class AuthControllerClass {
 
             logger.info(`Validating OTP for Mobile: ${mob}, Device: ${device_params.did}`);
             const auth_res: AuthResponse = await auth_service.validate_otp(mob, otp, device_params);
-
+            logger.debug("OTP Validation Response:", auth_res);
 
             if (auth_res.code !== 1) {
                 throw new AppError("OTP validation failed", 401, "OTP_VALIDATION_FAILED");
@@ -105,6 +105,16 @@ class AuthControllerClass {
                 refresh_token: refresh_token
             });
 
+            await zoho_webhook_service.send_event({
+                event_type: "USER_SIGNUP_COMPLETED",
+                timestamp: new Date().toISOString(),
+                user_id: updated_user.id,
+                user_phone: updated_user.phone_no,
+                inv_id: String(auth_res.results?.[0]?.invid ?? ""),
+                finnsys_usr: auth_res.results?.[0]?.usr ?? "",
+                onboarding_stage: 0,
+                is_onboarding_completed: false
+            });
 
             const token = generate_JWT(updated_user);
 
@@ -194,6 +204,8 @@ class AuthControllerClass {
         try {
             const device_params = this.extract_device_params(req);
 
+            logger.debug("Request Body for Login: ", req.body);
+
             const usr = req.body.usr as string || "";
             const pwd = req.body.pwd as string || "";
             if (!usr || !pwd) {
@@ -210,6 +222,7 @@ class AuthControllerClass {
             logger.info(`Login Attempt for User: ${usr}, Device: ${device_params.did}`);
 
             const auth_res = await auth_service.login_creds(usr, pwd, device_params);
+            logger.debug("Auth response for creds ==> ", auth_res)
             if (auth_res.code !== 1) {
                 throw new AppError("Login validation failed", 401, "LOGIN_VALIDATION_FAILED");
             }

@@ -25,6 +25,26 @@ export type UserWithAllData = UserGetPayload<{
     }
 }>
 
+export type UserFireReportData = UserGetPayload<{
+    include: {
+        user_finance: true;
+        user_assets: {
+            select: {
+                id: true;
+                user_id: true;
+                mutual_funds: true;
+                stocks: true;
+                fd: true;
+                gold: true;
+                cash_saving: true;
+            };
+        };
+        user_insurance: true;
+        user_loan: true;
+        user_goals: true;
+    };
+}>;
+
 export const lumpsum_cart_zod_schema = z.object({
     amc_code: z.string().min(1),
     amc_name: z.string().min(1),
@@ -84,8 +104,8 @@ export type Sip_cart_data = z.infer<typeof sip_cart_zod_schema>
 const redeem_partial_fields = z.object({
     redem_type: z.literal("PARTIAL"),
     folio_no: z.string().min(1, "folio_no is required"),
-    redemption_units: z.number().positive("redemption_units must be positive").optional(),
-    redemption_amount: z.number().positive("redemption_amount must be positive").optional(),
+    redemption_units: z.number().positive("redemption_units must be positive").nullable().optional(),
+    redemption_amount: z.number().positive("redemption_amount must be positive").nullable().optional(),
 }).refine(
     (data) => data.redemption_units || data.redemption_amount,
     { message: "Either redemption_units or redemption_amount must be provided" }
@@ -115,3 +135,58 @@ export const redeem_request_zod_schema = z.union([
 ]);
 
 export type Redeem_request_data = z.infer<typeof redeem_request_zod_schema>;
+
+export const invest_more_zod_schema = z.object({
+    type: z.enum(["LUMPSUM", "SIP"]),
+    amount: z.number().positive(),
+    scheme_id: z.string().min(1),
+    folio: z.string().min(1, "folio is required for invest more"),
+    sip_st_date: z.string().optional(),
+    sip_en_date: z.string().optional(),
+    sip_freq: z.enum(["DZ", "D", "OM", "Q", "WD", "OW", "H", "Y"]).optional(),
+    sip_day: z.number().optional(),
+    mandate_id: z.string().optional(),
+}).refine(data => {
+    if (data.type === "SIP") {
+        return !!data.sip_st_date && !!data.sip_en_date && !!data.sip_freq && !!data.sip_day;
+    }
+    return true;
+}, {
+    message: "SIP details (sip_st_date, sip_en_date, sip_freq, sip_day) are required for SIP investments"
+});
+
+export type Invest_more_data = z.infer<typeof invest_more_zod_schema>;
+
+// ─── SIP Purchase with Step-Up ────────────────────────────────────────────────
+
+export const sip_purchase_item_schema = z.object({
+    amc_code: z.string().min(1, "amc_code is required"),
+    prod_code: z.string().min(1, "prod_code is required"),
+    sip_freq: z.enum(["DZ", "D", "OM", "Q", "WD", "OW", "H", "Y"]),
+    sip_amt: z.number().positive("sip_amt must be positive"),
+    folio: z.string().optional().default(""),
+    sip_st_date: z.string().min(1, "sip_st_date is required"),
+    sip_en_date: z.string().min(1, "sip_en_date is required"),
+    step_up_required: z.enum(["Y", "N"]),
+    step_up_amount: z.string().default(""),
+    step_up_start_date: z.string().default(""),
+    step_up_end_date: z.string().default(""),
+}).refine(data => {
+    if (data.step_up_required === "Y") {
+        return (
+            !!data.step_up_amount &&
+            !!data.step_up_start_date &&
+            !!data.step_up_end_date
+        );
+    }
+    return true;
+}, {
+    message: "step_up_amount, step_up_start_date, and step_up_end_date are required when step_up_required is Y"
+});
+
+export const purchase_sip_body_schema = z.object({
+    items: z.array(sip_purchase_item_schema).min(1, "At least one SIP item is required"),
+});
+
+export type Sip_purchase_item = z.infer<typeof sip_purchase_item_schema>;
+export type Purchase_sip_body = z.infer<typeof purchase_sip_body_schema>;

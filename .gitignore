@@ -11,6 +11,7 @@ plans/
 .vscode/
 .idea/
 
+migration_data.json
 notes.js
 
 ecas-parser.js

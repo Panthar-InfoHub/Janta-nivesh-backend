@@ -27,12 +27,12 @@ class BundleServiceClass {
                 skip,
                 include: {
                     bundle_products: {
-                        take: limit,
                         include: {
-                            mf_product: true
+                            mf_product: true,
                         }
                     }
                 },
+                take: limit,
                 orderBy: {
                     bundle_name: 'asc'
                 }
@@ -57,7 +57,24 @@ class BundleServiceClass {
             include: {
                 bundle_products: {
                     include: {
-                        mf_product: true
+                        mf_product: {
+                            include: {
+                                metrics: {
+                                    select: {
+                                        return_3y: true,
+                                        return_1y: true,
+                                        return_90d: true,
+                                        return_6m: true
+                                    }
+                                },
+                                transaction_rules: {
+                                    select: {
+                                        sip_allowed_dates: true,
+                                        sip_frequencies: true
+                                    }
+                                }
+                            },
+                        }
                     }
                 }
             }

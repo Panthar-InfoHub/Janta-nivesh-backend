@@ -1,107 +1,82 @@
-// ENUMS for KYC types
-
-enum KycTypeValue {
-    mf
-    fd
-    trading
-}
-
-enum KycStatus {
-    not_started
-    initiated
-    in_progress
-    verified
-    failed
-}
-
 model KycType {
-    id             String       @id @default(uuid())
-    user_id        String
-    kyc_type       KycTypeValue
-    status         KycStatus
-    failure_reason String?
+  id             String        @id @default(uuid())
+  user_id        String
+  kyc_type       KycTypeValue
+  status         KycStatus
+  failure_reason String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+  user           User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  mfKycSessions  MfKycSession?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    user          User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-    mfKycSessions MfKycSession?
-
-    @@unique([user_id, kyc_type])
+  @@unique([user_id, kyc_type])
 }
 
 model MfKycSession {
-    id               String  @id @default(uuid())
-    kyc_type_id      String  @unique
-    merchant_id      String?
-    kyc_access_token String  @db.Text
-    digilocker_url   String? @db.Text
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @default(now()) @updatedAt
-
-    // Relations
-    kyc_type KycType @relation(fields: [kyc_type_id], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid())
+  kyc_type_id      String   @unique
+  merchant_id      String?
+  kyc_access_token String
+  digilocker_url   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+  kyc_type         KycType  @relation(fields: [kyc_type_id], references: [id], onDelete: Cascade)
 }
 
 model MfKycIdentity {
-    id        String  @id @default(uuid())
-    user_id   String  @unique
-    uid       String // Aadhaar (Masked or full based on compliance)
-    pan_no    String? // Added PAN
-    full_name String
-    dob       String
-    gender    String
+  id                       String    @id @default(uuid())
+  user_id                  String    @unique
+  uid                      String
+  pan_no                   String?
+  full_name                String
+  dob                      String
+  gender                   String
+  full_address             String
+  address_line             String
+  land_mark                String
+  pincode                  String
+  city                     String
+  district                 String
+  state                    String
+  country                  String    @default("INDIA")
+  marital_status           String?
+  residential_status       String?
+  place_of_birth           String?
+  father_title             String?
+  father_name              String?
+  mother_title             String?
+  mother_name              String?
+  occupation_desc          String?
+  occupation_code          String?
+  kyc_account_code         String?   @default("01")
+  communication_addr_code  String?   @default("02")
+  permanent_addr_code      String?   @default("02")
+  citizenship_country_code String?   @default("101")
+  application_status_code  String?   @default("R")
+  mobile_no                String?
+  email_id                 String?
+  digilocker_photo_url     String?
+  aadhaar_pdf_url          String?
+  user_photo_url           String?
+  signature_url            String?
+  contract_pdf_url         String?
+  is_final_confirmed       Boolean   @default(false)
+  verified_at              DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
 
-    // --- Address fields (flattened) ---
-    full_address String
-    address_line String
-    land_mark    String
-    pincode      String
-    city         String
-    district     String
-    state        String
-    country      String @default("INDIA")
+enum KycTypeValue {
+  mf
+  fd
+  trading
+}
 
-    // --- New Extended KYC Data ---
-    marital_status     String? // MARRIED, SINGLE
-    residential_status String? // Resident Individual
-    place_of_birth     String?
-
-    // Family Details
-    father_title String? // Mr.
-    father_name  String?
-    mother_title String? // Mrs.
-    mother_name  String?
-
-    // Occupation & Professional (Storing codes for API submission)
-    occupation_desc String? // Private Sector
-    occupation_code String? // 01
-
-    // Compliance/System Codes (Non-UI fields)
-    kyc_account_code         String? @default("01")
-    communication_addr_code  String? @default("02")
-    permanent_addr_code      String? @default("02")
-    citizenship_country_code String? @default("101")
-    application_status_code  String? @default("R")
-
-    // Contact (Pre-filled from User record but locked here for KYC snapshot)
-    mobile_no String?
-    email_id  String?
-
-    // --- Document Assets ---
-    digilocker_photo_url String? @db.Text
-    aadhaar_pdf_url      String? @db.Text
-    user_photo_url       String? @db.Text
-    signature_url        String? @db.Text
-    contract_pdf_url     String? @db.Text
-
-    // Metadata
-    is_final_confirmed Boolean   @default(false)
-    verified_at        DateTime?
-    createdAt          DateTime  @default(now())
-    updatedAt          DateTime  @updatedAt
-
-    user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+enum KycStatus {
+  not_started
+  initiated
+  in_progress
+  verified
+  failed
 }

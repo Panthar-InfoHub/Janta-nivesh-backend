@@ -22,15 +22,14 @@ export class NSEServiceClass {
         }
     }
 
-    get_short_url = async (product_type: string, product_ref_id: string) => {
+    get_short_url = async (product_type: string, product_ref_id: string, user_log: string, user_pwd: string) => {
         const response = await axios.post(`${this.finnsys_base_url}/nse/v2/reports/get-short-url`, {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
             data: {
                 "productType": product_type,
                 "productRefId": product_ref_id
-            }
-        }, {
-            headers: {
-                ...this.get_nse_headers(),
             }
         });
 

@@ -4,6 +4,8 @@ import logger from "../middleware/logger.js";
 import { complete_onboarding_zod_schema } from "../lib/zod-schemas/onboarding.schema.js";
 import { onboarding_service } from "../services/onboarding.service.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
+import { user_service } from "../services/user.service.js";
 
 class OnBoardingControllerClass {
 
@@ -45,8 +47,19 @@ class OnBoardingControllerClass {
                 logger.error(`Failed to update user finnsys details for user_id: ${user.id}, response ==> `, finnsys_res);
                 throw new AppError("Failed to update user finnsys details", 500, "FINNSYS_UPDATE_FAILED");
             }
+            const db_user = await user_service.get_user_by_id(user.id);
             logger.info(`User Finnsys details updated successfully for user_id: ${user.id}`);
             logger.info(`Onboarding completed for user: ${user.id}`);
+
+            await zoho_webhook_service.send_event({
+                event_type: "FINANCIAL_ONBOARDING_COMPLETED",
+                timestamp: new Date().toISOString(),
+                user_id: user.id,
+                user_phone: db_user?.phone_no,
+                full_name: validation_result.data.profile?.full_name,
+                email: validation_result.data.profile?.email,
+                dob: validation_result.data.profile?.dob ? validation_result.data.profile.dob.toISOString() : undefined
+            });
 
             res.status(200).json({
                 success: true,

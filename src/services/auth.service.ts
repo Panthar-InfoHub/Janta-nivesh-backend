@@ -13,7 +13,7 @@ class AuthServiceClass {
 
     req_otp = async (mobile: string, device: DeviceDetails): Promise<AuthResponse> => {
 
-        if (mobile === "9876543210" && env.ENVIRONMENT === "dev") {
+        if (mobile === "9876543210" && (env.ENVIRONMENT === "dev" || env.ENVIRONMENT === "prod")) {
             logger.info(`Test environment: Intercepting OTP request for mobile number ${mobile}`);
             return { code: 1, results: [] };
         }
@@ -29,7 +29,7 @@ class AuthServiceClass {
                     ...device,
                     mob: mobile,
                 },
-                timeout: 300000, //  5 min timeout 
+                timeout: 3000, //  3 sec timeout
             });
 
             const request_duration = Date.now() - request_start;
@@ -39,6 +39,19 @@ class AuthServiceClass {
             return res.data;
 
         } catch (error: any) {
+
+            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+                logger.warn("First path cold, retrying immediately...");
+                return await axios.get(this.finsys_api, {
+                    params: {
+                        ...device,
+                        mob: mobile,
+                    },
+                    timeout: 15000 // Standard timeout
+                });
+            }
+
+
             const request_duration = Date.now() - request_start;
             const iso_error = new Date().toISOString();
 
@@ -58,7 +71,7 @@ class AuthServiceClass {
 
     validate_otp = async (mobile: string, otp: string, device: DeviceDetails): Promise<AuthResponse> => {
 
-        if (mobile === "9876543210" && otp === "0000" && env.ENVIRONMENT === "dev") {
+        if (mobile === "9876543210" && otp === "0000" && (env.ENVIRONMENT === "dev" || env.ENVIRONMENT === "prod")) {
             logger.info(`Test environment: Intercepting OTP validation for mobile number ${mobile}`);
             return {
                 code: 1,
@@ -83,16 +96,28 @@ class AuthServiceClass {
                     mob: mobile,
                     otp: otp,
                 },
-                timeout: 30000, // 30 second timeout
+                timeout: 3000, // 3 sec timeout
             });
 
             const request_duration = Date.now() - request_start;
             const iso_end = new Date().toISOString();
             logger.info(`[OTP_VAL_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms at ${iso_end}`);
-            logger.debug("OTP Validation Response:", res.data);
             return res.data;
 
         } catch (error: any) {
+
+            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+                logger.warn("First path cold, retrying immediately...");
+                return await axios.get(this.finsys_api, {
+                    params: {
+                        ...device,
+                        mob: mobile,
+                        otp: otp,
+                    },
+                    timeout: 15000 // Standard timeout
+                });
+            }
+
             const request_duration = Date.now() - request_start;
             const iso_error = new Date().toISOString();
 
@@ -126,13 +151,27 @@ class AuthServiceClass {
                     otp: otp,
                     invid: invid,
                 },
-                timeout: 30000,
+                timeout: 3000,
             });
 
             const request_duration = Date.now() - request_start;
             logger.info(`[LOGIN_INVID_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms`);
             return res.data;
         } catch (error: any) {
+
+            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+                logger.warn("First path cold, retrying immediately...");
+                return await axios.get(this.finsys_api, {
+                    params: {
+                        ...device,
+                        mob: mobile,
+                        otp: otp,
+                        invid: invid,
+                    },
+                    timeout: 15000 // Standard timeout
+                });
+            }
+
             const request_duration = Date.now() - request_start;
             logger.error(`[LOGIN_INVID_TIMING_FAILED] Finnsys timeout after ${request_duration}ms - Error: ${error.code}`);
             if (request_duration >= 30000) {
@@ -159,13 +198,27 @@ class AuthServiceClass {
                     usr: usr,
                     pwd: pwd,
                 },
-                timeout: 30000,
+                timeout: 3000,
             });
 
             const request_duration = Date.now() - request_start;
             logger.info(`[LOGIN_CREDS_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms`);
             return res.data;
         } catch (error: any) {
+
+            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+                logger.warn("First path cold, retrying immediately...");
+                return await axios.get(this.finsys_api, {
+                    params: {
+                        ...device,
+                        mob: "",
+                        usr: usr,
+                        pwd: pwd,
+                    },
+                    timeout: 15000 // Standard timeout
+                });
+            }
+
             const request_duration = Date.now() - request_start;
             logger.error(`[LOGIN_CREDS_TIMING_FAILED] Finnsys timeout after ${request_duration}ms - Error: ${error.code}`);
             if (request_duration >= 30000) {

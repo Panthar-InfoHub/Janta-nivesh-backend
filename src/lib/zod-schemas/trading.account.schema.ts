@@ -65,3 +65,13 @@ export const NseRegistrationSchema = z.object({
 
 // Type inference for your service layer
 export type NseRegistrationPayload = z.infer<typeof NseRegistrationSchema>;
+
+export const ConfirmTradingAccountSchema = z.object({
+    tax_status: z.string().min(1, "Tax status is mandatory"),
+    holding_nature: z.enum(["SI", "JO", "AS"], {
+        message: "Holding nature must be SI (Single), JO (Joint), or AS (Anyone or Survivor)"
+    }),
+    jh1_name: z.string().optional(),
+    jh2_name: z.string().optional(),
+    guardian_name: z.string().optional(),
+});

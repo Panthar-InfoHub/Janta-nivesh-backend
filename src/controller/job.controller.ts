@@ -37,12 +37,16 @@ class JobControllerClass {
 
             logger.debug("Attempting to retrieve Blostem token with credentials: ", { email: env.BLOSTEM_USERNAME, password: env.BLOSTEM_PASSWORD });
             logger.debug(`Blostem Master URL: ${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`);
-            const res = await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
-                email: env.BLOSTEM_USERNAME,
-                password: env.BLOSTEM_DASH_PASSWORD,
-            },
-            );
-
+            const res = env.ENVIRONMENT === "dev"
+                ? await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                    email: env.BLOSTEM_USERNAME,
+                    password: env.BLOSTEM_DASH_PASSWORD,
+                })
+                : await axios.post(`${env.BLOSTEM_MASTER_URL}/auth/v1/partner/login`, {
+                    email: env.BLOSTEM_USERNAME, //nitin@adgrid.ai
+                    password: env.BLOSTEM_DASH_PASSWORD,
+                },
+                );
             logger.debug("Blostem login response: ", res.data);
             return res.data.data.access.token;
         } catch (error: any) {
@@ -112,7 +116,33 @@ class JobControllerClass {
             return;
         }
     }
+    monthly_user_snapshot_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
 
+            if (scheduler_token !== secret) {
+                console.warn(`[SECURITY] Unauthorized attempt to access monthly user snapshot job with token: ${scheduler_token}`);
+                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            }
+
+            logger.info("Running monthly user snapshot job...");
+
+            const data = await job_service.monthly_user_snapshot_job();
+
+            res.status(200).json({
+                success: true,
+                message: "Monthly user snapshot job completed successfully",
+                data
+            })
+            return;
+
+        } catch (error: any) {
+            console.error("Error while running monthly user snapshot job ==> ", error.message);
+            next(error);
+            return;
+        }
+    }
 
     mf_single_nav_history_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -147,17 +177,32 @@ class JobControllerClass {
         }
     }
 
+    mf_metrics_calc_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
 
+            if (scheduler_token !== secret) {
+                console.warn(`[SECURITY] Unauthorized attempt to access mf metrics calc job with token: ${scheduler_token}`);
+                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            }
 
+            logger.info("Running MF metrics calculation job...");
 
+            await job_service.calculate_all_mf_metrics();
 
+            res.status(200).json({
+                success: true,
+                message: "MF metrics calculation job completed successfully"
+            });
+            return;
 
-
-
-
-
-
-
+        } catch (error: any) {
+            console.error("Error while running mf metrics calc job ==> ", error.message);
+            next(error);
+            return;
+        }
+    }
 
     daily_fd_product_sync_job = async (req: Request, res: Response, next: NextFunction) => {
 

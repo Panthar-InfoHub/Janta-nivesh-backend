@@ -48,7 +48,6 @@ export interface ProjectionAssets {
     mutual_funds: number;
     stocks: number;
     fd: number;
-    real_estate: number;
     gold: number;
     cash_saving: number;
     nps: number;      // always starts at 0 — no DB column
@@ -108,7 +107,6 @@ export interface AssetsBreakdown {
     mutual_funds: number;
     stocks: number;
     fd: number;
-    real_estate: number;
     gold: number;
     cash_saving: number;
     total_liquid: number;
@@ -177,4 +175,9 @@ export interface FireReportCoreResponse {
     insurance_summary: InsuranceSummary;
     quarterly_simulation: QuarterlyPoint[];
     yearly_goal_requirements: YearlyGoalRequirement[];
+}
+
+export interface FireReportFinalResponse {
+    actual: FireReportCoreResponse;
+    projected: FireReportCoreResponse;
 }

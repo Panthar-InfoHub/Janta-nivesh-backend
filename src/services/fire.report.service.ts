@@ -14,10 +14,13 @@ import {
     QuarterlyPoint,
     YearlyGoalRequirement,
 } from "../lib/fire-report.types.js";
-import { UserWithAllData } from "../lib/types.js";
+import { UserFireReportData, UserWithAllData } from "../lib/types.js";
 import { user_service } from "./user.service.js";
+import { user_finnsys_service } from "./user.finnsys.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
+import { FireReportFinalResponse } from "../lib/fire-report.types.js";
+import { db } from "../server.js";
 
 class FireReportServiceClass {
 
@@ -46,10 +49,20 @@ class FireReportServiceClass {
         const current_year = new Date().getFullYear();
         const loans = this.normalize_loans(data.user_loan ?? []);
 
-        const current_year_emi = loans.reduce((sum, loan) => {
-            const months_paid = Math.max(0, Math.min(12, loan.tenure_months));
-            return sum + (loan.monthly_emi * months_paid);
-        }, 0);
+        // Extract initial assets
+        const initial_assets: ProjectionAssets = {
+            mutual_funds: this.to_num(data.user_assets?.mutual_funds),
+            stocks: this.to_num(data.user_assets?.stocks),
+            fd: this.to_num(data.user_assets?.fd),
+            gold: this.to_num(data.user_assets?.gold),
+            cash_saving: this.to_num(data.user_assets?.cash_saving),
+            nps: 0,
+            ppf_epf: 0,
+        };
+
+        // Get year-0 portfolio values with asset growth and partial-year aware EMI
+        const { portfolio_value_inc, portfolio_value_exc, yearly_emi } =
+            this.compute_year_zero_portfolio(initial_assets, computed_metrics, goals, loans);
 
         const goal_commitment_annual = goals.reduce((sum, goal) =>
             current_year <= goal.target_year
@@ -58,16 +71,16 @@ class FireReportServiceClass {
             , 0);
 
         const total_expenses_exclude = computed_metrics.total_annual_expenses;
-        const total_expenses_include = total_expenses_exclude + current_year_emi;
+        const total_expenses_include = total_expenses_exclude + yearly_emi;
 
         const fire_number_exclude = (total_expenses_exclude + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
         const fire_number_include = (total_expenses_include + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
 
         const fire_percentage_exclude = fire_number_exclude > 0
-            ? (computed_metrics.net_worth * 100) / fire_number_exclude
+            ? (portfolio_value_exc * 100) / fire_number_exclude
             : 0;
         const fire_percentage_include = fire_number_include > 0
-            ? (computed_metrics.net_worth * 100) / fire_number_include
+            ? (portfolio_value_inc * 100) / fire_number_include
             : 0;
 
         return {
@@ -89,21 +102,65 @@ class FireReportServiceClass {
         };
     }
 
-    async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportCoreResponse> {
-        const data = await user_service.get_all_user_data(user_id, {
-            user_finance: true,
-            user_assets: true,
-            user_insurance: true,
-            user_loan: true,
-            user_goals: true,
-        });
+    async get_fire_report(user_id: string, projection_years: number = FIRE_CONSTANTS.default_projection_years): Promise<FireReportFinalResponse> {
+        const data = await user_service.get_user_fire_report_data(user_id);
 
         if (!data) {
             logger.error(`No user data found for user_id: ${user_id}`);
             throw new AppError("User data not found", 404, "USER_DATA_NOT_FOUND");
         }
 
-        const computed_metrics = this.compute_metrics(data);
+        // 1. Fetch Real Data for "Actual" track
+        let actual_mf = 0;
+        let actual_fd = 0;
+
+        try {
+            // Fetch Mutual Funds from Finnsys if credentials exist
+            if (data.usr && data.pwd) {
+                const finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(data.usr, data.pwd);
+                if (finnsys_res && finnsys_res.code === 1 && finnsys_res.results) {
+                    actual_mf = finnsys_res.results.reduce((sum: number, item: any) => sum + (parseFloat(String(item.currval).replace(/,/g, "")) || 0), 0);
+                }
+            }
+        } catch (error) {
+            logger.warn(`Failed to fetch Finnsys portfolio for user ${user_id}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        try {
+            // Fetch Fixed Deposits with FD_CREATED and MATURED status
+            const fd_res = await user_service.get_user_fd_data({
+                user_id,
+                query: { status: { in: ["FD_CREATED", "MATURED"] } }
+            });
+            actual_fd = fd_res.fd_transactions.reduce((sum, tx) => sum + (parseFloat(String(tx.amount)) || 0), 0);
+        } catch (error) {
+            logger.warn(`Failed to fetch FD transactions for user ${user_id}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        // 2. Generate Projected Report (Onboarding data)
+        const projected = await this.generate_report_with_assets(data, projection_years);
+
+        // 3. Generate Actual Report (Real transaction data for MF & FD)
+        const actual_assets: ProjectionAssets = {
+            mutual_funds: this.to_num(data.user_assets?.mutual_funds) + actual_mf,
+            fd: this.to_num(data.user_assets?.fd) + actual_fd,
+            stocks: this.to_num(data.user_assets?.stocks),
+            gold: this.to_num(data.user_assets?.gold),
+            cash_saving: this.to_num(data.user_assets?.cash_saving),
+            nps: 0,
+            ppf_epf: 0,
+        };
+
+        const actual = await this.generate_report_with_assets(data, projection_years, actual_assets);
+
+        return {
+            actual,
+            projected,
+        };
+    }
+
+    private async generate_report_with_assets(data: UserFireReportData, projection_years: number, override_assets?: ProjectionAssets): Promise<FireReportCoreResponse> {
+        const computed_metrics = this.compute_metrics(data, override_assets);
 
         const monthly_expenses_total = computed_metrics.total_annual_expenses / 12;
 
@@ -113,7 +170,8 @@ class FireReportServiceClass {
             monthly_expenses_total,
         );
 
-        const projection = this.compute_projection(data, computed_metrics, goals, projection_years);
+        const projection = this.compute_projection(data, computed_metrics, goals, projection_years, override_assets);
+        const quarterly_simulation = await this.generate_quarterly_simulation(data.id, computed_metrics, projection);
 
         return {
             user_profile: {
@@ -124,28 +182,27 @@ class FireReportServiceClass {
             computed_metrics,
             goals,
             projection,
-            assets_breakdown: this.extract_assets_breakdown(data),
+            assets_breakdown: this.extract_assets_breakdown(data, override_assets),
             liabilities: this.extract_liabilities(data),
             expense_breakdown: this.extract_expense_breakdown(data),
             insurance_summary: this.compute_insurance_summary(data, computed_metrics),
-            quarterly_simulation: this.generate_quarterly_simulation(computed_metrics, projection),
+            quarterly_simulation,
             yearly_goal_requirements: this.generate_yearly_goal_table(projection),
         };
     }
 
     // Compute Metrics 
-    private compute_metrics(data: UserWithAllData): ComputedMetrics {
+    private compute_metrics(data: UserFireReportData, override_assets?: ProjectionAssets): ComputedMetrics {
         const finance = data.user_finance;
         const assets = data.user_assets;
         const loans = data.user_loan ?? [];
 
         // User assets
-        const mutual_funds = this.to_num(assets?.mutual_funds);
-        const stocks = this.to_num(assets?.stocks);
-        const fd = this.to_num(assets?.fd);
-        const real_estate = this.to_num(assets?.real_estate);
-        const gold = this.to_num(assets?.gold);
-        const cash_saving = this.to_num(assets?.cash_saving);
+        const mutual_funds = override_assets ? override_assets.mutual_funds : this.to_num(assets?.mutual_funds);
+        const stocks = override_assets ? override_assets.stocks : this.to_num(assets?.stocks);
+        const fd = override_assets ? override_assets.fd : this.to_num(assets?.fd);
+        const gold = override_assets ? override_assets.gold : this.to_num(assets?.gold);
+        const cash_saving = override_assets ? override_assets.cash_saving : this.to_num(assets?.cash_saving);
 
         // User finance
         const annual_income = this.to_num(finance?.annual_income);
@@ -154,9 +211,9 @@ class FireReportServiceClass {
         const expense_transportation = this.to_num(finance?.expense_transportation);
         const expense_others = this.to_num(finance?.expense_others);
 
-        const total_assets = mutual_funds + stocks + fd + real_estate + gold + cash_saving;
-        const liquid_assets = mutual_funds + stocks + fd + cash_saving;
-        const illiquid_assets = real_estate + gold;
+        const total_assets = mutual_funds + stocks + fd + gold + cash_saving;
+        const liquid_assets = mutual_funds + stocks + fd + cash_saving + gold;
+        const illiquid_assets = gold;
 
         const total_liabilities = loans.reduce((sum, l) => sum + this.to_num(l.outstanding_amount), 0);
         const total_monthly_emi = loans.reduce((sum, l) => sum + this.to_num(l.monthly_emi), 0);
@@ -164,7 +221,7 @@ class FireReportServiceClass {
         console.log("Total assest ==> ", total_assets)
         const net_worth = total_assets - total_liabilities;
         const monthly_income = annual_income / 12;
-        const total_annual_expenses = expense_house + expense_food + expense_transportation + expense_others;
+        const total_annual_expenses = (expense_house + expense_food + expense_transportation + expense_others) * 12;
         const annual_savings = annual_income - total_annual_expenses - (total_monthly_emi * 12);
         const savings_rate = annual_income === 0 ? 0 : (annual_savings / annual_income) * 100;
         const monthly_available_surplus = monthly_income - (total_annual_expenses / 12) - total_monthly_emi;
@@ -186,17 +243,100 @@ class FireReportServiceClass {
         };
     }
 
+    // Year-0 Portfolio Calculation (with asset growth + partial-year aware EMI)
+    private compute_year_zero_portfolio(
+        initial_assets: ProjectionAssets,
+        metrics: ComputedMetrics,
+        goals: NormalizedGoalWithSIP[],
+        loans: TrackedLoan[]
+    ): { portfolio_value_inc: number; portfolio_value_exc: number; yearly_emi: number } {
+        const current_year = new Date().getFullYear();
+        const g = FIRE_CONSTANTS.asset_growth;
+
+        // 1. Apply per-asset growth
+        let ya_inc: ProjectionAssets = {
+            mutual_funds: initial_assets.mutual_funds * (1 + g.mutual_funds),
+            stocks: initial_assets.stocks * (1 + g.stocks),
+            fd: initial_assets.fd * (1 + g.fd),
+            gold: initial_assets.gold * (1 + g.gold),
+            cash_saving: initial_assets.cash_saving * (1 + g.cash_saving),
+            nps: initial_assets.nps * (1 + g.nps),
+            ppf_epf: initial_assets.ppf_epf * (1 + g.ppf_epf),
+        };
+        let ya_exc: ProjectionAssets = {
+            mutual_funds: initial_assets.mutual_funds * (1 + g.mutual_funds),
+            stocks: initial_assets.stocks * (1 + g.stocks),
+            fd: initial_assets.fd * (1 + g.fd),
+            gold: initial_assets.gold * (1 + g.gold),
+            cash_saving: initial_assets.cash_saving * (1 + g.cash_saving),
+            nps: initial_assets.nps * (1 + g.nps),
+            ppf_epf: initial_assets.ppf_epf * (1 + g.ppf_epf),
+        };
+
+        // 2. Portfolio totals after growth
+        const sum_assets = (ya: ProjectionAssets) =>
+            ya.mutual_funds + ya.stocks + ya.fd + ya.gold +
+            ya.cash_saving + ya.nps + ya.ppf_epf;
+        const portfolio_inc = sum_assets(ya_inc);
+        const portfolio_exc = sum_assets(ya_exc);
+
+        // 3. Income and base expenses (no growth for year 0)
+        const annual_income_base = metrics.monthly_income * 12;
+        const annual_expenses_base = metrics.total_annual_expenses;
+
+        // 4. EMI — partial-year aware (for year 0, months_elapsed = 0)
+        let yearly_emi = 0;
+        for (const loan of loans) {
+            const months_remaining = loan.tenure_months;
+            const months_paid = Math.max(0, Math.min(12, months_remaining));
+            if (months_paid > 0) yearly_emi += loan.monthly_emi * months_paid;
+        }
+
+        // 5. Total expenses — the only hard branch between the two tracks
+        const total_expenses_inc = annual_expenses_base + yearly_emi;
+        const total_expenses_exc = annual_expenses_base;
+
+        // 6. Goal SIP commitment (same for both tracks)
+        const goal_commitment_annual = goals.reduce((sum, goal) =>
+            current_year <= goal.target_year
+                ? sum + goal.required_monthly_sip * 12
+                : sum
+            , 0);
+
+        // 7. Goal payouts (same for both tracks)
+        const goals_payout = goals.reduce((sum, goal) => {
+            const fv = this.calculate_goal_future_value(goal, current_year, current_year);
+            if (fv && fv > 0) {
+                return sum + fv;
+            }
+            return sum;
+        }, 0);
+
+        // 8. Savings per track
+        const savings_inc = annual_income_base - total_expenses_inc - goal_commitment_annual;
+        const savings_exc = annual_income_base - total_expenses_exc - goal_commitment_annual;
+
+        // 9. Portfolio value per track
+        const portfolio_value_inc = portfolio_inc + savings_inc - goals_payout;
+        const portfolio_value_exc = portfolio_exc + savings_exc - goals_payout;
+
+        return {
+            portfolio_value_inc,
+            portfolio_value_exc,
+            yearly_emi
+        };
+    }
+
     //  Projection ( per-asset growth, SIP goals, partial EMI — dual-track: emi_include / emi_exclude)
-    private compute_projection(data: UserWithAllData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number): ProjectionRow[] {
+    private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number, override_assets?: ProjectionAssets): ProjectionRow[] {
         const current_year = new Date().getFullYear();
         const loans = this.normalize_loans(data.user_loan ?? []);
         const g = FIRE_CONSTANTS.asset_growth;
 
-        const initial_assets: ProjectionAssets = {
+        const initial_assets: ProjectionAssets = override_assets ?? {
             mutual_funds: this.to_num(data.user_assets?.mutual_funds),
             stocks: this.to_num(data.user_assets?.stocks),
             fd: this.to_num(data.user_assets?.fd),
-            real_estate: this.to_num(data.user_assets?.real_estate),
             gold: this.to_num(data.user_assets?.gold),
             cash_saving: this.to_num(data.user_assets?.cash_saving),
             nps: 0,
@@ -218,7 +358,6 @@ class FireReportServiceClass {
                 mutual_funds: ya_inc.mutual_funds * (1 + g.mutual_funds),
                 stocks: ya_inc.stocks * (1 + g.stocks),
                 fd: ya_inc.fd * (1 + g.fd),
-                real_estate: ya_inc.real_estate * (1 + g.real_estate),
                 gold: ya_inc.gold * (1 + g.gold),
                 cash_saving: ya_inc.cash_saving * (1 + g.cash_saving),
                 nps: ya_inc.nps * (1 + g.nps),
@@ -228,7 +367,6 @@ class FireReportServiceClass {
                 mutual_funds: ya_exc.mutual_funds * (1 + g.mutual_funds),
                 stocks: ya_exc.stocks * (1 + g.stocks),
                 fd: ya_exc.fd * (1 + g.fd),
-                real_estate: ya_exc.real_estate * (1 + g.real_estate),
                 gold: ya_exc.gold * (1 + g.gold),
                 cash_saving: ya_exc.cash_saving * (1 + g.cash_saving),
                 nps: ya_exc.nps * (1 + g.nps),
@@ -238,13 +376,13 @@ class FireReportServiceClass {
             // 2. Portfolio totals after growth
             const sum_assets = (ya: ProjectionAssets) =>
                 ya.mutual_funds + ya.stocks + ya.fd + ya.gold +
-                ya.cash_saving + ya.nps + ya.ppf_epf + ya.real_estate;
+                ya.cash_saving + ya.nps + ya.ppf_epf;
             const portfolio_inc = sum_assets(ya_inc);
             const portfolio_exc = sum_assets(ya_exc);
 
             // 3. Income and base expenses (same for both tracks)
             const income = annual_income_base * Math.pow(1 + FIRE_CONSTANTS.income_growth, i);
-            const expenses_raw = annual_expenses_base * Math.pow(1 + FIRE_CONSTANTS.expense_growth, i);
+            const expenses_raw = annual_expenses_base * Math.pow(1 + FIRE_CONSTANTS.expense_growth, i); // annual_expenses_base is monthly expense
 
             // 4. EMI — partial-year aware
             let yearly_emi = 0;
@@ -422,19 +560,18 @@ class FireReportServiceClass {
 
     // ── 6 Enrichment helpers ──────────────────────────────────────────────────
 
-    private extract_assets_breakdown(data: UserWithAllData): AssetsBreakdown {
-        const mf = this.to_num(data.user_assets?.mutual_funds);
-        const stocks = this.to_num(data.user_assets?.stocks);
-        const fd = this.to_num(data.user_assets?.fd);
-        const real_estate = this.to_num(data.user_assets?.real_estate);
-        const gold = this.to_num(data.user_assets?.gold);
-        const cash_saving = this.to_num(data.user_assets?.cash_saving);
+    private extract_assets_breakdown(data: UserFireReportData, override_assets?: ProjectionAssets): AssetsBreakdown {
+        const mf = override_assets ? override_assets.mutual_funds : this.to_num(data.user_assets?.mutual_funds);
+        const stocks = override_assets ? override_assets.stocks : this.to_num(data.user_assets?.stocks);
+        const fd = override_assets ? override_assets.fd : this.to_num(data.user_assets?.fd);
+        const gold = override_assets ? override_assets.gold : this.to_num(data.user_assets?.gold);
+        const cash_saving = override_assets ? override_assets.cash_saving : this.to_num(data.user_assets?.cash_saving);
         const total_liquid = mf + stocks + fd + cash_saving;
-        const total_illiquid = real_estate + gold;
-        return { mutual_funds: mf, stocks, fd, real_estate, gold, cash_saving, total_liquid, total_illiquid, total: total_liquid + total_illiquid };
+        const total_illiquid = gold;
+        return { mutual_funds: mf, stocks, fd, gold, cash_saving, total_liquid, total_illiquid, total: total_liquid + total_illiquid };
     }
 
-    private extract_liabilities(data: UserWithAllData): LiabilityItem[] {
+    private extract_liabilities(data: UserFireReportData): LiabilityItem[] {
         return (data.user_loan ?? []).map(l => ({
             loan_type: l.loan_type,
             outstanding: this.to_num(l.outstanding_amount),
@@ -443,58 +580,154 @@ class FireReportServiceClass {
         }));
     }
 
-    private extract_expense_breakdown(data: UserWithAllData): ExpenseBreakdown {
+    private extract_expense_breakdown(data: UserFireReportData): ExpenseBreakdown {
         const house = this.to_num(data.user_finance?.expense_house);
         const food = this.to_num(data.user_finance?.expense_food);
         const transportation = this.to_num(data.user_finance?.expense_transportation);
         const others = this.to_num(data.user_finance?.expense_others);
         const total_annual = house + food + transportation + others;
-        return { house, food, transportation, others, total_monthly: Math.round(total_annual / 12), total_annual };
+        return { house, food, transportation, others, total_monthly: Math.round(total_annual), total_annual: total_annual * 12 };
     }
 
-    private compute_insurance_summary(data: UserWithAllData, metrics: ComputedMetrics): InsuranceSummary {
-        const annual_income = metrics.monthly_income * 12;
-        const term_life_recommended = Math.max(
-            15 * annual_income,
-            metrics.total_liabilities + 10 * metrics.total_annual_expenses,
-        );
-        const health_recommended = Math.max(4 * metrics.monthly_income, 2_000_000);
+    private compute_insurance_summary(data: UserFireReportData, metrics: ComputedMetrics): InsuranceSummary {
         const term_life_have = this.to_num(data.user_insurance?.life_insurance);
         const health_have = this.to_num(data.user_insurance?.health_insurance);
+
+        // Edge case: if no valid DOB, skip recommendations
+        if (!data.dob) {
+            return {
+                term_life_have,
+                term_life_recommended: 0,
+                term_life_gap: 0,
+                health_have,
+                health_recommended: 0,
+                health_gap: 0,
+            };
+        }
+
+        // Extract current age
+        const current_age = this.extract_age(data.dob);
+        const annual_income = metrics.monthly_income * 12;
+
+        // ── Term Life Insurance: Age-based multiplier × annual_income ───────────
+        let term_multiplier = 10;
+        if (current_age >= 20 && current_age <= 30) {
+            term_multiplier = 30;
+        } else if (current_age > 30 && current_age <= 40) {
+            term_multiplier = 20;
+        } else if (current_age > 40 && current_age <= 50) {
+            term_multiplier = 15;
+        } else if (current_age > 50) {
+            term_multiplier = 10;
+        }
+        const term_life_recommended = Math.round(term_multiplier * annual_income);
+
+        // ── Health Insurance: Age-based fixed lakhs (convert to rupees) ────────
+        let health_lakhs = 10;
+        if (current_age >= 20 && current_age <= 30) {
+            health_lakhs = 10;
+        } else if (current_age > 30 && current_age <= 40) {
+            health_lakhs = 15;
+        } else if (current_age > 40 && current_age <= 50) {
+            health_lakhs = 25;
+        } else if (current_age > 50) {
+            health_lakhs = 40;
+        }
+        const health_recommended = Math.round(health_lakhs * 100_000);
+
         return {
             term_life_have,
-            term_life_recommended: Math.round(term_life_recommended),
-            term_life_gap: Math.max(0, Math.round(term_life_recommended - term_life_have)),
+            term_life_recommended,
+            term_life_gap: Math.max(0, term_life_recommended - term_life_have),
             health_have,
-            health_recommended: Math.round(health_recommended),
-            health_gap: Math.max(0, Math.round(health_recommended - health_have)),
+            health_recommended,
+            health_gap: Math.max(0, health_recommended - health_have),
         };
     }
 
-    /** Deterministic backward simulation of 6 quarterly data points for trend charts.
-     *  Uses: nw(i) = net_worth × 0.98^i   fire_number(i) = fn_now × 0.985^i
-     *  where i=5 is 5 quarters ago and i=0 is the current quarter. */
-    private generate_quarterly_simulation(metrics: ComputedMetrics, projection: ProjectionRow[]): QuarterlyPoint[] {
-        const net_worth = metrics.net_worth;
+    /** Deterministic historical simulation combined with real Snapshots. 
+     *  Uses UserNetWorthSnapshot table for actual past data. 
+     *  Falls back to 0 for periods before account creation. */
+    private async generate_quarterly_simulation(user_id: string, metrics: ComputedMetrics, projection: ProjectionRow[]): Promise<QuarterlyPoint[]> {
+        const current_net_worth = metrics.net_worth;
         const fire_number_now = projection[0]?.fire_number.emi_include ?? 0;
         const now = new Date();
-        const current_q = Math.floor(now.getMonth() / 3); // 0-3
         const current_year = now.getFullYear();
 
-        const quarter_label = (q_offset: number): string => {
-            let q = current_q - q_offset;
-            let y = current_year;
-            while (q < 0) { q += 4; y--; }
-            return `Q${q + 1} ${y}`;
-        };
+        // 1. Fetch real historical snapshots
+        const snapshots = await db.userNetWorthSnapshot.findMany({
+            where: { userId: user_id },
+            orderBy: [{ year: 'desc' }, { month: 'desc' }],
+            take: 24 // Last 2 years of possible months
+        });
+
+        // 2. Fetch User to get createdAt (baseline)
+        const user = await db.user.findUnique({ where: { id: user_id }, select: { createdAt: true } });
+        const joined_date = user?.createdAt ?? new Date();
+
+        // NEW: Detect if user is new (< 3 months old)
+        const months_since_join = (now.getTime() - joined_date.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        const is_new_user = months_since_join < 3; // Less than 3 months = new user
+
+        const quarter_label = (y: number, q: number): string => `Q${q + 1} ${y}`;
 
         const points: QuarterlyPoint[] = [];
+
+        // Generate last 6 quarters
         for (let i = 5; i >= 0; i--) {
-            const nw = net_worth * Math.pow(0.98, i);
-            const fn = fire_number_now * Math.pow(0.985, i);
+            // NEW: Skip historical quarters for new users (only show current quarter)
+            if (is_new_user && i !== 0) {
+                continue;
+            }
+
+            // Calculate target Quarter/Year
+            let target_q = Math.floor(now.getMonth() / 3) - i;
+            let target_y = current_year;
+            while (target_q < 0) { target_q += 4; target_y--; }
+
+            // NEW: Skip quarters that end before the user joined
+            const quarter_end_date = new Date(target_y, target_q * 3 + 3, 0); // Last day of quarter
+            if (quarter_end_date < joined_date && i !== 0) {
+                // If this is the quarter immediately before onboarding, we keep it as a baseline
+                // to avoid -100% QoQ change for new users.
+                const next_q_date = new Date(target_y, target_q * 3 + 6, 0);
+                if (next_q_date < joined_date) {
+                    continue;
+                }
+            }
+
+            let nw = 0;
+            const is_current_quarter = i === 0;
+
+            if (is_current_quarter) {
+                nw = current_net_worth;
+            } else {
+                // Look for a snapshot in this quarter
+                const q_months = [target_q * 3 + 1, target_q * 3 + 2, target_q * 3 + 3];
+                const snapshot = snapshots.find(s => s.year === target_y && q_months.includes(s.month));
+
+                if (snapshot) {
+                    nw = snapshot.netWorth;
+                } else {
+                    // Fallback logic for missing snapshots
+                    const quarter_start_date = new Date(target_y, target_q * 3, 1);
+                    if (quarter_start_date < joined_date) {
+                        // If it's the "baseline" quarter (just before onboarding), we match current NW
+                        // to ensure a 0% change instead of -100%.
+                        nw = current_net_worth;
+                    } else {
+                        nw = current_net_worth; // Post-onboarding but missing snapshot
+                    }
+                }
+            }
+
+            // Fire number simulation (we don't snapshot this, so we simulate progress)
+            const fn_growth = Math.pow(0.985, i);
+            const fn = fire_number_now * fn_growth;
             const fp = fn > 0 ? (nw / fn) * 100 : 0;
+
             points.push({
-                quarter: quarter_label(i),
+                quarter: quarter_label(target_y, target_q),
                 net_worth: parseFloat((nw / 100_000).toFixed(2)),
                 fire_number: parseFloat((fn / 100_000).toFixed(2)),
                 fire_percentage: parseFloat(fp.toFixed(2)),

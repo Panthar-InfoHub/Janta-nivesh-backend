@@ -1,3 +1,4 @@
+import logger from "../middleware/logger.js";
 import { FireReportCoreResponse, YearlyGoalRequirement } from "./fire-report.types.js";
 
 // ─── View-model interfaces (consumed by the TSX report component + PDF) ───────
@@ -61,7 +62,6 @@ export interface VelvetReportViewData {
     netWorthPage: {
         equityTrend: { q: string; value: number }[];
         debtTrend: { q: string; value: number }[];
-        realEstateTrend: { q: string; value: number }[];
         goldCashTrend: { q: string; value: number }[];
         pieData: { name: string; value: number; percentage: number }[];
     };
@@ -104,6 +104,7 @@ export interface VelvetReportViewData {
 export function to_report_view_data(report: FireReportCoreResponse): VelvetReportViewData {
     const { computed_metrics: m, projection, quarterly_simulation: qs, goals, assets_breakdown: ab, liabilities, expense_breakdown: eb, insurance_summary: ins } = report;
 
+    logger.debug("Quarterly Simulation Data:", qs);
     // ── Quarter labels from simulation ────────────────────────────────────────
     const currentQuarter = qs[5]?.quarter ?? "Q1 2026";
     const previousQuarter = qs[4]?.quarter ?? "Q4 2025";
@@ -114,8 +115,8 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const netWorthHistory = qs.map(q => ({ quarter: q.quarter, value: q.net_worth }));
     const fireCurrentCorpus = projection[0]?.portfolio_value.emi_include ?? 0;
     const fireNumber = projection[0]?.fire_number.emi_include ?? 0;
-    const firePercentage = projection[0]?.fire_percentage.emi_include ?? 0;
-    const fireGap = Math.max(0, fireNumber - fireCurrentCorpus);
+    const firePercentage = fireNumber > 0 ? (netWorth * 100) / fireNumber : 0;
+    const fireGap = Math.max(0, fireNumber - netWorth);
     const annualExpenses = m.total_annual_expenses;
     // approximate previous quarter's annual expenses (monthly rate deflated by 6% p.a. ÷ 4 quarters)
     const annualExpensesPrevQ = Math.round(annualExpenses / Math.pow(1.06, 0.25));
@@ -132,10 +133,10 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const savingsRate = parseFloat(m.savings_rate.toFixed(1));
     const totalExp = eb.total_annual || 1;
     const expenseBreakdown = [
-        { category: "Housing", amount: Math.round(eb.house / 12), percentage: Math.round((eb.house / totalExp) * 100) },
-        { category: "Food & Groceries", amount: Math.round(eb.food / 12), percentage: Math.round((eb.food / totalExp) * 100) },
-        { category: "Transport", amount: Math.round(eb.transportation / 12), percentage: Math.round((eb.transportation / totalExp) * 100) },
-        { category: "Others", amount: Math.round(eb.others / 12), percentage: Math.round((eb.others / totalExp) * 100) },
+        { category: "Housing", amount: Math.round(eb.house), percentage: Math.round((eb.house / totalExp) * 100) },
+        { category: "Food & Groceries", amount: Math.round(eb.food), percentage: Math.round((eb.food / totalExp) * 100) },
+        { category: "Transport", amount: Math.round(eb.transportation), percentage: Math.round((eb.transportation / totalExp) * 100) },
+        { category: "Others", amount: Math.round(eb.others), percentage: Math.round((eb.others / totalExp) * 100) },
     ];
 
     // ── Balance Sheet ─────────────────────────────────────────────────────────
@@ -144,7 +145,6 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         { name: "Stocks/Equity", value: ab.stocks },
         { name: "Fixed Deposits", value: ab.fd },
         { name: "Gold", value: ab.gold },
-        { name: "Real Estate", value: ab.real_estate },
         { name: "Cash & Savings", value: ab.cash_saving },
     ];
     const bsLiabilities = liabilities.map(l => ({
@@ -153,7 +153,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         emi: l.monthly_emi,
         tenure_months: l.tenure_months,
     }));
-    const qoqNwPct = netWorthPrevQ > 0
+    const qoqNwPct = (netWorthPrevQ > 0 && netWorth !== netWorthPrevQ)
         ? ((netWorth - netWorthPrevQ) / netWorthPrevQ * 100).toFixed(1)
         : "0.0";
 
@@ -164,19 +164,16 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
 
     const equity_now = ab.mutual_funds + ab.stocks;
     const debt_now = ab.fd;
-    const re_now = ab.real_estate;
     const gold_cash_now = ab.gold + ab.cash_saving;
     const total_assets_now = ab.total;
 
     const equityTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(equity_now * scale_factor(i)) }));
     const debtTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(debt_now * scale_factor(i)) }));
-    const realEstateTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(re_now * scale_factor(i)) }));
     const goldCashTrend = last3.map((q, i) => ({ q: q.quarter, value: to_L(gold_cash_now * scale_factor(i)) }));
 
     const safe_pct = (v: number) => total_assets_now > 0 ? Math.round((v / total_assets_now) * 100) : 0;
     const pieData = [
         { name: "Financial Assets", value: ab.total_liquid - ab.cash_saving, percentage: safe_pct(ab.total_liquid - ab.cash_saving) },
-        { name: "Real Estate", value: ab.real_estate, percentage: safe_pct(ab.real_estate) },
         { name: "Cash & Savings", value: ab.cash_saving, percentage: safe_pct(ab.cash_saving) },
         { name: "Gold", value: ab.gold, percentage: safe_pct(ab.gold) },
     ];
@@ -216,15 +213,19 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     }));
 
     // ── QoQ Changes ───────────────────────────────────────────────────────────
-    const cur = qs[5];
-    const prev = qs[4];
+    const cur = qs[qs.length - 1];
+    const prev = qs[qs.length - 2];
+
+    const has_valid_previous = prev !== undefined;
+    logger.debug(`Current ${cur} and prev quarter nw ${prev}`)
+
     const pct_change = (c: number, p: number) =>
         p > 0 ? ((c - p) / p * 100).toFixed(1) : "0.0";
     const qoqChanges = {
-        netWorth: pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1),
-        expenses: pct_change(annualExpenses, annualExpensesPrevQ),
-        fireNumber: pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1),
-        firePercent: pct_change(cur?.fire_percentage ?? 0, prev?.fire_percentage ?? 1),
+        netWorth: has_valid_previous ? pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1) : "0.0",
+        expenses: has_valid_previous ? pct_change(annualExpenses, annualExpensesPrevQ) : "0.0",
+        fireNumber: has_valid_previous ? pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1) : "0.0",
+        firePercent: has_valid_previous ? pct_change(cur?.fire_percentage ?? 0, prev?.fire_percentage ?? 1) : "0.0",
     };
 
     // ── Quarter-end Summary ───────────────────────────────────────────────────
@@ -281,7 +282,6 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         netWorthPage: {
             equityTrend,
             debtTrend,
-            realEstateTrend,
             goldCashTrend,
             pieData,
         },

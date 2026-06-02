@@ -1,5 +1,5 @@
 import axios from "axios";
-import { UserWithAllData } from "../lib/types.js";
+import { UserFireReportData, UserWithAllData } from "../lib/types.js";
 import {
     FdTransactionOrderByWithRelationInput,
     FdTransactionWhereInput,
@@ -172,6 +172,30 @@ class UserServiceClass {
     }
 
 
+    async get_user_fire_report_data(user_id: string): Promise<UserFireReportData | null> {
+        return await db.user.findUnique({
+            where: { id: user_id },
+            include: {
+                user_finance: true,
+                user_assets: {
+                    select: {
+                        id: true,
+                        user_id: true,
+                        mutual_funds: true,
+                        stocks: true,
+                        fd: true,
+                        gold: true,
+                        cash_saving: true,
+                    }
+                },
+                user_insurance: true,
+                user_loan: true,
+                user_goals: true,
+            }
+        });
+    }
+
+
     async get_all_user_data(user_id: string, options?: GetAllUserDataOptions): Promise<UserWithAllData | null> {
         const user = await db.user.findUnique({
             where: {
@@ -244,7 +268,7 @@ class UserServiceClass {
         const where: FdTransactionWhereInput = {
             ...(query ?? {}),
             user_id,
-            status: { notIn: ["INITIATED"] }
+            status: { in: ["PAYMENT_SUCCESS", "VKYC_COMPLETED", "FD_CREATED", "MATURED", "PREMATURE_WITHDRAWN"] }
         };
 
         const [total, fd_transactions] = await Promise.all([
@@ -259,6 +283,7 @@ class UserServiceClass {
                     fd_issued_at: true,
                     status: true,
                     maturity_amount: true,
+                    maturity_date: true,
                     user: {
                         select: {
                             id: true,
@@ -302,15 +327,127 @@ class UserServiceClass {
                 id: transaction_id,
                 user_id: user_id,
             },
-            include: {
+            select: {
+                id: true,
+                user_id: true,
+                payment_completed_at: true,
+                is_vkyc_pending: true,
+                amount: true,
+                roi_at_booking: true,
+                tenure_at_booking: true,
+                payout_frequency: true,
+                status: true,
+                maturity_amount: true,
+                maturity_date: true,
+                maturity_instruction: true,
+                payment_tx_id: true,
+                fd_account_number: true,
+                onboarded_at: true,
+                vkyc_completed_at: true,
+                fd_issued_at: true,
+                refund_date: true,
+                vkyc_failure_reason: true,
+                failure_reason: true,
+                createdAt: true,
+                updatedAt: true,
                 product: {
-                    include: {
-                        issuer: true
+                    select: {
+                        id: true,
+                        issuer_id: true,
+                        issuer: {
+                            select: {
+                                id: true,
+                                full_name: true,
+                                display_name: true,
+                                issuer_type: true,
+                                logo_url: true,
+                                banner_url: true,
+                                rating_text: true
+                            }
+                        }
                     }
                 }
             }
         });
     }
+
+    /**
+     * Aggregates portfolio data from MF and FD investments
+     * Calculates total values, returns, and allocation percentages
+     */
+    aggregate_portfolio_data = (mf_investment_data: any, fd_transactions: any[] = []) => {
+        const mf_current_value = mf_investment_data?.current_value || 0;
+        const mf_invested_amount = mf_investment_data?.invested_amount || 0;
+        const mf_total_returns = mf_investment_data?.total_returns || 0;
+        const mf_return_percent = mf_investment_data?.return_percent || 0;
+
+        // Calculate FD aggregates
+        const fd_aggregates = fd_transactions.reduce(
+            (acc: any, fd: any) => {
+                const fd_amount = Number(fd.amount) || 0;
+                const fd_maturity = Number(fd.maturity_amount) || 0;
+                const fd_returns = fd_maturity - fd_amount;
+
+                acc.invested_amount += fd_amount;
+                acc.current_value += fd_maturity;
+                acc.total_returns += fd_returns;
+                acc.count += 1;
+                return acc;
+            },
+            {
+                invested_amount: 0,
+                current_value: 0,
+                total_returns: 0,
+                count: 0,
+            }
+        );
+
+        // Calculate totals
+        const total_invested = mf_invested_amount + fd_aggregates.invested_amount;
+        const total_current_value = mf_current_value + fd_aggregates.current_value;
+        const total_returns = mf_total_returns + fd_aggregates.total_returns;
+        const total_items_count = (mf_investment_data?.items_count || 0) + fd_aggregates.count;
+
+        // Calculate allocation percentages (avoid division by zero)
+        const mf_allocation_percent =
+            total_current_value > 0
+                ? Number(((mf_current_value / total_current_value) * 100).toFixed(2))
+                : 0;
+
+        const fd_allocation_percent =
+            total_current_value > 0
+                ? Number(((fd_aggregates.current_value / total_current_value) * 100).toFixed(2))
+                : 0;
+
+        const total_return_percent =
+            total_invested > 0
+                ? Number(((total_returns / total_invested) * 100).toFixed(2))
+                : 0;
+
+        return {
+            total_investments: {
+                current_value: Number(total_current_value.toFixed(2)),
+                total_returns: Number(total_returns.toFixed(2)),
+                return_percent: total_return_percent,
+                allocation: {
+                    mutual_funds: {
+                        value: Number(mf_current_value.toFixed(2)),
+                        percent: mf_allocation_percent,
+                    },
+                    fixed_deposits: {
+                        value: Number(fd_aggregates.current_value.toFixed(2)),
+                        percent: fd_allocation_percent,
+                    },
+                },
+            },
+            invested_amount_breakdown: {
+                invested_amount: Number(total_invested.toFixed(2)),
+                invested_items_count: total_items_count,
+                returns_amount: Number(total_returns.toFixed(2)),
+                returns_percent: total_return_percent,
+            },
+        };
+    };
 }
 
 export const user_service = new UserServiceClass();

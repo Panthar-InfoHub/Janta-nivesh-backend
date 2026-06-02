@@ -68,22 +68,29 @@ class KycFinnsysServiceClass {
 
 
     private update_form = async (kyc_access_token: string, merchant_id: string, inv_id: string, type: string, data: object) => {
-        const payload = {
-            arn: env.ARN,
-            investorId: inv_id,
-            merchantId: merchant_id,
-            save: "formData",
-            type,
-            data
-        };
+        try {
 
-        logger.debug("Payload for updating form data ==> ", payload);
-        const response = await axios.post(`${this.kyc_base_url}/onboardings/updateForm`, payload, {
-            headers: { "Authorization": `${kyc_access_token}` }
-        });
 
-        logger.warn(`Response from updating ${type} form data ==> `, response.data);
-        return response.data;
+            const payload = {
+                arn: env.ARN,
+                investorId: inv_id,
+                merchantId: merchant_id,
+                save: "formData",
+                type,
+                data
+            };
+
+            logger.debug("Payload for updating form data ==> ", payload);
+            const response = await axios.post(`${this.kyc_base_url}/onboardings/updateForm`, payload, {
+                headers: { "Authorization": `${kyc_access_token}` }
+            });
+
+            logger.warn(`Response from updating ${type} form data ==> `, response.data);
+            return response.data;
+        } catch (error) {
+            logger.error("Error while updating form ==> ", error)
+            throw error
+        }
     }
 
     // Background hitting POI, POA and Corresponsing address apis of finnsys
@@ -105,7 +112,7 @@ class KycFinnsysServiceClass {
                 ...poa_data
             });
         } catch (error: any) {
-            console.log("Error in updating POA data ==> ", error?.response);
+            console.log("Error in updating POA data ==> ", error?.response?.data);
             // logger.error("Error in updating POA data ==> ", error?.response);
             // throw error;
         }
@@ -252,6 +259,49 @@ class KycFinnsysServiceClass {
             throw error;
         }
 
+    }
+
+    save_nse_iin = async (
+        user_log: string,
+        user_pwd: string,
+        payload: {
+            iin: string;
+            tax_status: string;
+            holding_nature: string;
+            primary_name: string;
+            bank_ac_no: string;
+            bank_ifsc: string;
+            bank_ac_type: string;
+            jh1_name?: string;
+            jh2_name?: string;
+            guardian_name?: string;
+        }
+    ) => {
+        try {
+            const response = await axios.post(`${env.finsys_base_api}/finnsys/app/master.service.asp`, null, {
+                params: {
+                    log: user_log,
+                    pwd: user_pwd,
+                    svc: "savenseiin",
+                    iin: payload.iin,
+                    tax_status: payload.tax_status,
+                    holding_nature: payload.holding_nature,
+                    primary_name: payload.primary_name,
+                    bank_ac_no: payload.bank_ac_no,
+                    bank_ifsc: payload.bank_ifsc,
+                    bank_ac_type: payload.bank_ac_type,
+                    jh1_name: payload.jh1_name || "",
+                    jh2_name: payload.jh2_name || "",
+                    guardian_name: payload.guardian_name || "",
+                }
+            });
+
+            logger.debug("Finnsys SaveNSEIIN response ==> ", response.data);
+            return response.data;
+        } catch (error) {
+            logger.error("Error in calling SaveNSEIIN Finnsys API ==> ", error);
+            throw error;
+        }
     }
 }
 

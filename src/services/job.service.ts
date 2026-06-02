@@ -8,9 +8,22 @@ import logger from "../middleware/logger.js";
 import { db } from "../server.js";
 import pLimit from "p-limit";
 import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
+import { user_snapshot_service } from "./user/user.snapshot.service.js";
 
 
 class JobServiceClass {
+
+    monthly_user_snapshot_job = async () => {
+        logger.info("Starting monthly user net worth snapshot job...");
+        try {
+            const result = await user_snapshot_service.capture_all_users_snapshots();
+            logger.info(`Monthly snapshot job completed. Results: ${JSON.stringify(result)}`);
+            return result;
+        } catch (error) {
+            logger.error("Error in monthly_user_snapshot_job:", error);
+            throw error;
+        }
+    }
 
     daily_mf_product_job = async () => {
 
@@ -85,44 +98,18 @@ class JobServiceClass {
 
                     // -> Prepare & Execute Metrics and Rules Bulk Upsert
 
-                    const metricsValues: Prisma.Sql[] = [];
                     const ruleValues: Prisma.Sql[] = [];
-
 
                     for (const mf of batch) {
                         const tripleKey = `${mf.SCHM_ID}-${mf.ISIN}-${mf.NSE_SCHEME_CODE}`.toUpperCase();
                         const pId = productMap.get(tripleKey);
                         if (!pId) continue;
 
-                        // Metrics Data
-                        metricsValues.push(Prisma.sql`(
-                        ${uuidv4()}, ${pId}, 
-                        ${mf.THIRTY_DAY_RETURN ? parseFloat(mf.THIRTY_DAY_RETURN) : null}, 
-                        ${mf.NINTY_DAY_RETURN ? parseFloat(mf.NINTY_DAY_RETURN) : null}, 
-                        ${mf.ONE_YEAR_RETURN ? parseFloat(mf.ONE_YEAR_RETURN) : null}, 
-                        ${mf.CHANGE ? parseFloat(mf.CHANGE) : null}, NOW())`);
-
                         // Transaction Rules Data
                         const sipDates = mf.SIP_DATES ? mf.SIP_DATES.split(",").map(Number) : [];
                         const freq = mf.SYSTEMATIC_FREQUENCIES ? mf.SYSTEMATIC_FREQUENCIES.split(",") : [];
                         ruleValues.push(Prisma.sql`(${uuidv4()}, ${pId}, ${sipDates}, ${freq}, NOW())`);
                     }
-
-
-
-                    if (metricsValues.length > 0) {
-                        await tx.$executeRaw`
-                        INSERT INTO "MfMetrics" (id, mf_product_id, return_30d, return_90d, return_1y, nav_change_pct, "updatedAt")
-                        VALUES ${Prisma.join(metricsValues)}
-                        ON CONFLICT (mf_product_id) DO UPDATE SET
-                            return_30d = EXCLUDED.return_30d,
-                            return_90d = EXCLUDED.return_90d,
-                            return_1y = EXCLUDED.return_1y,
-                            nav_change_pct = EXCLUDED.nav_change_pct,
-                            "updatedAt" = NOW();
-                    `;
-                    }
-                    logger.info(`Batch of Mf Metrics ${metricsValues.length} metrics upserted successfully.`);
 
                     if (ruleValues.length > 0) {
                         await tx.$executeRaw`
@@ -339,7 +326,7 @@ class JobServiceClass {
                                 is_default_selection, is_tax_saver, "updatedAt"
                             )
                             VALUES ${Prisma.join(rateValues)}
-                            ON CONFLICT (fd_product_id, payout_frequency, tenure_days, customer_type) 
+                            ON CONFLICT (fd_product_id, payout_frequency, tenure_label, customer_type) 
                             DO UPDATE SET 
                                 interest_rate = EXCLUDED.interest_rate,
                                 annualized_yield = EXCLUDED.annualized_yield, 
@@ -499,6 +486,133 @@ class JobServiceClass {
         }
 
         await this.process_nav_history(mf_product, startDate, endDate);
+    }
+
+    calculate_all_mf_metrics = async () => {
+        logger.info("Starting MF Metrics calculation job...");
+        try {
+            let cursor: string | null = null;
+            const BATCH_SIZE = 500;
+            let totalProcessed = 0;
+
+            while (true) {
+                const products = await db.mfProduct.findMany({
+                    take: BATCH_SIZE,
+                    skip: cursor ? 1 : 0,
+                    cursor: cursor ? { id: cursor } : undefined,
+                    where: { latest_nav: { not: null }, latest_nav_date: { not: null } },
+                    select: { id: true, latest_nav: true, latest_nav_date: true },
+                    orderBy: { id: 'asc' }
+                });
+
+                if (products.length === 0) break;
+
+                const productIds = products.map(p => p.id);
+
+                // Fetch required nav points efficiently using Postgres LATERAL join
+                const query = Prisma.sql`
+                    WITH TargetDates AS (
+                        SELECT 
+                            id AS product_id,
+                            latest_nav,
+                            latest_nav_date,
+                            latest_nav_date - INTERVAL '1 month' AS date_1m,
+                            latest_nav_date - INTERVAL '3 months' AS date_3m,
+                            latest_nav_date - INTERVAL '6 months' AS date_6m,
+                            latest_nav_date - INTERVAL '1 year' AS date_1y,
+                            latest_nav_date - INTERVAL '3 years' AS date_3y,
+                            latest_nav_date - INTERVAL '5 years' AS date_5y
+                        FROM "MfProduct"
+                        WHERE id = ANY(ARRAY[${Prisma.join(productIds)}]::text[])
+                    )
+                    SELECT 
+                        t.product_id,
+                        t.latest_nav as latest_nav,
+                        n_1d.nav AS nav_1d,
+                        n_1m.nav AS nav_1m,
+                        n_3m.nav AS nav_3m,
+                        n_6m.nav AS nav_6m,
+                        n_1y.nav AS nav_1y,
+                        n_3y.nav AS nav_3y,
+                        n_5y.nav AS nav_5y
+                    FROM TargetDates t
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date < t.latest_nav_date ORDER BY nav_date DESC LIMIT 1
+                    ) n_1d ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_1m ORDER BY nav_date DESC LIMIT 1
+                    ) n_1m ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_3m ORDER BY nav_date DESC LIMIT 1
+                    ) n_3m ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_6m ORDER BY nav_date DESC LIMIT 1
+                    ) n_6m ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_1y ORDER BY nav_date DESC LIMIT 1
+                    ) n_1y ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_3y ORDER BY nav_date DESC LIMIT 1
+                    ) n_3y ON true
+                    LEFT JOIN LATERAL (
+                        SELECT nav FROM "MfNavHistory" WHERE mf_product_id = t.product_id AND nav_date <= t.date_5y ORDER BY nav_date DESC LIMIT 1
+                    ) n_5y ON true;
+                `;
+
+                const results: any[] = await db.$queryRaw(query);
+
+                const absReturn = (latest: number, past: number | null) => past ? Math.round(((latest / past) - 1) * 100 * 1000) / 1000 : null;
+                const cagrReturn = (latest: number, past: number | null, years: number) => past ? Math.round((((Math.pow((latest / past), (1 / years))) - 1) * 100) * 1000) / 1000 : null;
+
+                const metricsValues = results.map(row => {
+                    const latest = parseFloat(row.latest_nav);
+                    const nav1d = row.nav_1d ? parseFloat(row.nav_1d) : null;
+                    const nav1m = row.nav_1m ? parseFloat(row.nav_1m) : null;
+                    const nav3m = row.nav_3m ? parseFloat(row.nav_3m) : null;
+                    const nav6m = row.nav_6m ? parseFloat(row.nav_6m) : null;
+                    const nav1y = row.nav_1y ? parseFloat(row.nav_1y) : null;
+                    const nav3y = row.nav_3y ? parseFloat(row.nav_3y) : null;
+                    const nav5y = row.nav_5y ? parseFloat(row.nav_5y) : null;
+
+                    return Prisma.sql`(
+                        ${cuid()}, 
+                        ${row.product_id}, 
+                        ${absReturn(latest, nav1d)}, 
+                        ${absReturn(latest, nav1m)}, 
+                        ${absReturn(latest, nav3m)}, 
+                        ${absReturn(latest, nav6m)}, 
+                        ${absReturn(latest, nav1y)}, 
+                        ${cagrReturn(latest, nav3y, 3)}, 
+                        ${cagrReturn(latest, nav5y, 5)}, 
+                        NOW()
+                    )`;
+                });
+
+                if (metricsValues.length > 0) {
+                    await db.$executeRaw`
+                        INSERT INTO "MfMetrics" (id, mf_product_id, nav_change_pct, return_30d, return_90d, return_6m, return_1y, return_3y, return_5y, "updatedAt")
+                        VALUES ${Prisma.join(metricsValues)}
+                        ON CONFLICT (mf_product_id) DO UPDATE SET
+                            nav_change_pct = EXCLUDED.nav_change_pct,
+                            return_30d = EXCLUDED.return_30d,
+                            return_90d = EXCLUDED.return_90d,
+                            return_6m = EXCLUDED.return_6m,
+                            return_1y = EXCLUDED.return_1y,
+                            return_3y = EXCLUDED.return_3y,
+                            return_5y = EXCLUDED.return_5y,
+                            "updatedAt" = NOW();
+                    `;
+                }
+
+                totalProcessed += products.length;
+                cursor = products[products.length - 1].id;
+                logger.info(`[MF METRICS] Processed batch of ${products.length}. Total so far: ${totalProcessed}`);
+            }
+            logger.info("MF Metrics calculation job completed successfully.");
+        } catch (error) {
+            logger.error("Error in calculate_all_mf_metrics:", error);
+            throw error;
+        }
     }
 
 }
