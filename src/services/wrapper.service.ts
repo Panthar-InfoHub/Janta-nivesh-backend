@@ -69,7 +69,7 @@ class WrapperServiceClass {
             dbProducts.forEach(product => {
                 if (product.scheme_id) {
                     let url = product.img_url || "";
-                    
+
                     // Fall back to AMC logo if scheme-specific logo is missing
                     if (!url && product.amc_name) {
                         url = this.logoDataCache.get(product.amc_name.toLowerCase()) || "";
@@ -94,6 +94,68 @@ class WrapperServiceClass {
         }
 
         return logo_map;
+    }
+
+    /**
+     * Resolves AMC Details (name and logo) for a batch of Scheme IDs in an optimized way.
+     * 
+     * @param schemeIds Array of scheme IDs to resolve details for
+     * @returns A Map mapping scheme ID (as a string) to its AMC details
+     */
+    async getAmcDetailsForSchemes(schemeIds: string[]): Promise<Map<string, { amc_name: string, img_url: string }>> {
+        const details_map = new Map<string, { amc_name: string, img_url: string }>();
+        if (!schemeIds || schemeIds.length === 0) return details_map;
+
+        const cleanSchemeIds = schemeIds.map(id => String(id).trim()).filter(id => !!id);
+        if (cleanSchemeIds.length === 0) return details_map;
+
+        try {
+            // Fetch products matching scheme_ids
+            const dbProducts = await db.mfProduct.findMany({
+                where: {
+                    scheme_id: {
+                        in: cleanSchemeIds
+                    }
+                },
+                select: {
+                    scheme_id: true,
+                    img_url: true,
+                    amc_name: true
+                }
+            });
+
+            // Map each scheme_id to its details
+            dbProducts.forEach(product => {
+                if (product.scheme_id) {
+                    let url = product.img_url || "";
+                    
+                    // Fall back to AMC logo if scheme-specific logo is missing
+                    if (!url && product.amc_name) {
+                        url = this.logoDataCache.get(product.amc_name.toLowerCase()) || "";
+                    }
+
+                    details_map.set(product.scheme_id, {
+                        amc_name: product.amc_name || "",
+                        img_url: url
+                    });
+                }
+            });
+
+            // Fill in empty values for schemes not found in DB
+            cleanSchemeIds.forEach(id => {
+                if (!details_map.has(id)) {
+                    details_map.set(id, { amc_name: "", img_url: "" });
+                }
+            });
+
+        } catch (error) {
+            logger.error("Error fetching AMC details from database:", error);
+            cleanSchemeIds.forEach(id => {
+                details_map.set(id, { amc_name: "", img_url: "" });
+            });
+        }
+
+        return details_map;
     }
 
     /**

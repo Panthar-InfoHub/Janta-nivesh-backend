@@ -38,4 +38,5 @@ export const env = {
     REDIS_PORT: process.env.REDIS_PORT!,
     REDIS_USERNAME: process.env.REDIS_USERNAME!,
     REDIS_PASS: process.env.REDIS_PASS!,
+    REDIS_TYPE: process.env.REDIS_TYPE!,
 };

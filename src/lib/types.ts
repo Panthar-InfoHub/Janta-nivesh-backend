@@ -136,24 +136,31 @@ export const redeem_request_zod_schema = z.union([
 
 export type Redeem_request_data = z.infer<typeof redeem_request_zod_schema>;
 
-export const invest_more_zod_schema = z.object({
-    type: z.enum(["LUMPSUM", "SIP"]),
+export const invest_more_lumpsum_schema = z.object({
+    type: z.literal("LUMPSUM"),
+    items: z.array(z.object({
+        amount: z.number().positive(),
+        scheme_id: z.string().min(1),
+        folio: z.string().min(1, "folio is required for invest more")
+    })).min(1, "At least one item is required for lumpsum investment"),
+});
+
+export const invest_more_sip_schema = z.object({
+    type: z.literal("SIP"),
     amount: z.number().positive(),
     scheme_id: z.string().min(1),
     folio: z.string().min(1, "folio is required for invest more"),
-    sip_st_date: z.string().optional(),
-    sip_en_date: z.string().optional(),
-    sip_freq: z.enum(["DZ", "D", "OM", "Q", "WD", "OW", "H", "Y"]).optional(),
-    sip_day: z.number().optional(),
+    sip_st_date: z.string().min(1, "SIP start date is required"),
+    sip_en_date: z.string().min(1, "SIP end date is required"),
+    sip_freq: z.enum(["DZ", "D", "OM", "Q", "WD", "OW", "H", "Y"]),
+    sip_day: z.number(),
     mandate_id: z.string().optional(),
-}).refine(data => {
-    if (data.type === "SIP") {
-        return !!data.sip_st_date && !!data.sip_en_date && !!data.sip_freq && !!data.sip_day;
-    }
-    return true;
-}, {
-    message: "SIP details (sip_st_date, sip_en_date, sip_freq, sip_day) are required for SIP investments"
 });
+
+export const invest_more_zod_schema = z.discriminatedUnion("type", [
+    invest_more_lumpsum_schema,
+    invest_more_sip_schema
+]);
 
 export type Invest_more_data = z.infer<typeof invest_more_zod_schema>;
 

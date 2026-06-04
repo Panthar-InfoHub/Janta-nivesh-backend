@@ -151,7 +151,7 @@ class MutualFundFinnsysServiceClass {
 
             return response.data;
         } catch (error: any) {
-            logger.error("Error submitting purchase order to Finnsys: ", error);
+            logger.error("Error submitting purchase order to Finnsys: ", error.response.data);
 
             if (error.response?.data) {
                 throw new AppError(

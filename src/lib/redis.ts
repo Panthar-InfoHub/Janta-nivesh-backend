@@ -8,7 +8,7 @@ class RedisService {
     public static async getInstance(): Promise<RedisClientType> {
         if (!RedisService.instance) {
             const client = createClient({
-                url: `redis://${env.REDIS_USERNAME}:${env.REDIS_PASS}@${env.REDIS_HOST}:${env.REDIS_PORT}`,
+                url: `${env.REDIS_TYPE}://${env.REDIS_USERNAME}:${env.REDIS_PASS}@${env.REDIS_HOST}:${env.REDIS_PORT}`,
                 socket: {
                     connectTimeout: 10000,
                     reconnectStrategy: (retries) => Math.min(retries * 100, 3000)
