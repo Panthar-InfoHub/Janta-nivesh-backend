@@ -372,10 +372,10 @@ class UserFinanceControllerClass {
             const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(first_scheme_ids);
 
             const mf_investment_items = Array.from(foliosMap.values()).map((f: any) => {
-                const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "" };
+                const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "", product_id: "", transaction_rules: {} };
 
                 return {
-                    id: f.folio, // using folio as id
+                    id: amc_details.product_id,
                     title: amc_details.amc_name || "Mutual Fund",
                     category: f.category,
                     amount: Number(f.amount.toFixed(2)),
@@ -383,7 +383,8 @@ class UserFinanceControllerClass {
                     return: Number(f.return.toFixed(2)),
                     return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
                     folio: f.folio,
-                    img_url: amc_details.img_url
+                    img_url: amc_details.img_url,
+                    transaction_rules: amc_details.transaction_rules
                 };
             });
 

@@ -102,8 +102,8 @@ class WrapperServiceClass {
      * @param schemeIds Array of scheme IDs to resolve details for
      * @returns A Map mapping scheme ID (as a string) to its AMC details
      */
-    async getAmcDetailsForSchemes(schemeIds: string[]): Promise<Map<string, { amc_name: string, img_url: string }>> {
-        const details_map = new Map<string, { amc_name: string, img_url: string }>();
+    async getAmcDetailsForSchemes(schemeIds: string[]): Promise<Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>> {
+        const details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
         if (!schemeIds || schemeIds.length === 0) return details_map;
 
         const cleanSchemeIds = schemeIds.map(id => String(id).trim()).filter(id => !!id);
@@ -120,7 +120,14 @@ class WrapperServiceClass {
                 select: {
                     scheme_id: true,
                     img_url: true,
-                    amc_name: true
+                    amc_name: true,
+                    id: true,
+                    transaction_rules: {
+                        select: {
+                            min_sip_amount: true,
+                            min_lump_sum_amount: true
+                        }
+                    }
                 }
             });
 
@@ -128,7 +135,7 @@ class WrapperServiceClass {
             dbProducts.forEach(product => {
                 if (product.scheme_id) {
                     let url = product.img_url || "";
-                    
+
                     // Fall back to AMC logo if scheme-specific logo is missing
                     if (!url && product.amc_name) {
                         url = this.logoDataCache.get(product.amc_name.toLowerCase()) || "";
@@ -136,7 +143,9 @@ class WrapperServiceClass {
 
                     details_map.set(product.scheme_id, {
                         amc_name: product.amc_name || "",
-                        img_url: url
+                        img_url: url,
+                        product_id: product.id,
+                        transaction_rules: product.transaction_rules
                     });
                 }
             });
@@ -144,14 +153,14 @@ class WrapperServiceClass {
             // Fill in empty values for schemes not found in DB
             cleanSchemeIds.forEach(id => {
                 if (!details_map.has(id)) {
-                    details_map.set(id, { amc_name: "", img_url: "" });
+                    details_map.set(id, { amc_name: "", img_url: "", product_id: "", transaction_rules: { min_sip_amount: "", min_lump_sum_amount: "" } });
                 }
             });
 
         } catch (error) {
             logger.error("Error fetching AMC details from database:", error);
             cleanSchemeIds.forEach(id => {
-                details_map.set(id, { amc_name: "", img_url: "" });
+                details_map.set(id, { amc_name: "", img_url: "", product_id: "", transaction_rules: { min_sip_amount: "", min_lump_sum_amount: "" } });
             });
         }
 
