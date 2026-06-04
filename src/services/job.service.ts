@@ -55,7 +55,7 @@ class JobServiceClass {
                         const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
                         const normalizedAssetType = map_mf_asset_type(mf.ASSET_TYPE_ID, mf.ASSET_TYPE);
                         return Prisma.sql`(
-                        ${uuidv4()}, ${String(mf.SCHM_ID)}, ${mf.ISIN}, ${mf.MAPPING_CODE}, ${mf.NSE_SCHEME_CODE}, ${mf.PLATFORM_SCHEME_CODE}, ${mf.SCHEME_NAME},
+                        ${uuidv4()}, ${String(mf.SCHM_ID)}, ${mf.ISIN || ""}, ${mf.MAPPING_CODE}, ${mf.NSE_SCHEME_CODE || ""}, ${mf.PLATFORM_SCHEME_CODE}, ${mf.SCHEME_NAME},
                         ${mf.AMC_ID ? String(mf.AMC_ID) : null}, ${mf.AMC_CODE}, ${mf.AMC_NAME}, 
                         ${normalizedAssetType}, ${mf.SCHEME_TYPE}, ${mf.STRUCTURE}, ${mf.RISK_NAME}, 
                         ${mf.RISK_ID ? parseInt(mf.RISK_ID) : null}, ${mf.NAV ? parseFloat(mf.NAV) : null},
@@ -91,7 +91,7 @@ class JobServiceClass {
 
                     // -> Create a Map for O(1) access to product IDs (built directly from RETURNING result)
                     const productMap = new Map(products.map(p => [
-                        `${p.scheme_id}-${p.isin}-${p.nse_scheme_code}`.toUpperCase(),
+                        `${p.scheme_id}-${p.isin || ""}-${p.nse_scheme_code || ""}`.toUpperCase(),
                         p.id
                     ]));
                     logger.debug(`Product Map created with ${productMap.size} entries.`);
@@ -101,23 +101,25 @@ class JobServiceClass {
                     const ruleValues: Prisma.Sql[] = [];
 
                     for (const mf of batch) {
-                        const tripleKey = `${mf.SCHM_ID}-${mf.ISIN}-${mf.NSE_SCHEME_CODE}`.toUpperCase();
+                        const tripleKey = `${mf.SCHM_ID}-${mf.ISIN || ""}-${mf.NSE_SCHEME_CODE || ""}`.toUpperCase();
                         const pId = productMap.get(tripleKey);
                         if (!pId) continue;
 
                         // Transaction Rules Data
                         const sipDates = mf.SIP_DATES ? mf.SIP_DATES.split(",").map(Number) : [];
                         const freq = mf.SYSTEMATIC_FREQUENCIES ? mf.SYSTEMATIC_FREQUENCIES.split(",") : [];
-                        ruleValues.push(Prisma.sql`(${uuidv4()}, ${pId}, ${sipDates}, ${freq}, NOW())`);
+                        ruleValues.push(Prisma.sql`(${cuid()}, ${pId}, ${sipDates}, ${freq}, ${Number(mf.MIN_SIP_AMT ?? 0)}, ${Number(mf.MIN_PUR_AMT ?? 0)}, NOW())`);
                     }
 
                     if (ruleValues.length > 0) {
                         await tx.$executeRaw`
-                        INSERT INTO "MfSchemeTransactionRules" (id, mf_product_id, sip_allowed_dates, sip_frequencies, "updatedAt")
+                        INSERT INTO "MfSchemeTransactionRules" (id, mf_product_id, sip_allowed_dates, sip_frequencies, min_sip_amount, min_lump_sum_amount, "updatedAt")
                         VALUES ${Prisma.join(ruleValues)}
                         ON CONFLICT (mf_product_id) DO UPDATE SET
                             sip_allowed_dates = EXCLUDED.sip_allowed_dates,
                             sip_frequencies = EXCLUDED.sip_frequencies,
+                            min_sip_amount = EXCLUDED.min_sip_amount,
+                            min_lump_sum_amount = EXCLUDED.min_lump_sum_amount,
                             "updatedAt" = NOW();
                     `;
                     }
