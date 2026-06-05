@@ -217,4 +217,27 @@ export class MfHelperService {
             return null;
         }
     }
+
+    public calculate_mandate_end_date(start_date: string, years: number = 39): string {
+        try {
+            // start_date is expected to be DD/MM/YYYY
+            const parts = start_date.split('/');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1;
+                const year = parseInt(parts[2]);
+                
+                const date = new Date(year + years, month, day);
+                
+                const new_day = String(date.getDate()).padStart(2, '0');
+                const new_month = String(date.getMonth() + 1).padStart(2, '0');
+                const new_year = date.getFullYear();
+                
+                return `${new_day}/${new_month}/${new_year}`;
+            }
+        } catch (error) {
+            // fallback
+        }
+        return "31/12/2099";
+    }
 }

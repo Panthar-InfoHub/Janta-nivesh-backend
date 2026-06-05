@@ -534,6 +534,7 @@ class UserFinanceControllerClass {
 
                 return {
                     id: amc_details?.product_id,
+                    scheme_id: item.schemeid,
                     title: item.schemename,
                     category: item.schemetype,
                     amount: Number(item.purcost.replace(/,/g, "")),
