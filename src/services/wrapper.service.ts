@@ -252,6 +252,37 @@ class WrapperServiceClass {
         }
         return this.logoDataCache.get(cleanName.toLowerCase()) || "";
     }
+
+    /**
+     * Resolves transaction rules for a batch of NSE scheme codes.
+     */
+    async get_transaction_rules_by_nse_codes(nse_codes: string[]): Promise<Map<string, any>> {
+        const rules_map = new Map<string, any>();
+        if (!nse_codes || nse_codes.length === 0) return rules_map;
+
+        const cleanCodes = Array.from(new Set(nse_codes.filter(c => !!c)));
+        if (cleanCodes.length === 0) return rules_map;
+
+        try {
+            const products = await db.mfProduct.findMany({
+                where: { nse_scheme_code: { in: cleanCodes } },
+                select: {
+                    nse_scheme_code: true,
+                    transaction_rules: true
+                }
+            });
+
+            products.forEach(p => {
+                if (p.nse_scheme_code && p.transaction_rules) {
+                    rules_map.set(p.nse_scheme_code, p.transaction_rules);
+                }
+            });
+        } catch (error) {
+            logger.error("Error fetching transaction rules by NSE codes:", error);
+        }
+
+        return rules_map;
+    }
 }
 
 export const wrapper_service = new WrapperServiceClass();

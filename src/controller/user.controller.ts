@@ -163,15 +163,23 @@ class UserFinanceControllerClass {
             const amc_names = Array.from(amc_set);
             const logo_map = await wrapper_service.get_logos_of_amc(amc_names);
 
-            // Enrich items with img_url
+            const prod_codes: string[] = [];
+            sip_items.forEach((item: any) => prod_codes.push(item.prod_code));
+            lump_sum_items.forEach((item: any) => prod_codes.push(item.prod_code));
+
+            const rules_map = await wrapper_service.get_transaction_rules_by_nse_codes(prod_codes);
+
+            // Enrich items with img_url and transaction_rules
             const enriched_sip_items = sip_items.map((item: any) => ({
                 ...item,
-                img_url: logo_map.get(item.amc_name) || ""
+                img_url: logo_map.get(item.amc_name) || "",
+                transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code), item.sip_freq)
             }));
 
             const enriched_lump_sum_items = lump_sum_items.map((item: any) => ({
                 ...item,
-                img_url: logo_map.get(item.amc_name) || ""
+                img_url: logo_map.get(item.amc_name) || "",
+                transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code))
             }));
 
             logger.info("Mapping completed of logo funds")
@@ -384,7 +392,7 @@ class UserFinanceControllerClass {
                     return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
                     folio: f.folio,
                     img_url: amc_details.img_url,
-                    transaction_rules: amc_details.transaction_rules
+                    transaction_rules: this.extract_relevant_transaction_rules(amc_details.transaction_rules)
                 };
             });
 
@@ -430,6 +438,50 @@ class UserFinanceControllerClass {
             next(error);
             return;
         }
+    }
+
+    private extract_relevant_transaction_rules(rules: any, sip_freq?: string) {
+        if (!rules) return null;
+
+        const clean_rules = {
+            id: rules.id,
+            mf_product_id: rules.mf_product_id,
+            min_lump_sum_amount: rules.min_lump_sum_amount,
+            sip_allowed_dates: rules.sip_allowed_dates,
+            sip_frequencies: rules.sip_frequencies,
+            min_investment_amount: rules.min_investment_amount,
+            min_lumpsum_add_on_amount: rules.min_lumpsum_add_on_amount,
+            min_redem_qty: rules.min_redem_qty,
+            min_redem_amount: rules.min_redem_amount,
+            min_sip_amount: rules.min_sip_amount // default fallback
+        };
+
+        if (sip_freq) {
+            switch (sip_freq) {
+                case "DZ":
+                case "D":
+                    clean_rules.min_sip_amount = rules.min_daily_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "OW":
+                case "WD":
+                    clean_rules.min_sip_amount = rules.min_weekly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "OM":
+                    clean_rules.min_sip_amount = rules.min_monthly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "Q":
+                    clean_rules.min_sip_amount = rules.min_quarterly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "H":
+                    clean_rules.min_sip_amount = rules.min_semi_annual_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "Y":
+                    clean_rules.min_sip_amount = rules.min_annual_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+            }
+        }
+
+        return clean_rules;
     }
 
     get_folio_details = async (req: Request, res: Response, next: NextFunction) => {

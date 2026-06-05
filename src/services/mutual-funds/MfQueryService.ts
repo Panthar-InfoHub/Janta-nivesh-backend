@@ -299,7 +299,19 @@ export class MfQueryService {
                     select: {
                         sip_allowed_dates: true,
                         sip_frequencies: true,
-                        min_investment_amount: true
+                        min_investment_amount: true,
+                        min_lump_sum_amount: true,
+                        min_sip_amount: true,
+                        min_lumpsum_add_on_amount: true,
+                        min_redem_qty: true,
+                        min_redem_amount: true,
+                        min_daily_sip_amount: true,
+                        min_weekly_sip_amount: true,
+                        min_fortnightly_sip_amount: true,
+                        min_monthly_sip_amount: true,
+                        min_quarterly_sip_amount: true,
+                        min_semi_annual_sip_amount: true,
+                        min_annual_sip_amount: true,
                     }
                 }
             }

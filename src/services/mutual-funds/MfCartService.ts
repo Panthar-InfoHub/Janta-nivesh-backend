@@ -28,7 +28,8 @@ export class MfCartService {
                     prod_code: lumpsum_data.prod_code,
                     prod_name: lumpsum_data.prod_name,
                     reinv_flag: lumpsum_data.reinv_flag || 'Y',
-                    txn_amount: lumpsum_data.txn_amount
+                    txn_amount: lumpsum_data.txn_amount,
+                    folio: lumpsum_data.folio
                 }
             });
 
@@ -50,6 +51,7 @@ export class MfCartService {
                     pwd: user_data.pwd,
                     svc: 'addcartsip',
                     sub_txn_type: 'S',
+                    folio: sip_data.folio,
                     amc_code: sip_data.amc_code,
                     amc_name: sip_data.amc_name,
                     prod_code: sip_data.prod_code,

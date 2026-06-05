@@ -154,7 +154,7 @@ class MutualFundControllerClass {
             const user = req.user;
             logger.info(`Adding to lumpsum cart for user: ${user?.id}`);
 
-            const { amount, mf_product_id } = req.body;
+            const { amount, mf_product_id, folio } = req.body;
             if (!amount || !mf_product_id) {
                 logger.warn("Missing required fields in add_to_lumpsum_cart request body");
                 throw new AppError("Missing required fields: amount and mf_product_id are required", 400);
@@ -168,6 +168,7 @@ class MutualFundControllerClass {
                 prod_code: mf_product?.platform_code || "",
                 prod_name: mf_product?.scheme_name || "",
                 txn_amount: amount,
+                folio: folio || ""
             }, {
                 log: user?.log as string,
                 pwd: user?.pwd as string
@@ -290,7 +291,7 @@ class MutualFundControllerClass {
             const user = req.user;
             logger.info(`Adding to sip cart for user: ${user?.id}`);
 
-            const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt } = req.body;
+            const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt, folio } = req.body;
             if (!amount || !mf_product_id || !sip_st_date || !sip_en_date || !sip_freq || !sip_day || !sip_amt) {
                 logger.warn("Missing required fields in add_to_sip_cart request body");
                 throw new AppError("Missing required fields: amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, and sip_amt are required", 400);
@@ -314,6 +315,7 @@ class MutualFundControllerClass {
                 amc_name: mf_product?.amc_name || "",
                 prod_code: mf_product?.platform_code || "",
                 prod_name: mf_product?.scheme_name || "",
+                folio: folio || "",
                 txn_amount: amount,
                 sip_st_date: sip_st_date,
                 sip_en_date: sip_en_date,
@@ -588,7 +590,7 @@ class MutualFundControllerClass {
                 logger.info(`Invest more is in lumpsum mode`);
 
                 const scheme_ids = Array.from(new Set(data.items.map(item => item.scheme_id)));
-                
+
                 const mf_products = await db.mfProduct.findMany({
                     where: { scheme_id: { in: scheme_ids } },
                     include: { transaction_rules: true }
