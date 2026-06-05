@@ -170,11 +170,21 @@ class UserFinanceControllerClass {
             const rules_map = await wrapper_service.get_transaction_rules_by_nse_codes(prod_codes);
 
             // Enrich items with img_url and transaction_rules
-            const enriched_sip_items = sip_items.map((item: any) => ({
-                ...item,
-                img_url: logo_map.get(item.amc_name) || "",
-                transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code), item.sip_freq)
-            }));
+            const enriched_sip_items = sip_items.map((item: any) => {
+                const isTaxOrElss = /TAX|ELSS/i.test(item.prod_name || item.amc_name || "");
+                const baseAmount = Number(item.sip_amt || item.txn_amount || 0);
+
+                const min_step_up_percent = isTaxOrElss ? 0 : 10;
+                const min_step_up_amt = isTaxOrElss ? 500 : (baseAmount * 0.10);
+
+                return {
+                    ...item,
+                    img_url: logo_map.get(item.amc_name) || "",
+                    transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code), item.sip_freq),
+                    min_step_up_percent,
+                    min_step_up_amt
+                };
+            });
 
             const enriched_lump_sum_items = lump_sum_items.map((item: any) => ({
                 ...item,
@@ -517,24 +527,28 @@ class UserFinanceControllerClass {
             const folio_items = user_mf_data.filter((item: any) => item.actualfolio === folio_id);
 
             const mf_scheme_ids = folio_items.map((item: any) => String(item.schemeid)).filter(Boolean);
-            const logo_map = await wrapper_service.getLogosForSchemes(mf_scheme_ids);
+            const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(mf_scheme_ids);
 
-            const mf_investment_items = folio_items.map((item: any) => ({
-                id: item.schemeid,
-                title: item.schemename,
-                category: item.schemetype,
-                amount: Number(item.purcost.replace(/,/g, "")),
-                is_sip: item.sip,
-                start_date: item.stdt,
-                return_percentage: item.abs,
-                return: this.toNumber(item.pl),
-                xirr: item.xirr,
-                current_nav: this.toNumber(item.currnav),
-                avg_nav: this.toNumber(item.avgcost),
-                folio: item.actualfolio,
-                balance_units: item.balunits,
-                img_url: logo_map.get(String(item.schemeid)) || ""
-            }));
+            const mf_investment_items = folio_items.map((item: any) => {
+                const amc_details = amc_details_map.get(String(item.schemeid));
+
+                return {
+                    id: amc_details?.product_id,
+                    title: item.schemename,
+                    category: item.schemetype,
+                    amount: Number(item.purcost.replace(/,/g, "")),
+                    is_sip: item.sip,
+                    start_date: item.stdt,
+                    return_percentage: item.abs,
+                    return: this.toNumber(item.pl),
+                    xirr: item.xirr,
+                    current_nav: this.toNumber(item.currnav),
+                    avg_nav: this.toNumber(item.avgcost),
+                    folio: item.actualfolio,
+                    balance_units: item.balunits,
+                    img_url: amc_details?.img_url || ""
+                };
+            });
 
             res.status(200).json({
                 code: 200,
