@@ -364,6 +364,8 @@ class UserFinanceControllerClass {
 
             // Group by actualfolio
             const foliosMap = new Map<string, any>();
+
+            logger.debug("user mf data from finnsys --> ", user_mf_data)
             user_mf_data.forEach((item: any) => {
                 const folio = item.actualfolio;
                 if (!folio) return;
@@ -375,7 +377,8 @@ class UserFinanceControllerClass {
                         category: item.schemetype,
                         amount: 0,
                         current_value: 0,
-                        return: 0
+                        return: 0,
+                        bal_units: 0,
                     });
                 }
 
@@ -383,6 +386,7 @@ class UserFinanceControllerClass {
                 folioGroup.amount += this.toNumber(item.purcost);
                 folioGroup.current_value += this.toNumber(item.currval);
                 folioGroup.return += this.toNumber(item.pl);
+                folioGroup.bal_units += this.toNumber(item.balunits)
             });
 
             // Get AMC details for the first scheme in each folio
@@ -391,9 +395,10 @@ class UserFinanceControllerClass {
 
             const mf_investment_items = Array.from(foliosMap.values()).map((f: any) => {
                 const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "", product_id: "", transaction_rules: {} };
-
+                logger.debug("One folio ==> ", f)
                 return {
                     id: amc_details.product_id,
+                    scheme_id: f.first_scheme_id,
                     title: amc_details.amc_name || "Mutual Fund",
                     category: f.category,
                     amount: Number(f.amount.toFixed(2)),
@@ -401,6 +406,7 @@ class UserFinanceControllerClass {
                     return: Number(f.return.toFixed(2)),
                     return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
                     folio: f.folio,
+                    bal_units: Number(f.bal_units.toFixed(2)),
                     img_url: amc_details.img_url,
                     transaction_rules: this.extract_relevant_transaction_rules(amc_details.transaction_rules)
                 };
