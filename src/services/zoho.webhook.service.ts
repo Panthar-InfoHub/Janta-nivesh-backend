@@ -49,6 +49,8 @@ export interface ZohoWebhookPayload {
     fd_issued_at?: string;
     failure_reason?: string;
     payment_tx_id?: string;
+    connection_type?: string;
+    message?: string;
 }
 
 class ZohoWebhookServiceClass {

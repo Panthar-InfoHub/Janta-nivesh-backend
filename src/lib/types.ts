@@ -197,3 +197,10 @@ export const purchase_sip_body_schema = z.object({
 
 export type Sip_purchase_item = z.infer<typeof sip_purchase_item_schema>;
 export type Purchase_sip_body = z.infer<typeof purchase_sip_body_schema>;
+
+export const request_connection_schema = z.object({
+    type: z.enum(["CHAT", "CALL"]),
+    message: z.string().optional().default("")
+})
+
+export type Request_connection_body = z.infer<typeof request_connection_schema>;

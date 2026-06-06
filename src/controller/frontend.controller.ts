@@ -4,6 +4,10 @@ import { mutual_funds_service } from "../services/mutual-fund.service.js";
 import { bundle_service } from "../services/bundle.services.js";
 import { redis_buffer_client } from "../lib/redis.js";
 import { compress_json, decompress_json } from "../lib/utils.js";
+import AppError from "../middleware/error.middleware.js";
+import { request_connection_schema } from "../lib/types.js";
+import { user_service } from "../services/user.service.js";
+import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 class FrontendControllerClass {
 
@@ -75,6 +79,48 @@ class FrontendControllerClass {
         } catch (error) {
             logger.error("Error in get_frontend_mf_data: ", error)
             next(error)
+            return;
+        }
+    }
+
+    request_connection = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Requesting connection for user ==> ${user.id}`);
+            const connection_data = request_connection_schema.safeParse(req.body);
+
+            if (!connection_data.success) {
+                logger.error(`Error while requesting a user connection ==> `, connection_data.error);
+                throw new AppError("Validation failed while requesting user connection", 400, "VALIDATION_ERROR", connection_data.error);
+            }
+            const { type, message } = connection_data.data;
+            const user_data = await user_service.get_user_by_id(user.id);
+
+            if (!user_data) {
+                throw new AppError("User not found", 404, "USER_NOT_FOUND");
+            }
+
+            await zoho_webhook_service.send_event({
+                event_type: `${type}_CONNECTION_REQUESTED`,
+                timestamp: new Date().toISOString(),
+                user_id: user.id,
+                user_phone: user_data.phone_no ?? "",
+                full_name: user_data.full_name ?? "",
+                email: user_data.email ?? "",
+                inv_id: user_data.inv_id ? String(user_data.inv_id) : undefined,
+                connection_type: type,
+                message: message
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "Connection request submitted successfully"
+            });
+            return;
+
+        } catch (error) {
+            logger.error(`Error while requesting a user connection ==> `, error);
+            next(error);
             return;
         }
     }
