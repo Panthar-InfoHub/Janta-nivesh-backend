@@ -154,7 +154,7 @@ class MutualFundControllerClass {
             const user = req.user;
             logger.info(`Adding to lumpsum cart for user: ${user?.id}`);
 
-            const { amount, mf_product_id } = req.body;
+            const { amount, mf_product_id, folio } = req.body;
             if (!amount || !mf_product_id) {
                 logger.warn("Missing required fields in add_to_lumpsum_cart request body");
                 throw new AppError("Missing required fields: amount and mf_product_id are required", 400);
@@ -168,6 +168,7 @@ class MutualFundControllerClass {
                 prod_code: mf_product?.platform_code || "",
                 prod_name: mf_product?.scheme_name || "",
                 txn_amount: amount,
+                folio: folio || ""
             }, {
                 log: user?.log as string,
                 pwd: user?.pwd as string
@@ -209,6 +210,9 @@ class MutualFundControllerClass {
                 order_type: "LUMPSUM",
                 payment_url: result
             });
+
+            // Invalidate Finnsys portfolio cache
+            await redis.del(`mf_portfolio:finnsys:${user.id}`);
 
             res.status(200).json({
                 success: true,
@@ -287,7 +291,7 @@ class MutualFundControllerClass {
             const user = req.user;
             logger.info(`Adding to sip cart for user: ${user?.id}`);
 
-            const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt } = req.body;
+            const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt, folio } = req.body;
             if (!amount || !mf_product_id || !sip_st_date || !sip_en_date || !sip_freq || !sip_day || !sip_amt) {
                 logger.warn("Missing required fields in add_to_sip_cart request body");
                 throw new AppError("Missing required fields: amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, and sip_amt are required", 400);
@@ -311,6 +315,7 @@ class MutualFundControllerClass {
                 amc_name: mf_product?.amc_name || "",
                 prod_code: mf_product?.platform_code || "",
                 prod_name: mf_product?.scheme_name || "",
+                folio: folio || "",
                 txn_amount: amount,
                 sip_st_date: sip_st_date,
                 sip_en_date: sip_en_date,
@@ -442,6 +447,9 @@ class MutualFundControllerClass {
                 payment_url: result.xsip_short_url,
                 status: "XSIP_INITIATED"
             });
+
+            // Invalidate Finnsys portfolio cache
+            await redis.del(`mf_portfolio:finnsys:${user.id}`);
 
             res.status(200).json({
                 success: true,
@@ -576,31 +584,40 @@ class MutualFundControllerClass {
                 throw new AppError("Validation failed for invest more request data", 400, "VALIDATION_ERROR", validation.error);
             }
 
-            const { type, amount, scheme_id, folio, sip_st_date, sip_en_date, sip_freq, sip_day, mandate_id } = validation.data;
+            const data = validation.data;
 
-            const mf_product = await mutual_funds_service.query.get_mutual_fund_by_data({ scheme_id });
-            if (!mf_product) {
-                logger.error("Mutual fund product not found for scheme id ==> ", scheme_id)
-                throw new AppError("Mutual fund product not found", 404, "PRODUCT_NOT_FOUND");
-            }
+            if (data.type === "LUMPSUM") {
+                logger.info(`Invest more is in lumpsum mode`);
 
-            // Validate fund transaction rules
-            if (type === "LUMPSUM") {
+                const scheme_ids = Array.from(new Set(data.items.map(item => item.scheme_id)));
 
-                logger.info(`Invest more is in lumpsum mode`)
+                const mf_products = await db.mfProduct.findMany({
+                    where: { scheme_id: { in: scheme_ids } },
+                    include: { transaction_rules: true }
+                });
 
-                const min_lumpsum = mf_product.transaction_rules?.min_investment_amount ? Number(mf_product.transaction_rules.min_investment_amount) : 0;
-                if (min_lumpsum && amount < min_lumpsum) {
-                    throw new AppError(`Minimum lumpsum investment amount for this fund is ${min_lumpsum}`, 400);
-                }
+                const productMap = new Map(mf_products.map(p => [p.scheme_id, p]));
 
-                const direct_items = {
-                    prod_code: mf_product.platform_code || "",
-                    txn_amount: amount,
-                    folio: folio || ""
-                };
+                const direct_items = data.items.map(item => {
+                    const product = productMap.get(item.scheme_id);
+                    if (!product) {
+                        logger.error("Mutual fund product not found for scheme id ==> ", item.scheme_id);
+                        throw new AppError(`Mutual fund product not found for scheme: ${item.scheme_id}`, 404, "PRODUCT_NOT_FOUND");
+                    }
 
-                const payment_url = await mutual_funds_service.order.execute_lumpsum_purchase(user.id, user.log!, user.pwd!, [direct_items]);
+                    const min_lumpsum = product.transaction_rules?.min_investment_amount ? Number(product.transaction_rules.min_investment_amount) : 0;
+                    if (min_lumpsum && item.amount < min_lumpsum) {
+                        throw new AppError(`Minimum lumpsum investment amount for fund ${product.scheme_name} is ${min_lumpsum}`, 400);
+                    }
+
+                    return {
+                        prod_code: product.platform_code || "",
+                        txn_amount: item.amount,
+                        folio: item.folio || ""
+                    };
+                });
+
+                const payment_url = await mutual_funds_service.order.execute_lumpsum_purchase(user.id, user.log!, user.pwd!, direct_items);
 
                 await zoho_webhook_service.send_event({
                     event_type: "MF_ORDER_CREATED",
@@ -610,15 +627,26 @@ class MutualFundControllerClass {
                     payment_url
                 });
 
+                // Invalidate Finnsys portfolio cache
+                await redis.del(`mf_portfolio:finnsys:${user.id}`);
+
                 res.status(200).json({
                     success: true,
                     message: "Lumpsum invest more initiated successfully",
                     data: payment_url
                 });
                 return;
-            } else {
 
-                logger.info(`Invest more is in sip mode`)
+            } else {
+                logger.info(`Invest more is in sip mode`);
+
+                const { amount, scheme_id, folio, sip_st_date, sip_en_date, sip_freq, sip_day, mandate_id } = data;
+
+                const mf_product = await mutual_funds_service.query.get_mutual_fund_by_data({ scheme_id });
+                if (!mf_product) {
+                    logger.error("Mutual fund product not found for scheme id ==> ", scheme_id)
+                    throw new AppError("Mutual fund product not found", 404, "PRODUCT_NOT_FOUND");
+                }
 
                 // SIP validation
                 const min_sip = mf_product.transaction_rules?.min_investment_amount ? Number(mf_product.transaction_rules.min_investment_amount) : 0;
@@ -688,6 +716,9 @@ class MutualFundControllerClass {
                     payment_url: result.xsip_short_url,
                     status: "XSIP_INITIATED"
                 });
+
+                // Invalidate Finnsys portfolio cache
+                await redis.del(`mf_portfolio:finnsys:${user.id}`);
 
                 res.status(200).json({
                     success: true,

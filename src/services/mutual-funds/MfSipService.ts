@@ -10,19 +10,15 @@ import { MfHelperService } from "./MfHelperService.js";
 
 export class MfSipService {
 
-    constructor(private helper: MfHelperService) {}
+    constructor(private helper: MfHelperService) { }
 
     private validate_cumulative_sip_limit(cart_items: any[], active_sips: any[], limit: number) {
         let totalInstallment = 0;
 
         for (const sip of active_sips) {
             if (sip.status === "ACTIVE" || sip.status === "REGISTERED") {
-                totalInstallment += parseFloat(sip.installmentAmount || "0");
-                if (sip.stepUpAmount && Number(sip.stepUpAmount) > 0) {
-                    const total_installments = Number(sip.installmentNo || 1);
-                    const years = Math.floor(total_installments / 12);
-                    totalInstallment += (Number(sip.stepUpAmount) * years);
-                }
+                totalInstallment += parseFloat(sip.installments_amount || "0");
+                // StepUp calculations removed as Finnsys doesn't return this data in the report
             }
         }
 
@@ -45,7 +41,7 @@ export class MfSipService {
 
     initiate_sip_purchase = async (user_id: string, user_log: string, user_pwd: string, direct_items: Sip_purchase_item[]) => {
         const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
-        
+
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
         if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
@@ -84,7 +80,7 @@ export class MfSipService {
             const installment_amount = Number(item.sip_amt);
             const step_up_amount = item.step_up_required === "Y" ? Number(item.step_up_amount || 0) : 0;
             const years = Math.floor((incoming_installments[index] || 1) / 12);
-            
+
             total_required += installment_amount;
             if (step_up_amount > 0 && years > 0) {
                 total_required += (step_up_amount * years);
@@ -93,12 +89,8 @@ export class MfSipService {
 
         activeSips.forEach((sip: any) => {
             if (sip.status === "ACTIVE" || sip.status === "REGISTERED") {
-                total_required += Number(sip.installmentAmount || 0);
-                if (sip.stepUpAmount && Number(sip.stepUpAmount) > 0) {
-                    const total_installments = Number(sip.installmentNo || 1);
-                    const years = Math.floor(total_installments / 12);
-                    total_required += (Number(sip.stepUpAmount) * years);
-                }
+                logger.debug(`Active sip --> ${sip.installments_amount}`)
+                total_required += Number(sip.installments_amount || 0);
             }
         });
 
@@ -138,7 +130,7 @@ export class MfSipService {
                         ifsc_code: primary_bank.ifsc_code,
                         micr_code: primary_bank.micr_code || "",
                         start_date,
-                        end_date: "31/12/2099",
+                        end_date: this.helper.calculate_mandate_end_date(start_date, 39),
                         member_mandate_no: ""
                     }
                 ]
@@ -164,7 +156,7 @@ export class MfSipService {
                 status: "PENDING",
                 bank_account: primary_bank.account_no,
                 start_date: this.helper.parseDate(start_date) || new Date(),
-                end_date: this.helper.parseDate("31/12/2099") || new Date()
+                end_date: this.helper.parseDate(this.helper.calculate_mandate_end_date(start_date, 39)) || new Date()
             }
         });
 

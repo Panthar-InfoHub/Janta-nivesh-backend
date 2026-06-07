@@ -10,6 +10,7 @@ plans/
 .DS_Store
 .vscode/
 .idea/
+data/
 
 migration_data.json
 notes.js

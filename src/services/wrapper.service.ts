@@ -69,7 +69,7 @@ class WrapperServiceClass {
             dbProducts.forEach(product => {
                 if (product.scheme_id) {
                     let url = product.img_url || "";
-                    
+
                     // Fall back to AMC logo if scheme-specific logo is missing
                     if (!url && product.amc_name) {
                         url = this.logoDataCache.get(product.amc_name.toLowerCase()) || "";
@@ -94,6 +94,77 @@ class WrapperServiceClass {
         }
 
         return logo_map;
+    }
+
+    /**
+     * Resolves AMC Details (name and logo) for a batch of Scheme IDs in an optimized way.
+     * 
+     * @param schemeIds Array of scheme IDs to resolve details for
+     * @returns A Map mapping scheme ID (as a string) to its AMC details
+     */
+    async getAmcDetailsForSchemes(schemeIds: string[]): Promise<Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>> {
+        const details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
+        if (!schemeIds || schemeIds.length === 0) return details_map;
+
+        const cleanSchemeIds = schemeIds.map(id => String(id).trim()).filter(id => !!id);
+        if (cleanSchemeIds.length === 0) return details_map;
+
+        try {
+            // Fetch products matching scheme_ids
+            const dbProducts = await db.mfProduct.findMany({
+                where: {
+                    scheme_id: {
+                        in: cleanSchemeIds
+                    }
+                },
+                select: {
+                    scheme_id: true,
+                    img_url: true,
+                    amc_name: true,
+                    id: true,
+                    transaction_rules: {
+                        select: {
+                            min_sip_amount: true,
+                            min_lump_sum_amount: true
+                        }
+                    }
+                }
+            });
+
+            // Map each scheme_id to its details
+            dbProducts.forEach(product => {
+                if (product.scheme_id) {
+                    let url = product.img_url || "";
+
+                    // Fall back to AMC logo if scheme-specific logo is missing
+                    if (!url && product.amc_name) {
+                        url = this.logoDataCache.get(product.amc_name.toLowerCase()) || "";
+                    }
+
+                    details_map.set(product.scheme_id, {
+                        amc_name: product.amc_name || "",
+                        img_url: url,
+                        product_id: product.id,
+                        transaction_rules: product.transaction_rules
+                    });
+                }
+            });
+
+            // Fill in empty values for schemes not found in DB
+            cleanSchemeIds.forEach(id => {
+                if (!details_map.has(id)) {
+                    details_map.set(id, { amc_name: "", img_url: "", product_id: "", transaction_rules: { min_sip_amount: "", min_lump_sum_amount: "" } });
+                }
+            });
+
+        } catch (error) {
+            logger.error("Error fetching AMC details from database:", error);
+            cleanSchemeIds.forEach(id => {
+                details_map.set(id, { amc_name: "", img_url: "", product_id: "", transaction_rules: { min_sip_amount: "", min_lump_sum_amount: "" } });
+            });
+        }
+
+        return details_map;
     }
 
     /**
@@ -180,6 +251,37 @@ class WrapperServiceClass {
             logger.error(`Error fetching AMC logo for ${amcName}:`, error);
         }
         return this.logoDataCache.get(cleanName.toLowerCase()) || "";
+    }
+
+    /**
+     * Resolves transaction rules for a batch of NSE scheme codes.
+     */
+    async get_transaction_rules_by_nse_codes(nse_codes: string[]): Promise<Map<string, any>> {
+        const rules_map = new Map<string, any>();
+        if (!nse_codes || nse_codes.length === 0) return rules_map;
+
+        const cleanCodes = Array.from(new Set(nse_codes.filter(c => !!c)));
+        if (cleanCodes.length === 0) return rules_map;
+
+        try {
+            const products = await db.mfProduct.findMany({
+                where: { nse_scheme_code: { in: cleanCodes } },
+                select: {
+                    nse_scheme_code: true,
+                    transaction_rules: true
+                }
+            });
+
+            products.forEach(p => {
+                if (p.nse_scheme_code && p.transaction_rules) {
+                    rules_map.set(p.nse_scheme_code, p.transaction_rules);
+                }
+            });
+        } catch (error) {
+            logger.error("Error fetching transaction rules by NSE codes:", error);
+        }
+
+        return rules_map;
     }
 }
 

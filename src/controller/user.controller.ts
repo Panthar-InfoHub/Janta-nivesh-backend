@@ -10,7 +10,7 @@ import { pending_orders_service } from "../services/pending_orders.service.js";
 import { wrapper_service } from "../services/wrapper.service.js";
 import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
 import { user_goal_controller } from "./user.goal.controller.js";
-
+import { redis } from "../lib/redis.js";
 class UserFinanceControllerClass {
 
 
@@ -163,15 +163,33 @@ class UserFinanceControllerClass {
             const amc_names = Array.from(amc_set);
             const logo_map = await wrapper_service.get_logos_of_amc(amc_names);
 
-            // Enrich items with img_url
-            const enriched_sip_items = sip_items.map((item: any) => ({
-                ...item,
-                img_url: logo_map.get(item.amc_name) || ""
-            }));
+            const prod_codes: string[] = [];
+            sip_items.forEach((item: any) => prod_codes.push(item.prod_code));
+            lump_sum_items.forEach((item: any) => prod_codes.push(item.prod_code));
+
+            const rules_map = await wrapper_service.get_transaction_rules_by_nse_codes(prod_codes);
+
+            // Enrich items with img_url and transaction_rules
+            const enriched_sip_items = sip_items.map((item: any) => {
+                const isTaxOrElss = /TAX|ELSS/i.test(item.prod_name || item.amc_name || "");
+                const baseAmount = Number(item.sip_amt || item.txn_amount || 0);
+
+                const min_step_up_percent = isTaxOrElss ? 0 : 10;
+                const min_step_up_amt = isTaxOrElss ? 500 : (baseAmount * 0.10);
+
+                return {
+                    ...item,
+                    img_url: logo_map.get(item.amc_name) || "",
+                    transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code), item.sip_freq),
+                    min_step_up_percent,
+                    min_step_up_amt
+                };
+            });
 
             const enriched_lump_sum_items = lump_sum_items.map((item: any) => ({
                 ...item,
-                img_url: logo_map.get(item.amc_name) || ""
+                img_url: logo_map.get(item.amc_name) || "",
+                transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code))
             }));
 
             logger.info("Mapping completed of logo funds")
@@ -287,13 +305,30 @@ class UserFinanceControllerClass {
             const user = req.user!;
             logger.info(`Fetching user portfolio for User ID: ${user.id} user ${user.log} pwd ${user.pwd}`);
 
-            const user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!)
+            const cache_key = `mf_portfolio:finnsys:${user.id}`;
+            let user_portfolio_finnsys_res: any = null;
 
-            logger.debug(`User portfolio fetched from Finnsys successfully ==> `, user_portfolio_finnsys_res);
+            const cached = await redis.get(cache_key);
+            if (cached) {
+                try {
+                    user_portfolio_finnsys_res = JSON.parse(cached as string);
+                    logger.debug("Fetched user portfolio from Redis cache");
+                } catch (e) {
+                    logger.warn("Failed to parse cached portfolio, fetching from Finnsys", e);
+                }
+            }
 
-            if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
-                logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res.code}`);
-                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+            if (!user_portfolio_finnsys_res) {
+                user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!);
+                logger.debug(`User portfolio fetched from Finnsys successfully`);
+
+                if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
+                    logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res.code}`);
+                    throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+                }
+
+                // Cache for 3 hours (10800 seconds)
+                await redis.set(cache_key, JSON.stringify(user_portfolio_finnsys_res), { EX: 10800 });
             }
 
             const user_mf_data = user_portfolio_finnsys_res.results || []
@@ -327,27 +362,57 @@ class UserFinanceControllerClass {
             investment_data.items_count = user_mf_data.length;
             logger.debug(`Calculated user investment data ==> `, investment_data);
 
-            const mf_scheme_ids = user_mf_data.map((item: any) => String(item.schemeid)).filter(Boolean);
-            const logo_map = await wrapper_service.getLogosForSchemes(mf_scheme_ids);
+            // Group by actualfolio
+            const foliosMap = new Map<string, any>();
 
-            const mf_investment_items = user_mf_data.length > 0 ? user_mf_data.map((item: any) => ({
-                id: item.schemeid,
-                title: item.schemename,
-                category: item.schemetype,
-                amount: Number(item.purcost.replace(/,/g, "")),
-                is_sip: item.sip,
-                start_date: item.stdt,
-                return_percentage: item.abs,
-                return: this.toNumber(item.pl),
-                xirr: item.xirr,
-                current_nav: this.toNumber(item.currnav),
-                avg_nav: this.toNumber(item.avgcost),
-                folio: item.actualfolio,
-                balance_units: item.balunits,
-                img_url: logo_map.get(String(item.schemeid)) || ""
-            })) : [];
+            logger.debug("user mf data from finnsys --> ", user_mf_data)
+            user_mf_data.forEach((item: any) => {
+                const folio = item.actualfolio;
+                if (!folio) return;
 
-            logger.debug("Mapped user mutual fund now proceeding to user fd transactions...");
+                if (!foliosMap.has(folio)) {
+                    foliosMap.set(folio, {
+                        folio: folio,
+                        first_scheme_id: item.schemeid,
+                        category: item.schemetype,
+                        amount: 0,
+                        current_value: 0,
+                        return: 0,
+                        bal_units: 0,
+                    });
+                }
+
+                const folioGroup = foliosMap.get(folio);
+                folioGroup.amount += this.toNumber(item.purcost);
+                folioGroup.current_value += this.toNumber(item.currval);
+                folioGroup.return += this.toNumber(item.pl);
+                folioGroup.bal_units += this.toNumber(item.balunits)
+            });
+
+            // Get AMC details for the first scheme in each folio
+            const first_scheme_ids = Array.from(foliosMap.values()).map((f: any) => String(f.first_scheme_id)).filter(Boolean);
+            const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(first_scheme_ids);
+
+            const mf_investment_items = Array.from(foliosMap.values()).map((f: any) => {
+                const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "", product_id: "", transaction_rules: {} };
+                logger.debug("One folio ==> ", f)
+                return {
+                    id: amc_details.product_id,
+                    scheme_id: f.first_scheme_id,
+                    title: amc_details.amc_name || "Mutual Fund",
+                    category: f.category,
+                    amount: Number(f.amount.toFixed(2)),
+                    current_value: Number(f.current_value.toFixed(2)),
+                    return: Number(f.return.toFixed(2)),
+                    return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
+                    folio: f.folio,
+                    bal_units: Number(f.bal_units.toFixed(2)),
+                    img_url: amc_details.img_url,
+                    transaction_rules: this.extract_relevant_transaction_rules(amc_details.transaction_rules)
+                };
+            });
+
+            logger.debug("Mapped user mutual fund folios now proceeding to user fd transactions...");
             const user_fd_response = await user_service.get_user_fd_data({ user_id: user.id, order: { fd_issued_at: 'desc' } });
             const fd_transactions = user_fd_response.fd_transactions || [];
 
@@ -386,6 +451,120 @@ class UserFinanceControllerClass {
             return;
         } catch (error) {
             logger.error(`Error in getting user portfolio: `, error);
+            next(error);
+            return;
+        }
+    }
+
+    private extract_relevant_transaction_rules(rules: any, sip_freq?: string) {
+        if (!rules) return null;
+
+        const clean_rules = {
+            id: rules.id,
+            mf_product_id: rules.mf_product_id,
+            min_lump_sum_amount: rules.min_lump_sum_amount,
+            sip_allowed_dates: rules.sip_allowed_dates,
+            sip_frequencies: rules.sip_frequencies,
+            min_investment_amount: rules.min_investment_amount,
+            min_lumpsum_add_on_amount: rules.min_lumpsum_add_on_amount,
+            min_redem_qty: rules.min_redem_qty,
+            min_redem_amount: rules.min_redem_amount,
+            min_sip_amount: rules.min_sip_amount // default fallback
+        };
+
+        if (sip_freq) {
+            switch (sip_freq) {
+                case "DZ":
+                case "D":
+                    clean_rules.min_sip_amount = rules.min_daily_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "OW":
+                case "WD":
+                    clean_rules.min_sip_amount = rules.min_weekly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "OM":
+                    clean_rules.min_sip_amount = rules.min_monthly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "Q":
+                    clean_rules.min_sip_amount = rules.min_quarterly_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "H":
+                    clean_rules.min_sip_amount = rules.min_semi_annual_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+                case "Y":
+                    clean_rules.min_sip_amount = rules.min_annual_sip_amount ?? clean_rules.min_sip_amount;
+                    break;
+            }
+        }
+
+        return clean_rules;
+    }
+
+    get_folio_details = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const { folio_id } = req.params;
+
+            logger.info(`Fetching folio details for User ID: ${user.id}, Folio: ${folio_id}`);
+
+            const cache_key = `mf_portfolio:finnsys:${user.id}`;
+            let user_portfolio_finnsys_res: any = null;
+
+            const cached = await redis.get(cache_key);
+            if (cached) {
+                try {
+                    user_portfolio_finnsys_res = JSON.parse(cached as string);
+                } catch (e) {
+                    logger.warn("Failed to parse cached portfolio in folio details", e);
+                }
+            }
+
+            if (!user_portfolio_finnsys_res) {
+                user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!);
+                if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
+                    throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+                }
+                await redis.set(cache_key, JSON.stringify(user_portfolio_finnsys_res), { EX: 10800 });
+            }
+
+            const user_mf_data = user_portfolio_finnsys_res.results || [];
+
+            // Filter by folio
+            const folio_items = user_mf_data.filter((item: any) => item.actualfolio === folio_id);
+
+            const mf_scheme_ids = folio_items.map((item: any) => String(item.schemeid)).filter(Boolean);
+            const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(mf_scheme_ids);
+
+            const mf_investment_items = folio_items.map((item: any) => {
+                const amc_details = amc_details_map.get(String(item.schemeid));
+
+                return {
+                    id: amc_details?.product_id,
+                    scheme_id: item.schemeid,
+                    title: item.schemename,
+                    category: item.schemetype,
+                    amount: Number(item.purcost.replace(/,/g, "")),
+                    is_sip: item.sip,
+                    start_date: item.stdt,
+                    return_percentage: item.abs,
+                    return: this.toNumber(item.pl),
+                    xirr: item.xirr,
+                    current_nav: this.toNumber(item.currnav),
+                    avg_nav: this.toNumber(item.avgcost),
+                    folio: item.actualfolio,
+                    balance_units: item.balunits,
+                    img_url: amc_details?.img_url || ""
+                };
+            });
+
+            res.status(200).json({
+                code: 200,
+                message: "Folio details fetched successfully",
+                data: mf_investment_items
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in getting folio details: `, error);
             next(error);
             return;
         }

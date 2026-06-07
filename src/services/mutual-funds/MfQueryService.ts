@@ -27,7 +27,7 @@ export class MfQueryService {
         where.sip_allowed = true;
 
         // Globally exclude these terms from all results
-        const excluded_words = ['Direct', 'IDCW', 'Reinvest', 'Institutional', 'Bonus'];
+        const excluded_words = ['Direct', 'IDCW', 'Reinvest', 'Institutional', 'Bonus', 'SIF'];
         const exclusion_conditions = excluded_words.map(word => ({
             scheme_name: {
                 not: { contains: word },
@@ -70,6 +70,7 @@ export class MfQueryService {
                 conditions.push(Prisma.sql`p.scheme_name NOT ILIKE '%Reinvest%'`);
                 conditions.push(Prisma.sql`p.scheme_name NOT ILIKE '%Institutional%'`);
                 conditions.push(Prisma.sql`p.scheme_name NOT ILIKE '%Bonus%'`);
+                conditions.push(Prisma.sql`p.amc_code NOT ILIKE '%SIF%'`);
 
                 // Enforce sip_allowed = true
                 conditions.push(Prisma.sql`p.sip_allowed = true`);
@@ -298,7 +299,19 @@ export class MfQueryService {
                     select: {
                         sip_allowed_dates: true,
                         sip_frequencies: true,
-                        min_investment_amount: true
+                        min_investment_amount: true,
+                        min_lump_sum_amount: true,
+                        min_sip_amount: true,
+                        min_lumpsum_add_on_amount: true,
+                        min_redem_qty: true,
+                        min_redem_amount: true,
+                        min_daily_sip_amount: true,
+                        min_weekly_sip_amount: true,
+                        min_fortnightly_sip_amount: true,
+                        min_monthly_sip_amount: true,
+                        min_quarterly_sip_amount: true,
+                        min_semi_annual_sip_amount: true,
+                        min_annual_sip_amount: true,
                     }
                 }
             }

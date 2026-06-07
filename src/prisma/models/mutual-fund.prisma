@@ -1,10 +1,12 @@
 model MfProduct {
   id                 String                    @id @default(cuid())
   scheme_id          String
-  isin               String?
+  isin               String                    @default("")
   img_url            String?                   @default("")
   mapping_code       String
   scheme_name        String
+  display_name_001   String?                   @default("")
+  display_name_002   String?                   @default("")
   amc_id             String?
   amc_code           String?
   amc_name           String?
@@ -23,7 +25,7 @@ model MfProduct {
   nfo_end_date       DateTime?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @default(now()) @updatedAt
-  nse_scheme_code    String?
+  nse_scheme_code    String                    @default("")
   platform_code      String?
   bundle_products    BundleProduct[]
   metrics            MfMetrics?
@@ -55,14 +57,29 @@ model MfNavHistory {
 }
 
 model MfSchemeTransactionRules {
-  id                    String    @id @default(uuid())
-  mf_product_id         String    @unique
-  sip_allowed_dates     Int[]
-  sip_frequencies       String[]
-  min_investment_amount Decimal   @default(0) @db.Decimal(12, 2)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now()) @updatedAt
-  mf_product            MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+  id                        String   @id @default(uuid())
+  mf_product_id             String   @unique
+  min_sip_amount            Decimal  @default(0) @db.Decimal(12, 2)
+  min_lump_sum_amount       Decimal  @default(0) @db.Decimal(12, 2)
+  sip_allowed_dates         Int[]
+  sip_frequencies           String[]
+  min_investment_amount     Decimal  @default(0) @db.Decimal(12, 2)
+  min_lumpsum_add_on_amount Decimal  @default(0) @db.Decimal(12, 2)
+  min_redem_qty             Decimal  @default(0) @db.Decimal(12, 2)
+  min_redem_amount          Decimal  @default(0) @db.Decimal(12, 2)
+
+  // Sip frequency wise min amount
+  min_daily_sip_amount       Decimal @default(0) @db.Decimal(12, 2)
+  min_weekly_sip_amount      Decimal @default(0) @db.Decimal(12, 2)
+  min_fortnightly_sip_amount Decimal @default(0) @db.Decimal(12, 2)
+  min_monthly_sip_amount     Decimal @default(0) @db.Decimal(12, 2)
+  min_quarterly_sip_amount   Decimal @default(0) @db.Decimal(12, 2)
+  min_semi_annual_sip_amount Decimal @default(0) @db.Decimal(12, 2)
+  min_annual_sip_amount      Decimal @default(0) @db.Decimal(12, 2)
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+  mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 }
 
 model MfMetrics {

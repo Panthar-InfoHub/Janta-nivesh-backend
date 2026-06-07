@@ -18,12 +18,30 @@ class TradingAccountControllerClass {
             const user_id = req.user?.id!;
             logger.info("Fetching trading account data for user id ==> ", user_id);
 
-            const trading_account_data = await trading_account_service.get_trading_account(user_id);
+            const { user_data, kyc_data } = await trading_account_service.get_trading_account(user_id);
 
             res.status(200).json({
                 success: true,
                 message: "Trading account data fetched successfully",
-                data: trading_account_data,
+                data: {
+                    full_name: user_data.full_name,
+                    email: user_data.email,
+                    phone_no: user_data.phone_no,
+                    dob: new Date(user_data.dob).toISOString(),
+                    gender: kyc_data.gender,
+                    pan_no: kyc_data.pan_no,
+                    place_of_birth: kyc_data.place_of_birth,
+                    full_address: kyc_data.full_address,
+                    uid: kyc_data.uid,
+                    pin_code: kyc_data.pincode,
+                    city: kyc_data.city,
+                    district: kyc_data.district,
+                    state: kyc_data.state,
+                    country: kyc_data.country,
+                    martial_status: kyc_data.marital_status,
+                    father_name: kyc_data.father_name,
+                    mother_name: kyc_data.mother_name
+                }
             });
             return;
         } catch (error) {
