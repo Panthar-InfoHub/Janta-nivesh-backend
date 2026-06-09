@@ -283,6 +283,45 @@ class WrapperServiceClass {
 
         return rules_map;
     }
+
+    /**
+     * Resolves amc_name and img_url for a batch of NSE scheme codes.
+     */
+    async get_details_by_nse_codes(nse_codes: string[]): Promise<Map<string, { amc_name: string, img_url: string }>> {
+        const details_map = new Map<string, { amc_name: string, img_url: string }>();
+        if (!nse_codes || nse_codes.length === 0) return details_map;
+
+        const cleanCodes = Array.from(new Set(nse_codes.filter(c => !!c)));
+        if (cleanCodes.length === 0) return details_map;
+
+        try {
+            const products = await db.mfProduct.findMany({
+                where: { nse_scheme_code: { in: cleanCodes } },
+                select: {
+                    nse_scheme_code: true,
+                    amc_name: true,
+                    img_url: true
+                }
+            });
+
+            products.forEach(p => {
+                if (p.nse_scheme_code) {
+                    let url = p.img_url || "";
+                    if (!url && p.amc_name) {
+                        url = this.logoDataCache.get(p.amc_name.toLowerCase()) || "";
+                    }
+                    details_map.set(p.nse_scheme_code, {
+                        amc_name: p.amc_name || "",
+                        img_url: url
+                    });
+                }
+            });
+        } catch (error) {
+            logger.error("Error fetching details by NSE codes:", error);
+        }
+
+        return details_map;
+    }
 }
 
 export const wrapper_service = new WrapperServiceClass();
