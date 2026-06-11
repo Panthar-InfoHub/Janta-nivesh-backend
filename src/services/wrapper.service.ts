@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
+import { redis } from "../lib/redis.js";
+import { user_finnsys_service } from "./user.finnsys.service.js";
 
 class WrapperServiceClass {
     // In-memory cache for static JSON logos
@@ -321,6 +323,34 @@ class WrapperServiceClass {
         }
 
         return details_map;
+    }
+
+    /**
+     * Fetch user portfolio from Redis cache if available, else fetch from Finnsys and cache.
+     */
+    async get_user_portfolio_cached(user_id: string, log: string, pwd: string): Promise<any> {
+        const cache_key = `mf_portfolio:finnsys:${user_id}`;
+        let portfolio_res: any = null;
+
+        const cached = await redis.get(cache_key);
+        if (cached) {
+            try {
+                portfolio_res = JSON.parse(cached as string);
+                logger.debug("Fetched user portfolio from Redis cache");
+            } catch (e) {
+                logger.warn("Failed to parse cached portfolio", e);
+            }
+        }
+
+        if (!portfolio_res) {
+            portfolio_res = await user_finnsys_service.get_user_portfolio_finnsys(log, pwd);
+            
+            if (portfolio_res && (portfolio_res.code == 1 || portfolio_res.code == 0)) {
+                // Cache for 3 hours (10800 seconds)
+                await redis.set(cache_key, JSON.stringify(portfolio_res), { EX: 10800 });
+            }
+        }
+        return portfolio_res;
     }
 }
 

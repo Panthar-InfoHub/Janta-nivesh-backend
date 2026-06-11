@@ -48,7 +48,34 @@ class UserFinanceControllerClass {
 
             const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
+            const user = req.user!;
+            let goalIdToCurrvalMap = new Map<string, number>();
+            try {
+                if (user.log && user.pwd) {
+                    const portfolio_res = await wrapper_service.get_user_portfolio_cached(user_id, user.log, user.pwd);
+                    if (portfolio_res && portfolio_res.results) {
+                        portfolio_res.results.forEach((item: any) => {
+                            if (item.gid) {
+                                const currval = this.toNumber(item.currval);
+                                const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
+                                goalIdToCurrvalMap.set(String(item.gid), existing + currval);
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
+            }
+
             const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
+                
+                if (goal.goal_id) {
+                    const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
+                    if (current_value > 0) {
+                        goal.current_saved_amount = new Prisma.Decimal(Number(goal.current_saved_amount || 0) + current_value);
+                    }
+                }
+
                 if (goal.goal_type_id === 3) {
                     const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
                     const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
@@ -305,30 +332,11 @@ class UserFinanceControllerClass {
             const user = req.user!;
             logger.info(`Fetching user portfolio for User ID: ${user.id} user ${user.log} pwd ${user.pwd}`);
 
-            const cache_key = `mf_portfolio:finnsys:${user.id}`;
-            let user_portfolio_finnsys_res: any = null;
+            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
 
-            const cached = await redis.get(cache_key);
-            if (cached) {
-                try {
-                    user_portfolio_finnsys_res = JSON.parse(cached as string);
-                    logger.debug("Fetched user portfolio from Redis cache");
-                } catch (e) {
-                    logger.warn("Failed to parse cached portfolio, fetching from Finnsys", e);
-                }
-            }
-
-            if (!user_portfolio_finnsys_res) {
-                user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!);
-                logger.debug(`User portfolio fetched from Finnsys successfully`);
-
-                if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
-                    logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res.code}`);
-                    throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
-                }
-
-                // Cache for 3 hours (10800 seconds)
-                await redis.set(cache_key, JSON.stringify(user_portfolio_finnsys_res), { EX: 10800 });
+            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
+                logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res?.code}`);
+                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
             }
 
             const user_mf_data = user_portfolio_finnsys_res.results || []
@@ -507,24 +515,10 @@ class UserFinanceControllerClass {
 
             logger.info(`Fetching folio details for User ID: ${user.id}, Folio: ${folio_id}`);
 
-            const cache_key = `mf_portfolio:finnsys:${user.id}`;
-            let user_portfolio_finnsys_res: any = null;
+            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
 
-            const cached = await redis.get(cache_key);
-            if (cached) {
-                try {
-                    user_portfolio_finnsys_res = JSON.parse(cached as string);
-                } catch (e) {
-                    logger.warn("Failed to parse cached portfolio in folio details", e);
-                }
-            }
-
-            if (!user_portfolio_finnsys_res) {
-                user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(user.log!, user.pwd!);
-                if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
-                    throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
-                }
-                await redis.set(cache_key, JSON.stringify(user_portfolio_finnsys_res), { EX: 10800 });
+            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
+                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
             }
 
             const user_mf_data = user_portfolio_finnsys_res.results || [];
@@ -576,16 +570,11 @@ class UserFinanceControllerClass {
             logger.info(`Fetching investment rate data for User ID: ${user.id}`);
 
             // Step 1: Fetch portfolio data (reuse existing portfolio logic)
-            const user_portfolio_finnsys_res = await user_finnsys_service.get_user_portfolio_finnsys(
-                user.log!,
-                user.pwd!
-            );
+            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
 
-            logger.debug(`User portfolio fetched from Finnsys successfully`);
-
-            if (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0) {
+            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
                 logger.warn(
-                    `Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res.code}`
+                    `Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res?.code}`
                 );
                 throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
             }
