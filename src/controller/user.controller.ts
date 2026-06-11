@@ -51,28 +51,27 @@ class UserFinanceControllerClass {
             const user = req.user!;
             let goalIdToCurrvalMap = new Map<string, number>();
             try {
-                if (user.log && user.pwd) {
-                    const portfolio_res = await wrapper_service.get_user_portfolio_cached(user_id, user.log, user.pwd);
-                    if (portfolio_res && portfolio_res.results) {
-                        portfolio_res.results.forEach((item: any) => {
-                            if (item.gid) {
-                                const currval = this.toNumber(item.currval);
-                                const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
-                                goalIdToCurrvalMap.set(String(item.gid), existing + currval);
-                            }
-                        });
-                    }
+                const portfolio_res = await wrapper_service.get_user_portfolio_cached(user_id, user.log, user.pwd);
+                if (portfolio_res && portfolio_res.results) {
+                    portfolio_res.results.forEach((item: any) => {
+                        if (item.gid) {
+                            const currval = this.toNumber(item.currval);
+                            const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
+                            goalIdToCurrvalMap.set(String(item.gid), existing + currval);
+                        }
+                    });
                 }
             } catch (error) {
                 logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
             }
 
             const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
-                
+
                 if (goal.goal_id) {
                     const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
                     if (current_value > 0) {
-                        goal.current_saved_amount = new Prisma.Decimal(Number(goal.current_saved_amount || 0) + current_value);
+                        const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
+                        goal.current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
                     }
                 }
 
