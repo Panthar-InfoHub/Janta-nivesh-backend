@@ -9,6 +9,9 @@ import logger from "../middleware/logger.js";
 import { mutual_funds_service } from "../services/mutual-fund.service.js";
 import { nse_service } from "../services/nse.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
+import { user_service } from "../services/user.service.js";
+import { MfOrderService } from "../services/mutual-funds/MfOrderService.js";
+import { MfCartService } from "../services/mutual-funds/MfCartService.js";
 
 
 
@@ -292,9 +295,9 @@ class MutualFundControllerClass {
             logger.info(`Adding to sip cart for user: ${user?.id}`);
 
             const { amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, sip_amt, folio } = req.body;
-            if (!amount || !mf_product_id || !sip_st_date || !sip_en_date || !sip_freq || !sip_day || !sip_amt) {
+            if (!amount || !mf_product_id || !sip_st_date || !sip_en_date || !sip_day || !sip_amt) {
                 logger.warn("Missing required fields in add_to_sip_cart request body");
-                throw new AppError("Missing required fields: amount, mf_product_id, sip_st_date, sip_en_date, sip_freq, sip_day, and sip_amt are required", 400);
+                throw new AppError("Missing required fields: amount, mf_product_id, sip_st_date, sip_en_date, sip_day, and sip_amt are required", 400);
             }
 
             const mf_product = await mutual_funds_service.query.get_mutual_fund_by_id(mf_product_id);
@@ -305,10 +308,11 @@ class MutualFundControllerClass {
                 throw new AppError(`SIP day ${sip_day} is not allowed for this mutual fund`, 400);
             }
 
-            if (!mf_product?.transaction_rules?.sip_frequencies.includes(sip_freq)) {
-                logger.warn(`SIP frequency ${sip_freq} is not allowed for this mutual fund`);
-                throw new AppError(`SIP with ${sip_freq} frequency is not allowed for this mutual fund`, 400);
-            }
+            // Gonna ignore the frequence for now always need to be "Monthly"
+            // if (!mf_product?.transaction_rules?.sip_frequencies.includes(sip_freq)) {
+            //     logger.warn(`SIP frequency ${sip_freq} is not allowed for this mutual fund`);
+            //     throw new AppError(`SIP with ${sip_freq} frequency is not allowed for this mutual fund`, 400);
+            // }
 
             const sip_data_validation = sip_cart_zod_schema.safeParse({
                 amc_code: mf_product?.amc_code || "",
@@ -319,7 +323,7 @@ class MutualFundControllerClass {
                 txn_amount: amount,
                 sip_st_date: sip_st_date,
                 sip_en_date: sip_en_date,
-                sip_freq: sip_freq,
+                sip_freq: sip_freq ?? "OM",
                 sip_day: sip_day,
                 sip_amt: sip_amt
             });
@@ -743,23 +747,39 @@ class MutualFundControllerClass {
     clear_cart = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            logger.info(`Cancel order request for user: ${user.id}`);
+            logger.info(`Clearing cart for user: ${user.id}`);
 
-            const { order_no } = req.body;
-            if (!order_no) {
-                logger.warn("Missing order_no in cancel_order request body");
-                throw new AppError("Missing required field: order_no", 400);
+            const user_cart_res = await user_service.get_user_cart_finnsys(user.log!, user.pwd!)
+
+            logger.debug(`User data fetched successfully ==> `, user_cart_res);
+
+            if (user_cart_res.code === 0) {
+                logger.debug("Empty cart for User ID ==> ", user.id);
+                res.status(200).json({
+                    code: 200,
+                    message: "User cart cleared successfully",
+                });
+                return;
             }
 
-            const result = await mutual_funds_service.order.cancel_order(user.id, user.log!, user.pwd!, order_no);
+            if (user_cart_res.code != 1 && user_cart_res.code != 0) {
+                logger.warn(`Failed to fetch user cart from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_cart_res.code}`);
+                throw new AppError("Failed to fetch user cart from Finnsys", 502, "FINNSYS_CART_FETCH_FAILED");
+            }
 
-            // Invalidate Finnsys portfolio cache
-            await redis.del(`mf_portfolio:finnsys:${user.id}`);
+            const cancel_promises = user_cart_res.results.map(async (cart_ele: any) => {
+                if (cart_ele.id) {
+                    return await mutual_funds_service.cart.remove_item_from_cart(user.log!, user.pwd!, cart_ele.id);
+                }
+            });
+
+            await Promise.all(cancel_promises);
+            logger.info(`Cart cleared...`)
 
             res.status(200).json({
                 success: true,
                 message: "Order cancelled successfully",
-                data: result
+                // data: result
             });
             return;
         } catch (error) {

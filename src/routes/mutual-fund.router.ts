@@ -33,7 +33,7 @@ mutual_fund_router.delete("/remove-cart-item",
 );
 
 mutual_fund_router.delete("/clear-cart",
-    [login_require, require_mfKyc, require_tradingKyc],
+    [login_require],
     mutual_fund_controller.clear_cart
 );
 

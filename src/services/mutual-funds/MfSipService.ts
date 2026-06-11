@@ -360,16 +360,16 @@ export class MfSipService {
                     {
                         client_code: user.nse_client_code,
                         xsip_reg_no,
-                        remarks: "Velvet Invest App: xSIP Cancelled"
+                        remarks: "13:Velvet Invest App: xSIP Cancelled"
                     }
                 ]
             }
         };
 
         logger.info(`Executing xSIP Cancellation for User ${user_id}. xSIP Reg No: ${xsip_reg_no}`);
-        
+
         const finnsys_response = await mutual_fund_finnsys_service.cancel_xsip_finnsys(payload);
-        
+
         return finnsys_response;
     }
 }

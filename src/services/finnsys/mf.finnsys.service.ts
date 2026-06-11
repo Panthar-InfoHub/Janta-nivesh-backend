@@ -424,8 +424,11 @@ class MutualFundFinnsysServiceClass {
 
             if (response.data?.code !== 1) {
                 logger.error("Finnsys order cancellation API returned failure: ", response.data);
+                const errorMessage = response.data?.data?.can_data?.[0]?.can_remark 
+                                  || response.data?.message 
+                                  || "Failed to cancel order";
                 throw new AppError(
-                    response.data?.message || "Failed to cancel order",
+                    errorMessage,
                     500,
                     "ORDER_CANCELLATION_FAILED"
                 );
@@ -436,11 +439,18 @@ class MutualFundFinnsysServiceClass {
 
             return response.data;
         } catch (error: any) {
+            if (error instanceof AppError) {
+                throw error;
+            }
+
             logger.error("Error submitting order cancellation to Finnsys: ", error);
 
             if (error.response?.data) {
+                const errorMessage = error.response.data?.data?.can_data?.[0]?.can_remark 
+                                  || error.response.data?.message 
+                                  || "Failed to cancel order";
                 throw new AppError(
-                    error.response.data?.message || "Failed to cancel order",
+                    errorMessage,
                     error.response.status || 500,
                     "ORDER_CANCELLATION_FAILED"
                 );
@@ -469,8 +479,11 @@ class MutualFundFinnsysServiceClass {
 
             if (response.data?.code !== 1) {
                 logger.error("Finnsys xSIP cancellation API returned failure: ", response.data);
+                const errorMessage = response.data?.data?.can_data?.[0]?.can_remark 
+                                  || response.data?.message 
+                                  || "Failed to cancel xSIP";
                 throw new AppError(
-                    response.data?.message || "Failed to cancel xSIP",
+                    errorMessage,
                     500,
                     "XSIP_CANCELLATION_FAILED"
                 );
@@ -481,11 +494,18 @@ class MutualFundFinnsysServiceClass {
 
             return response.data;
         } catch (error: any) {
+            if (error instanceof AppError) {
+                throw error;
+            }
+
             logger.error("Error submitting xSIP cancellation to Finnsys: ", error);
 
             if (error.response?.data) {
+                const errorMessage = error.response.data?.data?.can_data?.[0]?.can_remark 
+                                  || error.response.data?.message 
+                                  || "Failed to cancel xSIP";
                 throw new AppError(
-                    error.response.data?.message || "Failed to cancel xSIP",
+                    errorMessage,
                     error.response.status || 500,
                     "XSIP_CANCELLATION_FAILED"
                 );
