@@ -109,6 +109,32 @@ interface XSIPRegistrationPayload {
     };
 }
 
+interface CancelOrderPayload {
+    arn: string;
+    username: string;
+    password: string;
+    data: {
+        can_data: Array<{
+            client_code: string;
+            order_no: string;
+            remarks?: string;
+        }>;
+    };
+}
+
+interface CancelXSIPPayload {
+    arn: string;
+    username: string;
+    password: string;
+    data: {
+        can_data: Array<{
+            client_code: string;
+            xsip_reg_no: string;
+            remarks?: string;
+        }>;
+    };
+}
+
 class MutualFundFinnsysServiceClass {
 
     FINNSYS_BASE_URL: string;
@@ -381,6 +407,95 @@ class MutualFundFinnsysServiceClass {
         } catch (error: any) {
             logger.error("Error fetching xsip registration report from Finnsys", error);
             throw new AppError("Failed to fetch xsip registration report", 500, "XSIP_REPORT_ERROR");
+        }
+    }
+    /**
+     * Cancel an existing order via Finnsys NSE API
+     */
+    cancel_order_finnsys = async (payload: CancelOrderPayload) => {
+        try {
+            logger.info(`Submitting order cancellation to Finnsys. Order No: ${payload.data.can_data[0]?.order_no}`);
+            logger.debug(`Cancel order payload ==> `, payload);
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/cancellation/order-cancellation`,
+                payload
+            );
+
+            if (response.data?.code !== 1) {
+                logger.error("Finnsys order cancellation API returned failure: ", response.data);
+                throw new AppError(
+                    response.data?.message || "Failed to cancel order",
+                    500,
+                    "ORDER_CANCELLATION_FAILED"
+                );
+            }
+
+            logger.info("Order cancellation submitted successfully");
+            logger.debug(`Cancel order response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error submitting order cancellation to Finnsys: ", error);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to cancel order",
+                    error.response.status || 500,
+                    "ORDER_CANCELLATION_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to cancel order with Finnsys",
+                500,
+                "ORDER_CANCELLATION_ERROR"
+            );
+        }
+    }
+
+    /**
+     * Cancel an existing xSIP via Finnsys NSE API
+     */
+    cancel_xsip_finnsys = async (payload: CancelXSIPPayload) => {
+        try {
+            logger.info(`Submitting xSIP cancellation to Finnsys. xSIP Reg No: ${payload.data.can_data[0]?.xsip_reg_no}`);
+            logger.debug(`Cancel xSIP payload ==> `, payload);
+
+            const response = await axios.post(
+                `${this.FINNSYS_BASE_URL}/nse/v2/cancellation/xsip-cancellation`,
+                payload
+            );
+
+            if (response.data?.code !== 1) {
+                logger.error("Finnsys xSIP cancellation API returned failure: ", response.data);
+                throw new AppError(
+                    response.data?.message || "Failed to cancel xSIP",
+                    500,
+                    "XSIP_CANCELLATION_FAILED"
+                );
+            }
+
+            logger.info("xSIP cancellation submitted successfully");
+            logger.debug(`Cancel xSIP response: `, response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error submitting xSIP cancellation to Finnsys: ", error);
+
+            if (error.response?.data) {
+                throw new AppError(
+                    error.response.data?.message || "Failed to cancel xSIP",
+                    error.response.status || 500,
+                    "XSIP_CANCELLATION_FAILED"
+                );
+            }
+
+            throw new AppError(
+                "Failed to cancel xSIP with Finnsys",
+                500,
+                "XSIP_CANCELLATION_ERROR"
+            );
         }
     }
 

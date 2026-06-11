@@ -740,6 +740,92 @@ class MutualFundControllerClass {
 
 
     // ─── Cancel Orders ──────────────────────────────────────────────────────────────
+    clear_cart = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Cancel order request for user: ${user.id}`);
+
+            const { order_no } = req.body;
+            if (!order_no) {
+                logger.warn("Missing order_no in cancel_order request body");
+                throw new AppError("Missing required field: order_no", 400);
+            }
+
+            const result = await mutual_funds_service.order.cancel_order(user.id, user.log!, user.pwd!, order_no);
+
+            // Invalidate Finnsys portfolio cache
+            await redis.del(`mf_portfolio:finnsys:${user.id}`);
+
+            res.status(200).json({
+                success: true,
+                message: "Order cancelled successfully",
+                data: result
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in cancel_order controller:", error);
+            next(error);
+            return;
+        }
+    };
+
+    cancel_order = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Cancel order request for user: ${user.id}`);
+
+            const { order_no } = req.body;
+            if (!order_no) {
+                logger.warn("Missing order_no in cancel_order request body");
+                throw new AppError("Missing required field: order_no", 400);
+            }
+
+            const result = await mutual_funds_service.order.cancel_order(user.id, user.log!, user.pwd!, order_no);
+
+            // Invalidate Finnsys portfolio cache
+            await redis.del(`mf_portfolio:finnsys:${user.id}`);
+
+            res.status(200).json({
+                success: true,
+                message: "Order cancelled successfully",
+                data: result
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in cancel_order controller:", error);
+            next(error);
+            return;
+        }
+    };
+
+    cancel_xsip = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            logger.info(`Cancel xSIP request for user: ${user.id}`);
+
+            const { xsip_reg_no } = req.body;
+            if (!xsip_reg_no) {
+                logger.warn("Missing xsip_reg_no in cancel_xsip request body");
+                throw new AppError("Missing required field: xsip_reg_no", 400);
+            }
+
+            const result = await mutual_funds_service.sip.cancel_xsip(user.id, user.log!, user.pwd!, xsip_reg_no);
+
+            // Invalidate Finnsys portfolio cache
+            await redis.del(`mf_portfolio:finnsys:${user.id}`);
+
+            res.status(200).json({
+                success: true,
+                message: "xSIP cancelled successfully",
+                data: result
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in cancel_xsip controller:", error);
+            next(error);
+            return;
+        }
+    };
 
 }
 

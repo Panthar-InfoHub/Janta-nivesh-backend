@@ -184,4 +184,31 @@ export class MfOrderService {
 
         return short_url.data.firstHolderLink;
     }
+
+    cancel_order = async (user_id: string, user_log: string, user_pwd: string, order_no: string) => {
+        const user = await user_service.get_user_by_id(user_id);
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+
+        const payload = {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
+            data: {
+                can_data: [
+                    {
+                        client_code: user.nse_client_code,
+                        order_no,
+                        remarks: "Velvet Invest App: Order Cancelled"
+                    }
+                ]
+            }
+        };
+
+        logger.info(`Executing Order Cancellation for User ${user_id}. Order No: ${order_no}`);
+        
+        const finnsys_response = await mutual_fund_finnsys_service.cancel_order_finnsys(payload);
+        
+        return finnsys_response;
+    }
 }

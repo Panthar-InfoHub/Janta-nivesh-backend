@@ -345,4 +345,31 @@ export class MfSipService {
 
         return mandate_status_res;
     }
+
+    cancel_xsip = async (user_id: string, user_log: string, user_pwd: string, xsip_reg_no: string) => {
+        const user = await user_service.get_user_by_id(user_id);
+        if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+
+        const payload = {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
+            data: {
+                can_data: [
+                    {
+                        client_code: user.nse_client_code,
+                        xsip_reg_no,
+                        remarks: "Velvet Invest App: xSIP Cancelled"
+                    }
+                ]
+            }
+        };
+
+        logger.info(`Executing xSIP Cancellation for User ${user_id}. xSIP Reg No: ${xsip_reg_no}`);
+        
+        const finnsys_response = await mutual_fund_finnsys_service.cancel_xsip_finnsys(payload);
+        
+        return finnsys_response;
+    }
 }
