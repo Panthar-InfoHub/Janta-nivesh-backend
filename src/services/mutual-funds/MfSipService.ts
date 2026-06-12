@@ -53,7 +53,21 @@ export class MfSipService {
 
         const { start_date, end_date } = this.helper.extract_date_range_from_sip_items(sip_items);
 
-        const active_mandate = await db.mandate.findFirst({
+        let max_incoming_end_date = this.helper.parseDate(start_date) || new Date();
+        const incoming_installments = this.helper.calculate_installments_count(sip_items, start_date, end_date);
+        
+        sip_items.forEach((item: any, index: number) => {
+            const raw_installments = incoming_installments[index] || 1;
+            const installments = Math.min(raw_installments, 478); // Cap to 478 months (~39.8 years) to fit safely within a 40-year mandate
+            const item_start = this.helper.parseDate(item.start_date || start_date) || new Date();
+            const item_end = new Date(item_start);
+            item_end.setMonth(item_end.getMonth() + installments);
+            if (item_end > max_incoming_end_date) {
+                max_incoming_end_date = item_end;
+            }
+        });
+
+        const active_mandates = await db.mandate.findMany({
             where: {
                 user_id,
                 status: "SUCCESS"
@@ -75,7 +89,7 @@ export class MfSipService {
 
         let total_required = 0;
 
-        const incoming_installments = this.helper.calculate_installments_count(sip_items, start_date, end_date);
+
         sip_items.forEach((item: any, index: number) => {
             const installment_amount = Number(item.sip_amt);
             const step_up_amount = item.step_up_required === "Y" ? Number(item.step_up_amount || 0) : 0;
@@ -94,12 +108,20 @@ export class MfSipService {
             }
         });
 
-        const active_limit = active_mandate ? Number(active_mandate.amount) : 0;
+        let usable_mandate = null;
+        for (const mandate of active_mandates) {
+            const active_limit = Number(mandate.amount);
+            const mandate_end_date = mandate.end_date ? new Date(mandate.end_date) : null;
+            if (active_limit >= total_required && mandate_end_date && mandate_end_date >= max_incoming_end_date) {
+                usable_mandate = mandate;
+                break;
+            }
+        }
 
-        if (active_mandate && active_limit >= total_required) {
-            logger.info(`Reusing existing approved mandate ${active_mandate.mandate_id} for User ${user_id}. Limit: ${active_limit}, Required: ${total_required}`);
+        if (usable_mandate) {
+            logger.info(`Reusing existing approved mandate ${usable_mandate.mandate_id} for User ${user_id}. Limit: ${usable_mandate.amount}, Required: ${total_required}`);
             return {
-                mandate_id: active_mandate.mandate_id,
+                mandate_id: usable_mandate.mandate_id,
                 status: "MANDATE_APPROVED"
             };
         }
@@ -113,7 +135,7 @@ export class MfSipService {
             new_mandate_amount = Math.ceil(total_required / 500000) * 500000;
         }
 
-        logger.info(`Creating NEW Mandate for User ${user_id}. Previous Limit: ${active_limit}, New Limit: ${new_mandate_amount}, Required: ${total_required}`);
+        logger.info(`Creating NEW Mandate for User ${user_id}. New Limit: ${new_mandate_amount}, Required: ${total_required}`);
 
         const mandate_payload = {
             arn: env.ARN,
@@ -130,7 +152,7 @@ export class MfSipService {
                         ifsc_code: primary_bank.ifsc_code,
                         micr_code: primary_bank.micr_code || "",
                         start_date,
-                        end_date: this.helper.calculate_mandate_end_date(start_date, 39),
+                        end_date: this.helper.calculate_mandate_end_date(start_date, 40),
                         member_mandate_no: ""
                     }
                 ]
@@ -156,7 +178,7 @@ export class MfSipService {
                 status: "PENDING",
                 bank_account: primary_bank.account_no,
                 start_date: this.helper.parseDate(start_date) || new Date(),
-                end_date: this.helper.parseDate(this.helper.calculate_mandate_end_date(start_date, 39)) || new Date()
+                end_date: this.helper.parseDate(this.helper.calculate_mandate_end_date(start_date, 40)) || new Date()
             }
         });
 
@@ -243,7 +265,7 @@ export class MfSipService {
                 member_code: env.NSE_MEMBER_ID,
                 folio_no: item.folio || "",
                 sip_remarks: "VELVET INVEST APP",
-                installment_no: installment_counts[index] || 1,
+                installment_no: Math.min(installment_counts[index] || 1, 478),
                 xsip_mandate_id: selected_mandate_id,
                 sub_broker_code: "",
                 euin_number: env.EUIN || "",
