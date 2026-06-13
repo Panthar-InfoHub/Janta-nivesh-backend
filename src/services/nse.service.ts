@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "../lib/config-env.js";
+import logger from "../middleware/logger.js";
 
 export class NSEServiceClass {
     finnsys_base_url: string;
@@ -33,6 +34,20 @@ export class NSEServiceClass {
             }
         });
 
+        return response.data;
+    }
+
+    get_client_authorization_report = async (client_code: string, user_log: string, user_pwd: string) => {
+        const response = await axios.post(`${this.finnsys_base_url}/nse/v2/reports/client-authorization-report`, {
+            arn: env.ARN,
+            username: user_log,
+            password: user_pwd,
+            data: {
+                client_code: client_code
+            }
+        });
+
+        logger.debug(`NSE Client authorization report ==> `, response.data)
         return response.data;
     }
 
