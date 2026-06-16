@@ -55,18 +55,27 @@ export class MfSipService {
 
         let max_incoming_end_date = this.helper.parseDate(start_date) || new Date();
         const incoming_installments = this.helper.calculate_installments_count(sip_items, start_date, end_date);
-        
+
+        logger.debug(`Max incoming end date ==> `, max_incoming_end_date)
+        logger.debug(`Incomming Installments ==> `, incoming_installments)
+
         sip_items.forEach((item: any, index: number) => {
             const raw_installments = incoming_installments[index] || 1;
+            logger.debug(`Raw installments --> `, raw_installments)
+
             const installments = Math.min(raw_installments, 478); // Cap to 478 months (~39.8 years) to fit safely within a 40-year mandate
             const item_start = this.helper.parseDate(item.start_date || start_date) || new Date();
+
+            logger.debug(`Item start --> `, item_start)
             const item_end = new Date(item_start);
             item_end.setMonth(item_end.getMonth() + installments);
+
+            logger.debug(`Item end --> `, item_end)
             if (item_end > max_incoming_end_date) {
                 max_incoming_end_date = item_end;
             }
         });
-
+        logger.debug(`Finall Max incoming end date ==> `, max_incoming_end_date)
         const active_mandates = await db.mandate.findMany({
             where: {
                 user_id,
@@ -76,6 +85,8 @@ export class MfSipService {
                 createdAt: "desc"
             }
         });
+
+        logger.debug(`User active mandates --> `, active_mandates)
 
         const activeSipsReport = await mutual_fund_finnsys_service.get_xsip_registration_report({
             arn: env.ARN,
@@ -112,6 +123,8 @@ export class MfSipService {
         for (const mandate of active_mandates) {
             const active_limit = Number(mandate.amount);
             const mandate_end_date = mandate.end_date ? new Date(mandate.end_date) : null;
+
+            logger.debug(`Mandate Details => Limit: ${active_limit}, End Date: ${mandate_end_date}, Required: ${total_required}, Max Incoming End Date: ${max_incoming_end_date} for Mandate id --> ${mandate.id}`)
             if (active_limit >= total_required && mandate_end_date && mandate_end_date >= max_incoming_end_date) {
                 usable_mandate = mandate;
                 break;

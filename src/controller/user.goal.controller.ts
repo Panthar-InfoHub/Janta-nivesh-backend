@@ -4,8 +4,13 @@ import logger from "../middleware/logger.js";
 import { user_goal_service } from "../services/onboarding/user.goal.service.js";
 import AppError from "../middleware/error.middleware.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
+import { wrapper_service } from "../services/wrapper.service.js";
+import { Prisma } from "../prisma/generated/prisma/client.js";
 
 class UserGoalControllerClass {
+
+    private toNumber = (val: any) =>
+        parseFloat(String(val).replace(/,/g, ""));
 
     onboarding_create = async (req: Request) => {
         const user = req.user!;
@@ -220,14 +225,35 @@ class UserGoalControllerClass {
 
             const user = req.user!;
             const goal_id = req.params.id as string;
+            let schemes = [];
+            let goal_schemes: any = []
+            let goalIdToCurrvalMap = new Map<string, number>();
 
             logger.debug(`Getting goal details for User ID: ${user.id} with goal_id ==> ${goal_id}`);
 
             const goal = await user_goal_service.get_goal_by_id(user, goal_id);
 
-            const goal_schemes = await user_goal_service.get_goal_scheme_mappings(user.log!, user.pwd!, Number(goal.goal_id));
 
-            let schemes = [];
+            try {
+                const [portfolio_res, goal_schemes_response] = await Promise.all([
+                    wrapper_service.get_user_portfolio_cached(user.id, user.log, user.pwd),
+                    user_goal_service.get_goal_scheme_mappings(user.log!, user.pwd!, Number(goal.goal_id))
+                ])
+
+                if (portfolio_res && portfolio_res.results) {
+                    portfolio_res.results.forEach((item: any) => {
+                        if (item.gid) {
+                            const currval = this.toNumber(item.currval);
+                            const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
+                            goalIdToCurrvalMap.set(String(item.gid), existing + currval);
+                        }
+                    });
+                }
+                goal_schemes = goal_schemes_response
+            } catch (error) {
+                logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
+            }
+
 
             if (goal_schemes && (goal_schemes.code != 1 && goal_schemes.code != 0)) {
                 logger.error(`Failed to get goal scheme mappings for goal_id ${goal_id}. Response from FinSys ==> `, goal_schemes);
@@ -264,6 +290,12 @@ class UserGoalControllerClass {
 
                 response.current_goal_cost = Math.round(corpus_value * 100) / 100;
                 logger.debug(`Computed corpus value for retirement goal ${goal_id}: ${corpus_value}`);
+            }
+
+            const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
+            if (current_value > 0) {
+                const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
+                response.current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
             }
 
             res.status(200).json({
