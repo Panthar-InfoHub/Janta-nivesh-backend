@@ -2,8 +2,11 @@ import fs from "fs";
 import path from "path";
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
-import { redis } from "../lib/redis.js";
+import { redis, redis_buffer_client } from "../lib/redis.js";
 import { user_finnsys_service } from "./user.finnsys.service.js";
+import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
+import { compress_json, decompress_json } from "../lib/utils.js";
+import { env } from "../lib/config-env.js";
 
 class WrapperServiceClass {
     // In-memory cache for static JSON logos
@@ -351,6 +354,70 @@ class WrapperServiceClass {
             }
         }
         return portfolio_res;
+    }
+
+    /**
+     * Fetch xSIP registration report from Redis cache if available (compressed), else fetch from Finnsys and cache.
+     * Uses a 10-year date range to fetch all SIPs for the user.
+     */
+    async get_xsip_registration_report_cached(client_code: string, log: string, pwd: string): Promise<any> {
+        if (!client_code) return null;
+
+        const cache_key = `mf_xsip:finnsys:${client_code}`;
+        let xsip_report: any = null;
+
+        try {
+            const cached = await redis_buffer_client.get(cache_key);
+            if (cached) {
+                xsip_report = await decompress_json<any>(cached as Buffer);
+                logger.debug("Fetched user xSIP report from Redis cache (decompressed)");
+                return xsip_report;
+            }
+        } catch (e) {
+            logger.warn("Failed to retrieve or decompress cached xSIP report", e);
+        }
+
+        // If not cached, fetch from Finnsys for a 10 year range
+        try {
+            const today = new Date();
+            const tenYearsAgo = new Date();
+            tenYearsAgo.setFullYear(today.getFullYear() - 10);
+            
+            const formatDate = (date: Date) => {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const y = date.getFullYear();
+                return `${y}-${m}-${d}`;
+            };
+
+            const sipPayload = {
+                arn: env.ARN,
+                username: log,
+                password: pwd,
+                data: {
+                    client_code: client_code,
+                    from_date: formatDate(tenYearsAgo),
+                    to_date: formatDate(today)
+                }
+            };
+
+            xsip_report = await mutual_fund_finnsys_service.get_xsip_registration_report(sipPayload);
+            
+            if (xsip_report && (xsip_report.code == 1 || xsip_report.code == 0)) {
+                try {
+                    const compressed = await compress_json(xsip_report);
+                    // Cache for 24 hours (86400 seconds)
+                    await redis_buffer_client.set(cache_key, compressed, { EX: 86400 });
+                    logger.debug("Cached user xSIP report in Redis (compressed)");
+                } catch (e) {
+                    logger.warn("Failed to compress and cache xSIP report", e);
+                }
+            }
+        } catch (error) {
+            logger.error("Error fetching xSIP registration report for cache", error);
+        }
+
+        return xsip_report;
     }
 }
 

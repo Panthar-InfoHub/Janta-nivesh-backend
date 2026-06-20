@@ -510,7 +510,10 @@ class UserFinanceControllerClass {
     get_folio_details = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const { folio_id } = req.params;
+            let { folio_id } = req.params as unknown as { folio_id: string | string[] };
+            if (Array.isArray(folio_id)) {
+                folio_id = folio_id.join('/');
+            }
 
             logger.info(`Fetching folio details for User ID: ${user.id}, Folio: ${folio_id}`);
 
@@ -545,15 +548,56 @@ class UserFinanceControllerClass {
                     current_nav: this.toNumber(item.currnav),
                     avg_nav: this.toNumber(item.avgcost),
                     folio: item.actualfolio,
+                    actual_folio: item.folio,
                     balance_units: item.balunits,
                     img_url: amc_details?.img_url || ""
                 };
             });
 
+            logger.debug("Mf investment items ==> ", mf_investment_items)
+            let final_investment_items = mf_investment_items;
+
+            // Merge xSIP details into the items if any item has a SIP
+            const has_sips = mf_investment_items.some(item => item.is_sip === true);
+            if (has_sips) {
+                logger.debug(`User folio funds have sip funds... Checking xSIP report for order_id (xsip reg number)`)
+                const user_data = await user_service.get_user_by_id(user.id);
+
+                logger.debug('User data --> ', user_data)
+                if (user_data && user_data.nse_client_code) {
+                    const xsip_report = await wrapper_service.get_xsip_registration_report_cached(user_data.nse_client_code, user.log!, user.pwd!);
+
+                    logger.debug(`Xsip report ==> `, xsip_report)
+                    if (xsip_report && (xsip_report.code == 1 || xsip_report.code == 0) && xsip_report.data && xsip_report.data.report_data) {
+                        final_investment_items = mf_investment_items.map((item: any) => {
+                            if (item.is_sip === true) {
+
+                                logger.debug(`Checking ${item.folio} / ${item.scheme_id}`)
+                                const matching_sip = xsip_report.data.report_data.find((sip: any) =>
+                                    sip.folio_number === item.actual_folio &&
+                                    sip.rta_scheme_code === item.scheme_id
+                                );
+
+                                if (matching_sip) {
+                                    return {
+                                        ...item,
+                                        xsip_reg_no: matching_sip.xsip_registration_no,
+                                        order_id: matching_sip.xsip_registration_no,
+                                        sip_amount: Number(String(matching_sip.installments_amount).replace(/,/g, "")),
+                                        sip_status: matching_sip.status
+                                    };
+                                }
+                            }
+                            return item;
+                        });
+                    }
+                }
+            }
+
             res.status(200).json({
                 code: 200,
                 message: "Folio details fetched successfully",
-                data: mf_investment_items
+                data: final_investment_items
             });
             return;
         } catch (error) {

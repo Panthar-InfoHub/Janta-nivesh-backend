@@ -6,6 +6,7 @@ import { Sip_purchase_item } from "../../lib/types.js";
 import { user_service } from "../user.service.js";
 import { mutual_fund_finnsys_service } from "../finnsys/mf.finnsys.service.js";
 import { nse_service } from "../nse.service.js";
+import { redis_buffer_client } from "../../lib/redis.js";
 import { MfHelperService } from "./MfHelperService.js";
 
 export class MfSipService {
@@ -323,6 +324,12 @@ export class MfSipService {
         }
 
         logger.info(`xSIP orders created successfully. Order ID: ${order_id}`);
+        
+        if (user.nse_client_code) {
+            const cache_key = `mf_xsip:finnsys:${user.nse_client_code}`;
+            await redis_buffer_client.del(cache_key);
+            logger.debug(`Invalidated xSIP cache for user: ${user.nse_client_code}`);
+        }
 
         const xsip_url_res = await nse_service.get_short_url('XSIP_REG', order_id, user_log, user_pwd);
         logger.debug("xSIP short URL response ==> ", xsip_url_res);
@@ -404,6 +411,12 @@ export class MfSipService {
         logger.info(`Executing xSIP Cancellation for User ${user_id}. xSIP Reg No: ${xsip_reg_no}`);
 
         const finnsys_response = await mutual_fund_finnsys_service.cancel_xsip_finnsys(payload);
+
+        if (user.nse_client_code) {
+            const cache_key = `mf_xsip:finnsys:${user.nse_client_code}`;
+            await redis_buffer_client.del(cache_key);
+            logger.debug(`Invalidated xSIP cache for user: ${user.nse_client_code} after cancellation`);
+        }
 
         return finnsys_response;
     }
