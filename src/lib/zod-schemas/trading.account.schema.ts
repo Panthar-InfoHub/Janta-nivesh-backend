@@ -21,7 +21,7 @@ export const NseRegistrationSchema = z.object({
     // --- Financial & Communication ---
     account_no_1: z.string().min(1, "At least one bank account is required"),
     ifsc_code_1: z.string().min(1, "IFSC code is required"),
-    account_type_1: z.enum(["SB", "CA", "NRE", "NRO"]).default("SB"),
+    account_type_1: z.enum(["SB", "CB", "NE", "NO"]).default("SB"),
     default_bank_flag_1: z.enum(["Y", "N"]).default("Y"),
     div_pay_mode: z.string().min(1, "Dividend payout mode is required"),
     email: z.string().email(),

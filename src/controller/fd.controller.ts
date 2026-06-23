@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
+import axios from "axios";
 import logger from "../middleware/logger.js";
 import { FdCustomerType, FdPayoutFrequency } from "../prisma/generated/prisma/enums.js";
 import { fd_service } from "../services/fd/fd.service.js";
@@ -155,16 +156,21 @@ class FdControllerClass {
 
             const encrypted_text = this.create_encryption_text(user?.phone_no)
 
-            const response = await fd_transaction_service.create_transaction_with_purchase_url({
-                id,
+            // Forward to central_server for purchase URL generation
+            const central_url = process.env.CENTRAL_REDIRECT_URL || 'http://localhost:4000';
+            const headers: Record<string, string> = { 'content-type': 'application/json' };
+            if (process.env.CENTRAL_API_KEY) headers['x-api-key'] = process.env.CENTRAL_API_KEY;
+
+            const response = await axios.post(`${central_url}/api/velvet/purchase-url`, {
+                product_id: id,
                 jid: fd_transaction.id,
-                investment_amount,
+                amount: investment_amount,
                 payout_frequency,
-                investment_period, encrypted_text
-            })
+                investment_period,
+                user_phone: user?.phone_no
+            }, { headers, timeout: 10000 });
 
-
-            logger.debug("Purchase URL response from Blostem: ", response);
+            logger.debug("Purchase URL response from central_server: ", response.data);
 
             await zoho_webhook_service.send_event({
                 event_type: "FD_BOOKING_STARTED",
@@ -182,7 +188,7 @@ class FdControllerClass {
             res.status(200).json({
                 success: true,
                 message: "Purchase URL created successfully",
-                data: response
+                data: response.data
             });
             return;
 
@@ -239,20 +245,25 @@ class FdControllerClass {
             logger.info(`User phone number for FD Transaction ID ${fd_trans_id}: ${fd_transaction.user?.phone_no}`);
             const encrypted_text = this.create_encryption_text(fd_transaction.user?.phone_no);
 
-            logger.debug(`Creating redirect URL for FD Transaction ID: ${fd_trans_id}, Event: ${event}, User ID: ${user_id} and token from job_controller: ${token} and the encrypted text: ${encrypted_text}`);
+            logger.debug(`Creating redirect URL for FD Transaction ID: ${fd_trans_id}, Event: ${event}, User ID: ${user_id} and the encrypted text: ${encrypted_text}`);
 
-            const redirect_res = await fd_transaction_service.create_redirect_url({
+            // Forward to central_server for redirect URL generation
+            const central_url = process.env.CENTRAL_REDIRECT_URL || 'http://localhost:4000';
+            const headers: Record<string, string> = { 'content-type': 'application/json' };
+            if (process.env.CENTRAL_API_KEY) headers['x-api-key'] = process.env.CENTRAL_API_KEY;
+
+            const redirect_res = await axios.post(`${central_url}/api/velvet/redirect-url`, {
                 jid: fd_transaction.id,
                 event: event as 'VKYC' | 'PAYMENT',
-                encrypted_text,
-                token
-            });
-            logger.debug("Redirect URL response from Blostem: ", redirect_res);
+                user_phone: fd_transaction.user?.phone_no,
+            }, { headers, timeout: 10000 });
+
+            logger.debug("Redirect URL response from central_server: ", redirect_res.data);
 
             res.status(200).json({
                 success: true,
                 message: "Redirect URL created successfully",
-                data: redirect_res
+                data: redirect_res.data
             });
             return;
 

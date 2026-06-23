@@ -19,8 +19,8 @@ import { user_goal_router } from "./routes/user/user.goal.router.js"
 import { user_insurance_router } from "./routes/user/user.insurance.router.js"
 import { user_loan_router } from "./routes/user/user.loan.router.js"
 import { user_router } from "./routes/user/user.router.js"
-import { webhook_router } from "./routes/webhook.router.js"
 import { fd_router } from "./routes/fd.router.js"
+import { webhook_router as fd_webhook_router } from "./routes/webhook.validation.router.js"
 import { bundle_router } from "./routes/bundle.router.js"
 import { frontend_router } from "./routes/frontend.router.js"
 import { migration_router } from "./routes/migration.router.js"
@@ -57,6 +57,7 @@ app.use("/api/v1/jobs", job_router)
 app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
+app.use("/api/v1/fd/webhook", fd_webhook_router)
 app.use("/api/v1/mf", mutual_fund_router)
 app.use("/api/v1/onboarding", onboarding_router)
 app.use("/api/v1/user-assets", user_assets_router)
@@ -65,7 +66,6 @@ app.use("/api/v1/user-loan", user_loan_router)
 app.use("/api/v1/user-insurance", user_insurance_router)
 app.use("/api/v1/user-goal", user_goal_router)
 app.use("/api/v1/fire-report", fire_report_router)
-app.use("/api/v1/webhook", webhook_router)
 
 app.use("/api/v1/kyc", kyc_router)
 app.use("/api/v1/bundles", bundle_router)
