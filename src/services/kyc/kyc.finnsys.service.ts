@@ -87,9 +87,13 @@ class KycFinnsysServiceClass {
 
             logger.warn(`Response from updating ${type} form data ==> `, response.data);
             return response.data;
-        } catch (error) {
-            logger.error("Error while updating form ==> ", error)
-            throw error
+        } catch (error: any) {
+            const apiError = error?.response?.data;
+            logger.error("Error while updating form ==> ", apiError || error.message);
+            throw new AppError(
+                apiError?.message || "Failed to update form data",
+                apiError?.statusCode || error?.response?.status || 500
+            );
         }
     }
 

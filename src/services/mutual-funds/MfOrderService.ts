@@ -167,6 +167,11 @@ export class MfOrderService {
 
         const finnsys_response = await mutual_fund_finnsys_service.redeem_finnsys(payload);
 
+        if (finnsys_response.code != 1) {
+            logger.error("Redemption failed. Response from Finnsys ==> ", finnsys_response);
+            throw new AppError(`Redemption failed, ${finnsys_response.message}`, 500, "REDEMPTION_FAILED");
+        }
+
         const short_url = await nse_service.get_short_url(
             "RED",
             finnsys_response.data.transaction_details[0].trxn_order_id,
