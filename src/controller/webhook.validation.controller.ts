@@ -25,7 +25,7 @@ export const validateFdWebhook = async (req: Request, res: Response, next: NextF
 
         res.status(200).json({
             success: true,
-            return_url: `${process.env.VELVET_WEBHOOK_CALLBACK_URL || "http://localhost:3000"}/api/v1/fd/webhook/receive`,
+            return_url: `${process.env.VELVET_WEBHOOK_CALLBACK_URL || "http://localhost:8080"}/api/v1/fd/webhook/receive`,
             project_id: "FD",
         });
         return;
