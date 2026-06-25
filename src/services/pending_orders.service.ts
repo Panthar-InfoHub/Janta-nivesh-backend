@@ -1,6 +1,7 @@
 import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
 import { env } from "../lib/config-env.js";
 import logger from "../middleware/logger.js";
+import { wrapper_service } from "./wrapper.service.js";
 
 class PendingOrdersServiceClass {
     /**
@@ -96,7 +97,7 @@ class PendingOrdersServiceClass {
                             date: order.request_date,
                             status: "PROVISIONAL",
                             status_remark: "Awaiting Settlement",
-                            amc: order.scheme_code,
+                            amc: order.amc_name || order.scheme_code,
                             frequency: null,
                             raw_data: order // optional, for debugging
                         });
@@ -152,6 +153,38 @@ class PendingOrdersServiceClass {
                 const dateA = this.parseDate(a.date) || new Date(0);
                 const dateB = this.parseDate(b.date) || new Date(0);
                 return dateB.getTime() - dateA.getTime();
+            });
+
+            // Map logos and AMCs to the pending orders
+            const amcSet = new Set<string>();
+            const nseCodeSet = new Set<string>();
+
+            pendingOrders.forEach(order => {
+                if (order.type === "SIP" && order.amc) {
+                    amcSet.add(order.amc);
+                } else if (order.type === "LUMPSUM" && order.amc) {
+                    // For lumpsum, order.amc currently holds the scheme_code (NSE code)
+                    nseCodeSet.add(order.amc);
+                }
+            });
+
+            // Fetch AMC names & logos for Lumpsum orders via NSE codes
+            const nseCodes = Array.from(nseCodeSet);
+            const nseDetailsMap = await wrapper_service.get_details_by_nse_codes(nseCodes);
+
+            // Fetch logos for SIP orders via AMC names
+            const amcNames = Array.from(amcSet);
+            const logoMap = await wrapper_service.get_logos_of_amc(amcNames);
+
+            pendingOrders.forEach(order => {
+                if (order.type === "LUMPSUM") {
+                    const details = nseDetailsMap.get(order.amc);
+                    // Replace the NSE code with the actual AMC name
+                    order.amc = details?.amc_name || order.amc; 
+                    order.img_url = details?.img_url || "";
+                } else {
+                    order.img_url = logoMap.get(order.amc) || "";
+                }
             });
 
             return {

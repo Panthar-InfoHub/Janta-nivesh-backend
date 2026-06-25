@@ -62,7 +62,7 @@ export const data_migrate = async (req: Request, res: Response, next: NextFuncti
 
 export const amount_data_migration = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filePath = path.join(process.cwd(), 'data/lump_sum_data.json');
+        const filePath = path.join(process.cwd(), 'data/sip_data.json');
 
         logger.debug(`Starting data migration from file: ${filePath}`);
 
@@ -92,26 +92,30 @@ export const amount_data_migration = async (req: Request, res: Response, next: N
                     continue;
                 }
 
-                logger.debug("Updating the values for products ==> ", products)
                 // Update each product individually to allow nested updates
                 for (const product of products) {
                     await db.mfProduct.update({
                         where: { id: product.id },
                         data: {
-                            display_name_001: row.display_name_001,
-                            display_name_002: row.dislpay_name_002, // NOTE: matches 'dislpay_name_002' typo from JSON
                             transaction_rules: {
-                                // Use upsert in case the rule doesn't exist yet
                                 upsert: {
                                     create: {
-                                        min_lumpsum_add_on_amount: Number(row.min_add_on_amt) ?? 0,
-                                        min_redem_qty: Number(row.min_redem_qty) ?? 0,
-                                        min_redem_amount: Number(row.min_redem_amt) ?? 0,
+                                        min_daily_sip_amount: Number(row.sip_min_amt_daily) ?? 0,
+                                        min_weekly_sip_amount: Number(row.sip_min_amt_weekly) ?? 0,
+                                        min_fortnightly_sip_amount: Number(row.sip_min_amt_fortnightly) ?? 0,
+                                        min_monthly_sip_amount: Number(row.sip_min_amt_monthly) ?? 0,
+                                        min_quarterly_sip_amount: Number(row.sip_min_amt_quarterly) ?? 0,
+                                        min_semi_annual_sip_amount: Number(row.sip_min_amt_semi_annual) ?? 0,
+                                        min_annual_sip_amount: Number(row.sip_min_amt_annual) ?? 0,
                                     },
                                     update: {
-                                        min_lumpsum_add_on_amount: Number(row.min_add_on_amt) ?? 0,
-                                        min_redem_qty: Number(row.min_redem_qty) ?? 0,
-                                        min_redem_amount: Number(row.min_redem_amt) ?? 0,
+                                        min_daily_sip_amount: Number(row.sip_min_amt_daily) ?? 0,
+                                        min_weekly_sip_amount: Number(row.sip_min_amt_weekly) ?? 0,
+                                        min_fortnightly_sip_amount: Number(row.sip_min_amt_fortnightly) ?? 0,
+                                        min_monthly_sip_amount: Number(row.sip_min_amt_monthly) ?? 0,
+                                        min_quarterly_sip_amount: Number(row.sip_min_amt_quarterly) ?? 0,
+                                        min_semi_annual_sip_amount: Number(row.sip_min_amt_semi_annual) ?? 0,
+                                        min_annual_sip_amount: Number(row.sip_min_amt_annual) ?? 0,
                                     }
                                 }
                             }

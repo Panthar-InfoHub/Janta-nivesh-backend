@@ -55,6 +55,12 @@ class FDTransactionServiceClass {
     }
 
 
+    get_transaction_by_id = async (id: string) => {
+        return await db.fdTransaction.findUnique({
+            where: { id },
+        });
+    }
+
     get_user_fd_transaction_by_id = async (transaction_id: string, user_id: string) => {
         return await db.fdTransaction.findFirst({
             where: {

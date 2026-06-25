@@ -2,6 +2,11 @@ import fs from "fs";
 import path from "path";
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
+import { redis, redis_buffer_client } from "../lib/redis.js";
+import { user_finnsys_service } from "./user.finnsys.service.js";
+import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
+import { compress_json, decompress_json } from "../lib/utils.js";
+import { env } from "../lib/config-env.js";
 
 class WrapperServiceClass {
     // In-memory cache for static JSON logos
@@ -282,6 +287,137 @@ class WrapperServiceClass {
         }
 
         return rules_map;
+    }
+
+    /**
+     * Resolves amc_name and img_url for a batch of NSE scheme codes.
+     */
+    async get_details_by_nse_codes(nse_codes: string[]): Promise<Map<string, { amc_name: string, img_url: string }>> {
+        const details_map = new Map<string, { amc_name: string, img_url: string }>();
+        if (!nse_codes || nse_codes.length === 0) return details_map;
+
+        const cleanCodes = Array.from(new Set(nse_codes.filter(c => !!c)));
+        if (cleanCodes.length === 0) return details_map;
+
+        try {
+            const products = await db.mfProduct.findMany({
+                where: { nse_scheme_code: { in: cleanCodes } },
+                select: {
+                    nse_scheme_code: true,
+                    amc_name: true,
+                    img_url: true
+                }
+            });
+
+            products.forEach(p => {
+                if (p.nse_scheme_code) {
+                    let url = p.img_url || "";
+                    if (!url && p.amc_name) {
+                        url = this.logoDataCache.get(p.amc_name.toLowerCase()) || "";
+                    }
+                    details_map.set(p.nse_scheme_code, {
+                        amc_name: p.amc_name || "",
+                        img_url: url
+                    });
+                }
+            });
+        } catch (error) {
+            logger.error("Error fetching details by NSE codes:", error);
+        }
+
+        return details_map;
+    }
+
+    /**
+     * Fetch user portfolio from Redis cache if available, else fetch from Finnsys and cache.
+     */
+    async get_user_portfolio_cached(user_id: string, log: string, pwd: string): Promise<any> {
+        const cache_key = `mf_portfolio:finnsys:${user_id}`;
+        let portfolio_res: any = null;
+
+        const cached = await redis.get(cache_key);
+        if (cached) {
+            try {
+                portfolio_res = JSON.parse(cached as string);
+                logger.debug("Fetched user portfolio from Redis cache");
+            } catch (e) {
+                logger.warn("Failed to parse cached portfolio", e);
+            }
+        }
+
+        if (!portfolio_res) {
+            portfolio_res = await user_finnsys_service.get_user_portfolio_finnsys(log, pwd);
+            
+            if (portfolio_res && (portfolio_res.code == 1 || portfolio_res.code == 0)) {
+                // Cache for 3 hours (10800 seconds)
+                await redis.set(cache_key, JSON.stringify(portfolio_res), { EX: 10800 });
+            }
+        }
+        return portfolio_res;
+    }
+
+    /**
+     * Fetch xSIP registration report from Redis cache if available (compressed), else fetch from Finnsys and cache.
+     * Uses a 10-year date range to fetch all SIPs for the user.
+     */
+    async get_xsip_registration_report_cached(client_code: string, log: string, pwd: string): Promise<any> {
+        if (!client_code) return null;
+
+        const cache_key = `mf_xsip:finnsys:${client_code}`;
+        let xsip_report: any = null;
+
+        try {
+            const cached = await redis_buffer_client.get(cache_key);
+            if (cached) {
+                xsip_report = await decompress_json<any>(cached as Buffer);
+                logger.debug("Fetched user xSIP report from Redis cache (decompressed)");
+                return xsip_report;
+            }
+        } catch (e) {
+            logger.warn("Failed to retrieve or decompress cached xSIP report", e);
+        }
+
+        // If not cached, fetch from Finnsys for a 10 year range
+        try {
+            const today = new Date();
+            const tenYearsAgo = new Date();
+            tenYearsAgo.setFullYear(today.getFullYear() - 10);
+            
+            const formatDate = (date: Date) => {
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const y = date.getFullYear();
+                return `${y}-${m}-${d}`;
+            };
+
+            const sipPayload = {
+                arn: env.ARN,
+                username: log,
+                password: pwd,
+                data: {
+                    client_code: client_code,
+                    from_date: formatDate(tenYearsAgo),
+                    to_date: formatDate(today)
+                }
+            };
+
+            xsip_report = await mutual_fund_finnsys_service.get_xsip_registration_report(sipPayload);
+            
+            if (xsip_report && (xsip_report.code == 1 || xsip_report.code == 0)) {
+                try {
+                    const compressed = await compress_json(xsip_report);
+                    // Cache for 24 hours (86400 seconds)
+                    await redis_buffer_client.set(cache_key, compressed, { EX: 86400 });
+                    logger.debug("Cached user xSIP report in Redis (compressed)");
+                } catch (e) {
+                    logger.warn("Failed to compress and cache xSIP report", e);
+                }
+            }
+        } catch (error) {
+            logger.error("Error fetching xSIP registration report for cache", error);
+        }
+
+        return xsip_report;
     }
 }
 

@@ -32,6 +32,11 @@ mutual_fund_router.delete("/remove-cart-item",
     mutual_fund_controller.remove_item_from_cart
 );
 
+mutual_fund_router.delete("/clear-cart",
+    [login_require],
+    mutual_fund_controller.clear_cart
+);
+
 // Purchasing Mutualfunds
 mutual_fund_router.post("/purchase-lumpsum",
     [login_require, require_mfKyc, require_tradingKyc],
@@ -66,6 +71,17 @@ mutual_fund_router.post("/invest-more",
 mutual_fund_router.post("/redeem",
     [login_require, require_mfKyc, require_tradingKyc],
     mutual_fund_controller.redeem
+);
+
+// Cancellation APIs
+mutual_fund_router.post("/cancel-order",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.cancel_order
+);
+
+mutual_fund_router.post("/cancel-xsip",
+    [login_require, require_mfKyc, require_tradingKyc],
+    mutual_fund_controller.cancel_xsip
 );
 
 mutual_fund_router.get("/:id", mutual_fund_controller.get_mutual_fund_by_id);

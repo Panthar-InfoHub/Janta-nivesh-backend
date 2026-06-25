@@ -223,6 +223,15 @@ class TradingAccountControllerClass {
                 throw new AppError("NSE client code (IIN) is missing. Please create a trading account first.", 400, "MISSING_CLIENT_CODE");
             }
 
+            // Check NSE Client Authorization Status
+            const auth_report = await nse_service.get_client_authorization_report(user_data.nse_client_code, user.log!, user.pwd!);
+            const auth_status = auth_report?.data?.report_data?.[0]?.auth_status;
+
+            if (auth_status !== "SUCCESS") {
+                logger.warn(`IIN Authorization failed for user id: ${user.id}. Status: ${auth_status}`);
+                throw new AppError("IIN authorization is not successful from NSE. Please complete the authorization and try again.", 400, "IIN_AUTH_PENDING");
+            }
+
             // 3. Load primary bank details
             const primary_bank = await mfkyc_identity_service.get_primary_bank(user.id);
             if (!primary_bank) {

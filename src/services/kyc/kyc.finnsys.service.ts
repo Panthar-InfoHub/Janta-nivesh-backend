@@ -87,9 +87,13 @@ class KycFinnsysServiceClass {
 
             logger.warn(`Response from updating ${type} form data ==> `, response.data);
             return response.data;
-        } catch (error) {
-            logger.error("Error while updating form ==> ", error)
-            throw error
+        } catch (error: any) {
+            const apiError = error?.response?.data;
+            logger.error("Error while updating form ==> ", apiError || error.message);
+            throw new AppError(
+                apiError?.message || "Failed to update form data",
+                apiError?.statusCode || error?.response?.status || 500
+            );
         }
     }
 
@@ -185,14 +189,19 @@ class KycFinnsysServiceClass {
         };
 
         logger.debug("Payload for executing onboarding task ==> ", payload);
-        const response = await axios.post(`${this.kyc_base_url}/onboardings/execute`, payload, {
-            headers: { "Authorization": `${kyc_access_token}` }
-        });
-        return response.data;
+        try {
+            const response = await axios.post(`${this.kyc_base_url}/onboardings/execute`, payload, {
+                headers: { "Authorization": `${kyc_access_token}` }
+            });
+            return response.data;
+        } catch (error: any) {
+            logger.error(`Error in execute_onboarding (Axios) ==> ${JSON.stringify(error?.response?.data || error.message)}`);
+            throw error;
+        }
     }
 
     create_contract_pdf = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
-        return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+        return await this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
             service: "esign",
             type: "",
             task: "createPdf",
@@ -202,7 +211,7 @@ class KycFinnsysServiceClass {
 
     generate_esign_url = async (kyc_access_token: string, merchant_id: string, inv_id: string, pdf_url: string) => {
         try {
-            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+            return await this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
                 service: "esign",
                 type: "",
                 task: "createEsignUrl",
@@ -212,34 +221,34 @@ class KycFinnsysServiceClass {
                     //   "redirectUrl": "http://acmatics.com/kyc"
                 }
             });
-        } catch (error) {
-            logger.error("Error in saving esign pdf data ==> ", error);
+        } catch (error: any) {
+            logger.error("Error in generating esign url ==> ", error?.response?.data || error.message);
             throw error;
         }
     }
 
     save_esign_pdf = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
         try {
-            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+            return await this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
                 service: "esign",
                 type: "",
                 task: "getEsignData",
                 data: {}
             });
-        } catch (error) {
-            logger.error("Error in saving esign pdf data ==> ", error);
+        } catch (error: any) {
+            logger.error("Error in saving esign pdf data ==> ", error?.response?.data || error.message);
             throw error;
         }
     }
 
     execute_verification = async (kyc_access_token: string, merchant_id: string, inv_id: string) => {
         try {
-            return this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
+            return await this.execute_onboarding(kyc_access_token, merchant_id, inv_id, {
                 service: "verificationEngine",
                 merchantId: merchant_id
             });
-        } catch (error) {
-            logger.error("Error in executing verification ==> ", error);
+        } catch (error: any) {
+            logger.error("Error in executing verification ==> ", error?.response?.data || error.message);
             throw error;
         }
     }
