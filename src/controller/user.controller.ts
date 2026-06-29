@@ -71,7 +71,7 @@ class UserFinanceControllerClass {
                     const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
                     if (current_value > 0) {
                         const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
-                        goal.current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
+                        (goal as any).current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
                     }
                 }
 
@@ -87,7 +87,7 @@ class UserFinanceControllerClass {
                         years_post_retirement
                     );
 
-                    goal.current_goal_cost = new Prisma.Decimal(Math.round(corpus_value));
+                    (goal as any).current_goal_cost = new Prisma.Decimal(Math.round(corpus_value));
                     logger.debug(`Computed corpus value for retirement goal ${goal.goal_id}: ${corpus_value}`);
                 }
                 return goal;

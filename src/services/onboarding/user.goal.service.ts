@@ -64,7 +64,7 @@ class UserGoalServiceClass {
 
         const user_goal = await db.userGoals.create({
             data: {
-                ...data,
+                ...(data as any),
                 user_id: user.id,
                 goal_id: parseInt(res.data.results[0]?.gid),
                 ...(data.goal_type_id === 3 && {
@@ -105,9 +105,7 @@ class UserGoalServiceClass {
             where: {
                 id: existing_goal.id,
             },
-            data: {
-                ...data,
-            },
+            data: data as any,
         });
 
         const params: any = this.extract_params(user, data);
@@ -172,7 +170,7 @@ class UserGoalServiceClass {
         if (goals) {
             for (const goal of goals) {
                 const created_goal = await tx.userGoals.create({
-                    data: { user_id, ...goal },
+                    data: { user_id, ...goal } as any,
                     select: { id: true, goal_type_id: true },
                 });
 

@@ -2,7 +2,7 @@ import jwt, { SignOptions } from "jsonwebtoken";
 import { User } from "../prisma/generated/prisma/client.js";
 import { env } from "../lib/config-env.js";
 
-export const generate_JWT = (user: User, period?: SignOptions["expiresIn"]): string => {
+export const generate_JWT = (user: any, period?: SignOptions["expiresIn"]): string => {
   const payload = {
     id: user.id,
     phone_no: user.phone_no,

@@ -51,11 +51,12 @@ class MFKycIdentityServiceClass {
             where: {
                 user_account_no_idx: {
                     user_id,
-                    account_no: bank_data.account_no
+                    account_no_hash: bank_data.account_no
                 }
             },
             create: {
                 user_id,
+                account_no_hash: bank_data.account_no,
                 ...bank_data
             },
             update: {
