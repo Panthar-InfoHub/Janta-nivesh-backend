@@ -115,7 +115,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const netWorthHistory = qs.map(q => ({ quarter: q.quarter, value: q.net_worth }));
     const fireCurrentCorpus = projection[0]?.portfolio_value.emi_include ?? 0;
     const fireNumber = projection[0]?.fire_number.emi_include ?? 0;
-    const firePercentage = fireNumber > 0 ? (netWorth * 100) / fireNumber : 0;
+    const firePercentage = projection[0]?.fire_percentage.emi_include ?? 0;
     const fireGap = Math.max(0, fireNumber - netWorth);
     const annualExpenses = m.total_annual_expenses;
     // approximate previous quarter's annual expenses (monthly rate deflated by 6% p.a. ÷ 4 quarters)
