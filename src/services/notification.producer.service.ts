@@ -3,7 +3,7 @@ import logger from "../middleware/logger.js";
 
 class NotificationProducerService {
     private pub_sub_client: PubSub | null = null;
-    private topic_name = "notification-events";
+    private topic_name = process.env.PUBSUB_TOPIC || "notification-events";
 
     constructor() {
         try {

@@ -115,13 +115,24 @@ export const errorHandler: ErrorRequestHandler = (
         // Prisma known request errors (P2xxx codes)
         else if (error instanceof Prisma.PrismaClientKnownRequestError) {
             switch (error.code) {
-                case "P2002":
-                    error = new AppError(
-                        `Unique constraint violation on field: ${(error.meta?.target as string[])?.join(", ")}`,
-                        409,
-                        "PrismaUniqueConstraintError"
-                    );
+                case "P2002": {
+                    const target =
+                        (error.meta?.target as string[] | undefined) ??
+                        ((error.meta?.driverAdapterError as any)?.cause?.constraint?.fields as string[] | undefined);
+                    const friendlyFieldMessages: Record<string, string> = {
+                        email: "An account with this email already exists.",
+                        email_hash: "An account with this email already exists.",
+                        phone: "An account with this phone number already exists.",
+                        phone_hash: "An account with this phone number already exists.",
+                        username: "This username is already taken.",
+                    };
+                    const fieldKey = target?.find((f) => f in friendlyFieldMessages);
+                    const message = fieldKey
+                        ? friendlyFieldMessages[fieldKey]
+                        : "A record with the provided details already exists.";
+                    error = new AppError(message, 409, "PrismaUniqueConstraintError");
                     break;
+                }
                 case "P2003":
                     error = new AppError(
                         `Foreign key constraint failed on field: ${error.meta?.field_name}`,

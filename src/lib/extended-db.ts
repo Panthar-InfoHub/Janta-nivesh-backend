@@ -1,3 +1,5 @@
+// outstanding_amount
+
 import { PrismaClient } from "../prisma/generated/prisma/client.js";
 import { Prisma } from "../prisma/generated/prisma/client.js";
 import { encrypt, decrypt, generateBlindIndex } from "./encryption.js";
@@ -298,9 +300,15 @@ export function extendPrismaClient(client: PrismaClient) {
                     const anyArgs = args as any;
 
                     // Process writes
-                    if (["create", "update", "upsert"].includes(operation)) {
+                    if (["create", "update", "upsert", "createMany"].includes(operation)) {
                         if (anyArgs.data) {
-                            encryptIncomingData(anyArgs.data, model);
+                            if (Array.isArray(anyArgs.data)) {
+                                for (const item of anyArgs.data) {
+                                    encryptIncomingData(item, model);
+                                }
+                            } else {
+                                encryptIncomingData(anyArgs.data, model);
+                            }
                         }
                         if (anyArgs.create) {
                             encryptIncomingData(anyArgs.create, model);
