@@ -271,7 +271,7 @@ class AuthControllerClass {
                 throw new AppError("Refresh token is required", 400, "NOT_REFRESH_TOKEN_PROVIDED");
             }
 
-            const user: User | null = await user_service.get_user_by_refresh_token(old_token);
+            const user: any = await user_service.get_user_by_refresh_token(old_token);
 
             if (!user) {
                 logger.error("Invalid refresh token provided");

@@ -239,11 +239,11 @@ class UserServiceClass {
                 },
             });
 
-            await user_finance_service.delete(user_id, tx);
-            await user_assets_service.delete(user_id, tx);
-            await user_insurance_service.delete(user_id, tx);
-            await user_loan_service.delete_all_loans(user_id, tx);
-            await user_goal_service.delete_all_goals(user_id, tx);
+            await user_finance_service.delete(user_id, tx as any);
+            await user_assets_service.delete(user_id, tx as any);
+            await user_insurance_service.delete(user_id, tx as any);
+            await user_loan_service.delete_all_loans(user_id, tx as any);
+            await user_goal_service.delete_all_goals(user_id, tx as any);
         });
     }
 

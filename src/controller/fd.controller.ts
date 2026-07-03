@@ -188,7 +188,7 @@ class FdControllerClass {
             res.status(200).json({
                 success: true,
                 message: "Purchase URL created successfully",
-                data: response.data
+                data: response.data.purchase_url
             });
             return;
 

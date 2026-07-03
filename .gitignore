@@ -21,4 +21,5 @@ response.json
 # src/lib/ecas-parser.ts
 
 central_server/
+notification_service/
 Todo.md

@@ -13,7 +13,7 @@ export interface AuthResponse {
     results?: any;
 }
 
-export type UserWithAllData = UserGetPayload<{
+export type UserWithAllData = Omit<UserGetPayload<{
     include: {
         user_finance: true
         user_assets: true
@@ -23,9 +23,17 @@ export type UserWithAllData = UserGetPayload<{
         kyc_types: true
         mfKycIdentities: true
     }
-}>
+}>, 'dob' | 'user_finance' | 'user_assets' | 'user_insurance' | 'user_loan' | 'user_goals' | 'mfKycIdentities'> & {
+    dob: Date | null;
+    user_finance: any;
+    user_assets: any;
+    user_insurance: any;
+    user_loan: any;
+    user_goals: any;
+    mfKycIdentities: any;
+}
 
-export type UserFireReportData = UserGetPayload<{
+export type UserFireReportData = Omit<UserGetPayload<{
     include: {
         user_finance: true;
         user_assets: {
@@ -43,7 +51,15 @@ export type UserFireReportData = UserGetPayload<{
         user_loan: true;
         user_goals: true;
     };
-}>;
+}>, 'dob' | 'user_finance' | 'user_assets' | 'user_insurance' | 'user_loan' | 'user_goals'> & {
+    dob: Date | null;
+    user_finance: any;
+    user_assets: any;
+    user_insurance: any;
+    user_loan: any;
+    user_goals: any;
+};
+
 
 export const lumpsum_cart_zod_schema = z.object({
     amc_code: z.string().min(1),

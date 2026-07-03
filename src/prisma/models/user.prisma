@@ -11,9 +11,11 @@ model User {
   usr               String?                @unique
   pwd               String?
   email             String?                @unique
+  email_hash        String?                @unique
   phone_no          String?                @unique
+  phone_hash        String?                @unique
   city              String?
-  dob               DateTime?
+  dob               String?
   fcm_token         String?
   meta_data         Json?
   createdAt         DateTime               @default(now())
@@ -32,18 +34,20 @@ model User {
   user_loan         UserLoan[]
   net_worth_history UserNetWorthSnapshot[]
   mandates          Mandate[]
+  notifications     Notification[]
 }
 
 model UserNetWorthSnapshot {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
-  netWorth    Float
-  assets      Float // Sum of MF + FD + Cash
-  liabilities Float // Sum of Loans
+  netWorth    String
+  assets      String // Sum of MF + FD + Cash
+  liabilities String // Sum of Loans
   month       Int // 1-12
   year        Int // 2024
   createdAt   DateTime @default(now())
+
 
   @@unique([userId, month, year]) // Prevents duplicate entries for the same month
 }

@@ -39,4 +39,9 @@ export const env = {
     REDIS_USERNAME: process.env.REDIS_USERNAME!,
     REDIS_PASS: process.env.REDIS_PASS!,
     REDIS_TYPE: process.env.REDIS_TYPE!,
+
+    // Database Encryption Config
+    DB_ENCRYPTION_KEY: process.env.DB_ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    BLIND_INDEX_KEY: process.env.BLIND_INDEX_KEY || "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 };
+

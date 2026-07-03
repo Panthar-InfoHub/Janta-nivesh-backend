@@ -25,13 +25,16 @@ import { bundle_router } from "./routes/bundle.router.js"
 import { frontend_router } from "./routes/frontend.router.js"
 import { migration_router } from "./routes/migration.router.js"
 import { report_router } from "./routes/report.router.js"
+import { extendPrismaClient } from "./lib/extended-db.js"
 
 
 //Configurations
 dotenv.config()
 const pool = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
-export const db = new PrismaClient({ adapter: pool })
+const prisma = new PrismaClient({ adapter: pool })
+export const db = extendPrismaClient(prisma)
 const app = express()
+
 
 //Setting up socket server : later
 
