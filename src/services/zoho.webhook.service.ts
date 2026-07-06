@@ -71,7 +71,11 @@ class ZohoWebhookServiceClass {
 
             logger.info(`Sending Zoho webhook event: ${payload.event_type} for user: ${payload.user_id}`);
             const response = await axios.post(this.ZOHO_WEBHOOK_URL, payload, {
-                headers: { "Content-Type": "application/json" }
+                headers: { "Content-Type": "application/json" },
+                params: {
+                    zapikey: env.ZOHO_API_KEY,
+                    isdebug: false
+                }
             });
 
             logger.debug(`Zoho webhook response: status=${response.status}`);
