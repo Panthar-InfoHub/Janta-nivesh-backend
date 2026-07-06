@@ -80,7 +80,7 @@ class AuthControllerClass {
                 throw new AppError("Mobile number and 4-digit OTP are required", 400, "INVALID_OTP_PAYLOAD");
             }
 
-            const { mob, otp } = validation.data;
+            const { mob, otp, fcm_token } = validation.data;
 
             const user = await user_service.get_user_by_phone(mob);
             if (!user) {
@@ -102,7 +102,8 @@ class AuthControllerClass {
                 usr: auth_res.results[0].usr,
                 pwd: auth_res.results[0].pwd,
                 inv_id: auth_res.results[0].invid,
-                refresh_token: refresh_token
+                refresh_token: refresh_token,
+                fcm_token,
             });
 
             await zoho_webhook_service.send_event({

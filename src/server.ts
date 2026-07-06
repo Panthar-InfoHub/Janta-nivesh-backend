@@ -26,6 +26,7 @@ import { frontend_router } from "./routes/frontend.router.js"
 import { migration_router } from "./routes/migration.router.js"
 import { report_router } from "./routes/report.router.js"
 import { extendPrismaClient } from "./lib/extended-db.js"
+import { test_router } from "./routes/test.router.js"
 
 
 //Configurations
@@ -60,6 +61,7 @@ app.use("/api/v1/jobs", job_router)
 app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
+app.use("/api/v1/test", test_router)
 app.use("/api/v1/fd/webhook", fd_webhook_router)
 app.use("/api/v1/mf", mutual_fund_router)
 app.use("/api/v1/onboarding", onboarding_router)

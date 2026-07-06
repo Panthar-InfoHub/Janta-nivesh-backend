@@ -7,6 +7,7 @@ export const reqOtpSchema = z.object({
 export const validateOtpSchema = z.object({
     mob: z.string().regex(/^[0-9]{10}$/, "Invalid mobile number"),
     otp: z.string().length(4, "OTP must be 4 digits"),
+    fcm_token: z.string().optional(),
 });
 
 export const deviceParamsSchema = z.object({
