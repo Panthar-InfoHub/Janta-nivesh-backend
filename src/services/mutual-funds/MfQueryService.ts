@@ -1,7 +1,7 @@
+import { gzip } from "zlib";
 import logger from "../../middleware/logger.js";
 import { db } from "../../server.js";
 import { promisify } from "util";
-import { gzip } from "zlib";
 import { redis_buffer_client } from "../../lib/redis.js";
 import { decompressAndFilter } from "../../lib/utils.js";
 import { Prisma } from "../../prisma/generated/prisma/client.js";
@@ -188,7 +188,7 @@ export class MfQueryService {
         };
     }
 
-    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others', limit?: number, page?: number }) => {
+    get_category_query = (category: string): Prisma.MfProductWhereInput => {
         const baseQuery: Prisma.MfProductWhereInput = {
             sip_allowed: true,
             metrics: {
@@ -203,81 +203,95 @@ export class MfQueryService {
             }
         };
 
-        let query: Prisma.MfProductWhereInput = { ...baseQuery };
-
         switch (category) {
             case 'flexi_cap':
-                query = {
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'Flexi-cap Fund',
-                        mode: 'insensitive'
-                    },
+                    scheme_type: { contains: 'Flexi-cap Fund', mode: 'insensitive' },
                     asset_type: 'Equity'
                 };
-                break;
             case 'large_Mid_cap':
-                query = {
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'Large & Mid Cap Fund',
-                        mode: 'insensitive'
-                    },
+                    scheme_type: { contains: 'Large & Mid Cap Fund', mode: 'insensitive' },
                     asset_type: 'Equity'
                 };
-                break;
             case 'large_cap':
-                query = {
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'Largecap Fund',
-                        mode: 'insensitive'
-                    },
+                    scheme_type: { contains: 'Largecap Fund', mode: 'insensitive' },
                     asset_type: 'Equity'
                 };
-                break;
             case 'mid_cap':
-                query = {
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'Midcap Fund',
-                        mode: 'insensitive'
-                    },
+                    scheme_type: { contains: 'Midcap Fund', mode: 'insensitive' },
                     asset_type: 'Equity'
                 };
-                break;
             case 'small_cap':
-                query = {
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'Smallcap Fund',
-                        mode: 'insensitive'
-                    },
+                    scheme_type: { contains: 'Smallcap Fund', mode: 'insensitive' },
                     asset_type: 'Equity'
                 };
-                break;
-            case 'index':
-                query = {
+            case 'multi_cap':
+                return {
                     ...baseQuery,
-                    scheme_type: {
-                        contains: 'ETF/Index',
-                        mode: 'insensitive'
-                    }
+                    scheme_type: { contains: 'Multicap Fund', mode: 'insensitive' },
+                    asset_type: 'Equity'
                 };
-                break;
+            case 'index':
+                return {
+                    ...baseQuery,
+                    scheme_type: { contains: 'ETF/Index', mode: 'insensitive' }
+                };
             case 'global_others':
-                query = {
+                return {
                     ...baseQuery,
                     asset_type: 'Others - Mutual Funds'
                 };
-                break;
+            default:
+                return baseQuery;
         }
+    }
 
+    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others' | 'multi_cap', limit?: number, page?: number }) => {
+        const query = this.get_category_query(category);
         return await this.get_mutual_funds({
             pagination: { page, limit },
             query,
             order: { metrics: { return_1y: 'desc' } }
         });
+    }
+
+    get_top_funds_by_category_cached = async (category: string, limit: number = 10) => {
+        const cache_key = `mutual_funds:category:${category}:${limit}`;
+        try {
+            const cached = await redis_buffer_client.get(cache_key);
+            if (cached) {
+                logger.info(`Top Fund by Category cache hit for key: ${cache_key}`);
+                return await decompressAndFilter(cached as Buffer);
+            }
+        } catch (err) {
+            logger.error(`[MfQueryService] Redis error getting category cache:`, err);
+        }
+
+        logger.info(`Top Fund by Category cache miss for key: ${cache_key}, querying DB`);
+        const query = this.get_category_query(category);
+        const result = await this.get_mutual_funds({
+            pagination: { page: 1, limit },
+            query,
+            order: { metrics: { return_3y: 'desc' } }
+        });
+
+        try {
+            const compressed = await gzipAsync(JSON.stringify(result));
+            await redis_buffer_client.set(cache_key, compressed, { EX: 24 * 60 * 60 });
+        } catch (err) {
+            logger.error(`[MfQueryService] Redis error setting category cache:`, err);
+        }
+
+        return result;
     }
 
     get_mutual_fund_by_id = async (id: string) => {

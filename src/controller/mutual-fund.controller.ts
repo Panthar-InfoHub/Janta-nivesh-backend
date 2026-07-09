@@ -552,7 +552,7 @@ class MutualFundControllerClass {
                 { log: user.log as string, pwd: user.pwd as string }
             );
 
-            logger.info(`[BundleCart] Added ${result.added}/${result.total_products} products to cart for user: ${user.id}`);
+            logger.info(`[BundleCart] Added ${result.added}/${result.total_funds} funds to cart for user: ${user.id}`);
 
             await zoho_webhook_service.send_event({
                 event_type: "BUNDLE_SELECTED",
@@ -560,12 +560,12 @@ class MutualFundControllerClass {
                 user_id: user.id,
                 bundle_id: validation.data.bundle_id,
                 products_added: result.added,
-                products_total: result.total_products
+                products_total: result.total_funds
             });
 
             res.status(200).json({
                 success: true,
-                message: `Bundle added to cart: ${result.added} of ${result.total_products} product(s) added successfully`,
+                message: `Bundle added to cart: ${result.added} of ${result.total_funds} fund(s) added successfully`,
                 data: result
             });
             return;

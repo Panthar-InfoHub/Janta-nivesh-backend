@@ -39,13 +39,13 @@ class FrontendControllerClass {
                 mutual_funds_service.query.get_funds_by_category({ category: 'global_others' }),
             ]);
 
-            bundle.bundles = bundle.bundles.map(bundle => {
-                const total_min_amount = bundle.bundle_products.reduce((acc, bp) => acc + Number(bp.min_amount), 0);
-                return {
-                    ...bundle,
-                    accumulated_min_amount: total_min_amount
-                };
-            });
+            // bundle.bundles = bundle.bundles.map(bundle => {
+            //     const total_min_amount = bundle.categories.
+            //     return {
+            //         ...bundle,
+            //         // accumulated_min_amount: total_min_amount ?? ""
+            //     };
+            // });
 
             const response_data = {
                 bundle_funds: {

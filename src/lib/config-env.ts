@@ -13,11 +13,19 @@ export const env = {
     FINNSYS_USERNAME: process.env.FINNSYS_USERNAME!,
     FINNSYS_PASSWORD: process.env.FINNSYS_PASSWORD!,
 
-    // NSE Headers    
+    // NSE Headers
     NSE_MEMBER_ID: process.env.NSE_MEMBER_ID!,
     NSE_API_KEY: process.env.NSE_API_KEY!,
     NSE_API_SECRET: process.env.NSE_API_SECRET!,
     NSE_USERNAME: process.env.NSE_USERNAME!,
+
+    // NSE MFDESK (nseinvest.com) raw API creds - placeholders, to be filled in later
+    NSE_MFDESK_BASE_URL: process.env.NSE_MFDESK_BASE_URL || "https://www.nseinvest.com",
+    NSE_MFDESK_LOGIN_USER_ID: process.env.NSE_USERNAME!,
+    NSE_MFDESK_API_SECRET: process.env.NSE_API_SECRET!,
+    NSE_MFDESK_MEMBER_LICENSE_KEY: process.env.NSE_API_KEY!,
+    // NSE_MFDESK_MEMBER_CODE: process.env.NSE_MFDESK_MEMBER_CODE!,
+    NSE_MFDESK_MEMBER_ID: process.env.NSE_MEMBER_ID!,
 
     // Blostem Creds
     BLOSTEM_URL: process.env.BLOSTEM_URL!,

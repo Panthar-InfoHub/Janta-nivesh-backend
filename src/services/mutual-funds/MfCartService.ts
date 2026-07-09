@@ -74,19 +74,7 @@ export class MfCartService {
         }
     }
 
-    add_bundle_to_cart = async (input: AddBundleToCartInput, user_creds: { log: string; pwd: string }) => {
-        const { bundle_id, type, amount } = input;
-
-        // 1. Fetch bundle with all products
-        const bundle = await bundle_service.get_bundle_by_id(bundle_id);
-        if (!bundle) {
-            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
-        }
-        if (!bundle.bundle_products || bundle.bundle_products.length === 0) {
-            throw new AppError("Bundle has no products", 400, "BUNDLE_EMPTY");
-        }
-
-        // 2. Fetch current Finnsys cart and clear all items
+    private clear_finnsys_cart = async (user_creds: { log: string; pwd: string }) => {
         logger.info(`[BundleCart] Fetching current cart for user log: ${user_creds.log}`);
         const cart_res = await user_service.get_user_cart_finnsys(user_creds.log, user_creds.pwd);
 
@@ -103,86 +91,122 @@ export class MfCartService {
         } else {
             logger.info("[BundleCart] Cart is empty, skipping clear step");
         }
+    }
 
-        // 3. For SIP: pre-fetch each product's transaction_rules for validation
-        const failed: { mf_product_id: string; reason: string }[] = [];
-        let added = 0;
+    add_bundle_to_cart = async (input: AddBundleToCartInput, user_creds: { log: string; pwd: string }) => {
+        const { bundle_id, type, amount, selections } = input;
 
-        for (const bp of bundle.bundle_products) {
-            const mf_product = bp.mf_product as any;
-            if (!mf_product) {
-                logger.warn(`[BundleCart] mf_product missing for bundle_product ${bp.mf_product_id}, skipping`);
-                failed.push({ mf_product_id: bp.mf_product_id, reason: "mf_product not found" });
-                continue;
+        // 1. Confirm the bundle exists
+        const bundle = await bundle_service.get_bundle_by_id(bundle_id);
+        if (!bundle) {
+            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+        }
+
+        // 2. Selection count must match the bundle's total slot count (one fund per slot, flat 100% split)
+        const total_slots = bundle.categories.reduce((sum, cat) => sum + cat.slots.length, 0);
+        if (selections.length !== total_slots) {
+            throw new AppError(
+                `Bundle requires exactly ${total_slots} fund selection(s), got ${selections.length}`,
+                400,
+                "SELECTION_COUNT_MISMATCH"
+            );
+        }
+
+        // 3. Reject duplicate fund selections
+        const unique_ids = new Set(selections.map(s => s.mf_product_id));
+        if (unique_ids.size !== selections.length) {
+            throw new AppError("Duplicate mutual funds are selected", 400, "DUPLICATE_SELECTION");
+        }
+
+        // 4. Resolve each selection to its MfProduct
+        const mf_products = await Promise.all(
+            selections.map(s => this.queryService.get_mutual_fund_by_id(s.mf_product_id))
+        );
+
+        mf_products.forEach((product, idx) => {
+            if (!product) {
+                throw new AppError(`Mutual fund product not found: ${selections[idx].mf_product_id}`, 404, "PRODUCT_NOT_FOUND");
             }
+        });
 
-            // Compute per-product amount from allocation_percentage
-            const per_product_amount = Math.round((bp.allocation_percentage / 100) * amount);
+        // 5. For SIP: validate every fund's transaction rules before touching Finnsys
+        if (type === "SIP") {
+            for (const product of mf_products) {
+                if (!product!.transaction_rules?.sip_allowed_dates.includes(input.sip_day)) {
+                    throw new AppError(
+                        `SIP day ${input.sip_day} is not allowed for fund "${product!.scheme_name}"`,
+                        400,
+                        "SIP_DAY_NOT_ALLOWED"
+                    );
+                }
+                if (!product!.transaction_rules?.sip_frequencies.includes(input.sip_freq)) {
+                    throw new AppError(
+                        `SIP frequency "${input.sip_freq}" is not allowed for fund "${product!.scheme_name}"`,
+                        400,
+                        "SIP_FREQ_NOT_ALLOWED"
+                    );
+                }
+            }
+        }
 
-            try {
+        // 6. Clear any existing Finnsys cart items
+        await this.clear_finnsys_cart(user_creds);
+
+        // 7. Add every selected fund; abort and roll back on first failure
+        try {
+            for (let i = 0; i < selections.length; i++) {
+                const selection = selections[i];
+                const product = mf_products[i]!;
+                const per_fund_amount = Math.round((selection.allocation_percentage / 100) * amount);
+
                 if (type === "LUMPSUM") {
-                    await this.add_lumpsum_cart(
+                    const res = await this.add_lumpsum_cart(
                         {
-                            amc_code: mf_product.amc_code || "",
-                            amc_name: mf_product.amc_name || "",
-                            prod_code: mf_product.platform_code || "",
-                            prod_name: mf_product.scheme_name || "",
-                            txn_amount: per_product_amount,
+                            amc_code: product.amc_code || "",
+                            amc_name: product.amc_name || "",
+                            prod_code: product.platform_code || "",
+                            prod_name: product.scheme_name || "",
+                            txn_amount: per_fund_amount,
+                            folio: "",
                         },
                         user_creds
                     );
-                    added++;
+                    if (res.code != "1") {
+                        throw new AppError(`Failed to add "${product.scheme_name}" to cart`, 500, "ADD_TO_CART_ERROR");
+                    }
                 } else {
-                    // SIP — validate sip_day and sip_freq against this product's transaction_rules
-                    // We need the full product with transaction_rules; re-fetch by ID to get them.
-                    const mf_detail = await this.queryService.get_mutual_fund_by_id(bp.mf_product_id);
-
-                    if (!mf_detail?.transaction_rules?.sip_allowed_dates.includes(input.sip_day)) {
-                        throw new AppError(
-                            `SIP day ${input.sip_day} is not allowed for fund "${mf_product.scheme_name}"`,
-                            400,
-                            "SIP_DAY_NOT_ALLOWED"
-                        );
-                    }
-
-                    if (!mf_detail?.transaction_rules?.sip_frequencies.includes(input.sip_freq)) {
-                        throw new AppError(
-                            `SIP frequency "${input.sip_freq}" is not allowed for fund "${mf_product.scheme_name}"`,
-                            400,
-                            "SIP_FREQ_NOT_ALLOWED"
-                        );
-                    }
-
-                    await this.add_sip_cart(
+                    const res = await this.add_sip_cart(
                         {
-                            amc_code: mf_product.amc_code || "",
-                            amc_name: mf_product.amc_name || "",
-                            prod_code: mf_product.platform_code || "",
-                            prod_name: mf_product.scheme_name || "",
-                            txn_amount: per_product_amount,
+                            amc_code: product.amc_code || "",
+                            amc_name: product.amc_name || "",
+                            prod_code: product.platform_code || "",
+                            prod_name: product.scheme_name || "",
+                            folio: "",
+                            txn_amount: per_fund_amount,
                             sip_st_date: input.sip_st_date,
                             sip_en_date: input.sip_en_date,
                             sip_freq: input.sip_freq,
                             sip_day: input.sip_day,
-                            sip_amt: per_product_amount,
+                            sip_amt: per_fund_amount,
                         },
                         user_creds
                     );
-                    added++;
+                    if (res.code != "1") {
+                        throw new AppError(`Failed to add "${product.scheme_name}" to cart`, 500, "ADD_TO_CART_ERROR");
+                    }
                 }
-            } catch (err: any) {
-                if (err instanceof AppError) throw err;
-                logger.error(`[BundleCart] Failed to add product ${bp.mf_product_id} to cart:`, err);
-                failed.push({ mf_product_id: bp.mf_product_id, reason: err?.message ?? "Unknown error" });
             }
+        } catch (err) {
+            logger.error("[BundleCart] Failed to add bundle to cart, rolling back ==> ", err);
+            await this.clear_finnsys_cart(user_creds);
+            throw err instanceof AppError ? err : new AppError("Failed to add bundle to cart", 500, "ADD_TO_CART_ERROR");
         }
 
         return {
             bundle_id,
             type,
-            total_products: bundle.bundle_products.length,
-            added,
-            failed,
+            total_funds: selections.length,
+            added: selections.length,
         };
     }
 

@@ -4,17 +4,34 @@ import { CreateBundleInput } from "../lib/zod-schemas/bundle.schema.js";
 class BundleServiceClass {
 
     async create_bundle(data: CreateBundleInput) {
-        const { bundle_name, bundle_products } = data;
+        const { bundle_name, meta_data, hybrid_percentage, bundle_description, equity_percentage, commodity_percentage, debt_percentage, categories } = data;
 
         return await db.bundle.create({
             data: {
                 bundle_name,
-                bundle_products: {
-                    create: bundle_products
+                bundle_description,
+                equity_percentage,
+                commodity_percentage,
+                hybrid_percentage,
+                debt_percentage,
+                meta_data,
+                categories: {
+                    create: categories.map(category => ({
+                        category_name: category.category_name,
+                        display_name: category.display_name,
+                        total_percentage: category.total_percentage,
+                        slots: {
+                            create: category.slots
+                        }
+                    }))
                 }
             },
             include: {
-                bundle_products: true
+                categories: {
+                    include: {
+                        slots: true
+                    }
+                }
             }
         });
     }
@@ -25,13 +42,13 @@ class BundleServiceClass {
         const [bundles, total] = await Promise.all([
             db.bundle.findMany({
                 skip,
-                include: {
-                    bundle_products: {
-                        include: {
-                            mf_product: true,
-                        }
-                    }
-                },
+                // include: {
+                //     categories: {
+                //         include: {
+                //             slots: true
+                //         }
+                //     }
+                // },
                 take: limit,
                 orderBy: {
                     bundle_name: 'asc'
@@ -55,26 +72,9 @@ class BundleServiceClass {
         return await db.bundle.findUnique({
             where: { id },
             include: {
-                bundle_products: {
+                categories: {
                     include: {
-                        mf_product: {
-                            include: {
-                                metrics: {
-                                    select: {
-                                        return_3y: true,
-                                        return_1y: true,
-                                        return_90d: true,
-                                        return_6m: true
-                                    }
-                                },
-                                transaction_rules: {
-                                    select: {
-                                        sip_allowed_dates: true,
-                                        sip_frequencies: true
-                                    }
-                                }
-                            },
-                        }
+                        slots: true
                     }
                 }
             }

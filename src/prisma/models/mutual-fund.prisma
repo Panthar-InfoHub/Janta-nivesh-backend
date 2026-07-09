@@ -27,7 +27,6 @@ model MfProduct {
   updatedAt          DateTime                  @default(now()) @updatedAt
   nse_scheme_code    String                    @default("")
   platform_code      String?
-  bundle_products    BundleProduct[]
   metrics            MfMetrics?
   nav_history        MfNavHistory[]
   transaction_rules  MfSchemeTransactionRules?

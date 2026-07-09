@@ -22,7 +22,7 @@ mutual_fund_router.post("/sip-cart",
 
 // Add bundle to cart
 mutual_fund_router.post("/bundle-cart",
-    [login_require, require_mfKyc, require_tradingKyc],
+    [login_require],
     mutual_fund_controller.add_bundle_to_cart
 );
 
