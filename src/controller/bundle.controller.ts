@@ -54,6 +54,8 @@ class BundleControllerClass {
 
             const bundle_result = await bundle_service.get_bundle_by_id(id);
 
+            logger.debug("Bundle result ==> ", bundle_result)
+
             const result = await Promise.all(bundle_result.categories.map(async (cat) => {
                 const category_funds = await mutual_funds_service.query.get_top_funds_by_category_cached(cat.category_name, 10)
                 return {
@@ -65,7 +67,16 @@ class BundleControllerClass {
             res.status(200).json({
                 success: true,
                 message: "Bundle fetched successfully",
-                data: result
+                data: {
+                    bundle_name: bundle_result.bundle_name,
+                    bundle_description: bundle_result.bundle_description,
+                    equity_percentage: bundle_result.equity_percentage,
+                    commodity_percentage: bundle_result.commodity_percentage,
+                    debt_percentage: bundle_result.debt_percentage,
+                    hybrid_percentage: bundle_result.hybrid_percentage,
+                    meta_data: bundle_result.meta_data,
+                    categories: result
+                }
             });
             return;
         } catch (error) {
