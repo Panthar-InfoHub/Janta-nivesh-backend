@@ -578,9 +578,11 @@ class UserFinanceControllerClass {
 
                                 logger.debug(`Checking ${item.folio} / ${item.scheme_id}`)
                                 const matching_sip = xsip_report.data.report_data.find((sip: any) =>
-                                    sip.folio_number === item.actual_folio &&
-                                    sip.rta_scheme_code === item.scheme_id
+                                    sip.folio_number === item.actual_folio
+                                    // sip.rta_scheme_code === item.scheme_id
                                 );
+
+                                logger.debug(`matching sip found.....`, matching_sip)
 
                                 if (matching_sip) {
                                     return {

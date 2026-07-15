@@ -285,7 +285,7 @@ export class MfSipService {
                 euin_number: env.EUIN || "",
                 euin_declaration: "Y",
                 dpc_flag: "Y",
-                first_order_today: "N",
+                first_order_today: "Y",
                 sub_broker_arn: "",
                 end_date: "",
                 primary_holder_mobile: user.phone_no || "",
@@ -324,7 +324,7 @@ export class MfSipService {
         }
 
         logger.info(`xSIP orders created successfully. Order ID: ${order_id}`);
-        
+
         if (user.nse_client_code) {
             const cache_key = `mf_xsip:finnsys:${user.nse_client_code}`;
             await redis_buffer_client.del(cache_key);
