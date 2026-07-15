@@ -166,7 +166,8 @@ export class MfQueryService {
                             return_6m: true,
                             return_5y: true,
                         }
-                    }
+                    },
+                    transaction_rules: true,
                 },
                 skip: offset,
                 take: limit,
