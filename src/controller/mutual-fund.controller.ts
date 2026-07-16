@@ -575,6 +575,7 @@ class MutualFundControllerClass {
             const user = req.user!;
             logger.info(`Adding bundle to cart for user: ${user.id}`);
 
+            logger.debug(`Req body for bundle ==> `, req.body)
             const validation = add_bundle_to_cart_schema.safeParse(req.body);
             if (!validation.success) {
                 logger.warn("Validation failed for add_bundle_to_cart request body", { errors: validation.error.issues });
