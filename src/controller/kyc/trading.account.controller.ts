@@ -157,25 +157,25 @@ class TradingAccountControllerClass {
              */
 
 
-            const [pan_verification_result, mf_kyc_identity] = await Promise.all([
-                kyc_finnsys_service.pan_verification(pan_number),
-                mfkyc_identity_service.get_verified_details(user_id, pan_number)
-            ]);
+            // const [pan_verification_result, mf_kyc_identity] = await Promise.all([
+            //     kyc_finnsys_service.pan_verification(pan_number),
+            //     mfkyc_identity_service.get_verified_details(user_id, pan_number)
+            // ]);
 
-            logger.debug("PAN verification result from Finnsys ==> ", pan_verification_result);
-            logger.debug("MF KYC identity details ==> ", mf_kyc_identity);
+            // logger.debug("PAN verification result from Finnsys ==> ", pan_verification_result);
+            // logger.debug("MF KYC identity details ==> ", mf_kyc_identity);
 
-            if (pan_verification_result.code as any != "1") {
-                logger.warn(`PAN verification failed for user id ==> ${user_id} with PAN number ==> ${pan_number}. Finnsys response code ==> ${pan_verification_result.code}`);
-                pan_verified = false;
-                throw new AppError("PAN verification failed", 400, "PAN_VERIFICATION_FAILED");
-            }
+            // if (pan_verification_result.code as any != "1") {
+            //     logger.warn(`PAN verification failed for user id ==> ${user_id} with PAN number ==> ${pan_number}. Finnsys response code ==> ${pan_verification_result.code}`);
+            //     pan_verified = false;
+            //     throw new AppError("PAN verification failed", 400, "PAN_VERIFICATION_FAILED");
+            // }
 
-            if (!mf_kyc_identity || mf_kyc_identity.pan_no != pan_number) {
-                logger.warn(`PAN verification failed for user id ==> ${user_id} with PAN number ==> ${pan_number}. PAN number mismatch`);
-                app_verified = false;
-                // throw new AppError("PAN number does not match or App KYC isn't completed yet", 400, "PAN_MISMATCH");
-            }
+            // if (!mf_kyc_identity || mf_kyc_identity.pan_no != pan_number) {
+            //     logger.warn(`PAN verification failed for user id ==> ${user_id} with PAN number ==> ${pan_number}. PAN number mismatch`);
+            //     app_verified = false;
+            //     // throw new AppError("PAN number does not match or App KYC isn't completed yet", 400, "PAN_MISMATCH");
+            // }
 
             logger.info("PAN verification successful for user id ==> ", user_id);
 
@@ -185,8 +185,8 @@ class TradingAccountControllerClass {
                 data: {
                     pan_verified,
                     app_verified,
-                    ...mf_kyc_identity,
-                    full_name: pan_verification_result.firstPanName,
+                    // ...mf_kyc_identity,
+                    // full_name: pan_verification_result.firstPanName,
                 }
             });
             return;
