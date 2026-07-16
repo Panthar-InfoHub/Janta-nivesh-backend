@@ -9,6 +9,7 @@ import { kyc_type_service } from "../../services/kyc/kyc.type.service.js";
 import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.service.js";
 import { user_service } from "../../services/user.service.js";
 import { MfKycIdentity } from "../../prisma/generated/prisma/client.js";
+import { notification_producer_service } from "../../services/notification.producer.service.js";
 
 class KycControllerClass {
 
@@ -465,7 +466,7 @@ class KycControllerClass {
                 throw new AppError("KYC session not found", 404, "KYC_SESSION_NOT_FOUND");
             }
 
-    // Save esign pdf and exxecute verification in sequence
+            // Save esign pdf and exxecute verification in sequence
             const esign_response = await kyc_finnsys_service.save_esign_pdf(
                 user_kyc_session.mfKycSessions.kyc_access_token,
                 user_kyc_session?.mfKycSessions?.merchant_id!,
@@ -490,6 +491,17 @@ class KycControllerClass {
                 mfkyc_identity_service.confirm_identity(user_id)
             ]);
             logger.info("KYC marked as verified for user ID: ", user_id);
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "KYC Verified Successfully",
+                `Your KYC has been verified successfully`,
+                {
+                    txn: "kyc",
+                    sub_type: "mf_kyc"
+                }
+            );
 
 
             res.status(200).json({

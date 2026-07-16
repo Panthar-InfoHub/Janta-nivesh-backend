@@ -12,6 +12,7 @@ import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 import { user_service } from "../services/user.service.js";
 import { MfOrderService } from "../services/mutual-funds/MfOrderService.js";
 import { MfCartService } from "../services/mutual-funds/MfCartService.js";
+import { notification_producer_service } from "../services/notification.producer.service.js";
 
 
 
@@ -216,6 +217,17 @@ class MutualFundControllerClass {
 
             // Invalidate Finnsys portfolio cache
             await redis.del(`mf_portfolio:finnsys:${user.id}`);
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Lumpsum purchase initiated",
+                `Your lumpsum purchase has been initiated`,
+                {
+                    txn: "mf",
+                    sub_type: "lumpsum_purchase"
+                }
+            );
 
             res.status(200).json({
                 success: true,
@@ -455,6 +467,17 @@ class MutualFundControllerClass {
             // Invalidate Finnsys portfolio cache
             await redis.del(`mf_portfolio:finnsys:${user.id}`);
 
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "SIP Purchase Initiated",
+                `Your SIP purchase has been initiated`,
+                {
+                    txn: "mf",
+                    sub_type: "sip_purchase"
+                }
+            );
+
             res.status(200).json({
                 success: true,
                 message: "xSIP orders created successfully. Please complete payment to execute.",
@@ -487,6 +510,17 @@ class MutualFundControllerClass {
             }
 
             const result = await mutual_funds_service.order.execute_redemption(user.id, validation.data, user.log!, user.pwd!);
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Redeem Order Submitted",
+                `Your redeem order has been submitted`,
+                {
+                    txn: "mf",
+                    sub_type: "redeem_order"
+                }
+            );
 
             res.status(200).json({
                 success: true,

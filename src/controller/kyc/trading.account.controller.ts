@@ -10,6 +10,7 @@ import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.servic
 import { kyc_finnsys_service } from "../../services/kyc/kyc.finnsys.service.js";
 import { nse_service } from "../../services/nse.service.js";
 import { user_finnsys_service } from "../../services/user.finnsys.service.js";
+import { notification_producer_service } from "../../services/notification.producer.service.js";
 
 class TradingAccountControllerClass {
 
@@ -269,6 +270,17 @@ class TradingAccountControllerClass {
 
             // 7. Update KYC status to verified
             await kyc_type_service.upsert_kyc_status(user.id, "trading", "verified");
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Trading Account Verification",
+                `Trading Account Verification Completed`,
+                {
+                    txn: "kyc",
+                    sub_type: "trading_kyc"
+                }
+            );
 
             res.status(200).json({
                 success: true,

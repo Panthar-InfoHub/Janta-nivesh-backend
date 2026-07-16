@@ -8,6 +8,7 @@ import { deviceParamsSchema, reqOtpSchema, validateOtpSchema } from "../schemas/
 import { auth_service } from "../services/auth.service.js";
 import { user_service } from "../services/user.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
+import { notification_producer_service } from "../services/notification.producer.service.js";
 
 class AuthControllerClass {
 
@@ -116,6 +117,17 @@ class AuthControllerClass {
                 onboarding_stage: 0,
                 is_onboarding_completed: false
             });
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Login Successful",
+                `Welcome to Velvet Investment, ${user.full_name}`,
+                {
+                    txn: "login",
+                    sub_type: "sign_in"
+                }
+            );
 
             const token = generate_JWT(updated_user);
 
