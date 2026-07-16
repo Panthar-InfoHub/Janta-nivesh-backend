@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { redis } from "../lib/redis.js";
-import { sip_cart_zod_schema, redeem_request_zod_schema, invest_more_zod_schema, purchase_sip_body_schema, Sip_purchase_item } from "../lib/types.js";
+import { sip_cart_zod_schema, redeem_request_zod_schema, invest_more_zod_schema, purchase_sip_body_schema, Sip_purchase_item, notification_type } from "../lib/types.js";
 import { db } from "../server.js";
 import { add_bundle_to_cart_schema } from "../lib/zod-schemas/bundle.schema.js";
 import { get_mf_search_query } from "../lib/utils.js";
@@ -29,7 +29,7 @@ class MutualFundControllerClass {
 
             // Direct category fetch
             const fund_category = req.query.fund_category as string;
-            const direct_categories = ['flexi_cap', 'large_Mid_cap', 'large_cap', 'mid_cap', 'small_cap', 'index', 'global_others'];
+            const direct_categories = ['flexi_cap', 'large_Mid_cap', 'large_cap', 'mid_cap', 'small_cap', 'index', 'global_others', 'gold', 'silver'];
 
             if (fund_category && direct_categories.includes(fund_category)) {
                 logger.info(`Fetching mutual funds by fund_category: ${fund_category} - Page: ${page}, Limit: ${limit}`);
@@ -225,7 +225,7 @@ class MutualFundControllerClass {
                 `Your lumpsum purchase has been initiated`,
                 {
                     txn: "mf",
-                    sub_type: "lumpsum_purchase"
+                    sub_type: notification_type.FUND_INC
                 }
             );
 
@@ -474,7 +474,7 @@ class MutualFundControllerClass {
                 `Your SIP purchase has been initiated`,
                 {
                     txn: "mf",
-                    sub_type: "sip_purchase"
+                    sub_type: notification_type.FUND_INC
                 }
             );
 
@@ -518,7 +518,7 @@ class MutualFundControllerClass {
                 `Your redeem order has been submitted`,
                 {
                     txn: "mf",
-                    sub_type: "redeem_order"
+                    sub_type: notification_type.NOTIFICATION
                 }
             );
 

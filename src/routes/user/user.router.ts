@@ -3,6 +3,7 @@ import multer from "multer";
 import { login_require } from "../../middleware/session.middleware.js";
 import { user_controller } from "../../controller/user.controller.js";
 import { cas_report_controller } from "../../controller/cas.report.controller.js";
+import { notification_controller } from "../../controller/notification.controller.js";
 
 export const user_router = Router();
 
@@ -21,6 +22,10 @@ const upload = multer({
 
 user_router.get("/", login_require, user_controller.get_user)
 user_router.get("/portfolio", login_require, user_controller.get_user_portfolio)
+user_router.get("/notifications", login_require, notification_controller.get_notifications)
+user_router.get("/notifications/unread-status", login_require, notification_controller.get_unread_status)
+user_router.patch("/notifications/read", login_require, notification_controller.mark_all_read)
+user_router.patch("/notifications/:id/read", login_require, notification_controller.mark_notification_read)
 user_router.get("/portfolio/{*folio_id}", login_require, user_controller.get_folio_details)
 user_router.get("/investment-rate", login_require, user_controller.get_investment_rate)
 user_router.get("/iin", login_require, user_controller.get_user_iin)

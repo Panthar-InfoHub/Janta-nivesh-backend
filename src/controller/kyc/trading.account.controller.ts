@@ -11,6 +11,7 @@ import { kyc_finnsys_service } from "../../services/kyc/kyc.finnsys.service.js";
 import { nse_service } from "../../services/nse.service.js";
 import { user_finnsys_service } from "../../services/user.finnsys.service.js";
 import { notification_producer_service } from "../../services/notification.producer.service.js";
+import { notification_type } from "../../lib/types.js";
 
 class TradingAccountControllerClass {
 
@@ -278,7 +279,7 @@ class TradingAccountControllerClass {
                 `Trading Account Verification Completed`,
                 {
                     txn: "kyc",
-                    sub_type: "trading_kyc"
+                    sub_type: notification_type.NOTIFICATION
                 }
             );
 

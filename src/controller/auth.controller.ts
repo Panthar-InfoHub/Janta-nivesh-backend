@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { AuthResponse } from "../lib/types.js";
+import { AuthResponse, notification_type } from "../lib/types.js";
 import AppError from "../middleware/error.middleware.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import logger from "../middleware/logger.js";
@@ -125,7 +125,7 @@ class AuthControllerClass {
                 `Welcome to Velvet Investment, ${user.full_name}`,
                 {
                     txn: "login",
-                    sub_type: "sign_in"
+                    sub_type: notification_type.NOTIFICATION
                 }
             );
 

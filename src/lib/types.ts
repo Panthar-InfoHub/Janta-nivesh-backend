@@ -13,6 +13,23 @@ export interface AuthResponse {
     results?: any;
 }
 
+export const notification_type = {
+    ALERT: "ALERT",
+    FUND_INC: "FUND_INC",
+    FUND_DEC: "FUND_DEC",
+    REMINDER: "REMINDER",
+    NOTIFICATION: "NOTIFICATION",
+} as const;
+
+export type NotificationSubType = typeof notification_type[keyof typeof notification_type];
+
+export type NotificationPayload = {
+    // `(string & {})` keeps autocomplete for notification_type's keys while still accepting
+    // the free-form sub_type strings existing call sites already pass (e.g. "lumpsum_purchase").
+    sub_type?: NotificationSubType | (string & {});
+    [key: string]: unknown;
+};
+
 export type UserWithAllData = Omit<UserGetPayload<{
     include: {
         user_finance: true

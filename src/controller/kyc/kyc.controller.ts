@@ -10,6 +10,7 @@ import { mfkyc_identity_service } from "../../services/kyc/mfkyc.identity.servic
 import { user_service } from "../../services/user.service.js";
 import { MfKycIdentity } from "../../prisma/generated/prisma/client.js";
 import { notification_producer_service } from "../../services/notification.producer.service.js";
+import { notification_type } from "../../lib/types.js";
 
 class KycControllerClass {
 
@@ -499,7 +500,7 @@ class KycControllerClass {
                 `Your KYC has been verified successfully`,
                 {
                     txn: "kyc",
-                    sub_type: "mf_kyc"
+                    sub_type: notification_type.NOTIFICATION
                 }
             );
 

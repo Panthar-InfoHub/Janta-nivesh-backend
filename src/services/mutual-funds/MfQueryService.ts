@@ -96,7 +96,7 @@ export class MfQueryService {
 
                 // 4. Execute Main Search Query
                 const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
-            SELECT 
+            SELECT DISTINCT ON (p.id)
                 p.id,
                 (
                     similarity(p.scheme_name, ${search}::text) * 2.0 + 
@@ -106,7 +106,7 @@ export class MfQueryService {
             FROM "MfProduct" p
             LEFT JOIN "MfMetrics" m ON m.mf_product_id = p.id
             ${whereClause}
-            ORDER BY ${sql_order_by}
+            ORDER BY p.id, ${sql_order_by}
             LIMIT ${limit}::int OFFSET ${offset}::int
         `;
 
@@ -192,16 +192,16 @@ export class MfQueryService {
     get_category_query = (category: string): Prisma.MfProductWhereInput => {
         const baseQuery: Prisma.MfProductWhereInput = {
             sip_allowed: true,
-            metrics: {
-                AND: {
-                    return_3y: { not: null },
-                    return_1y: { not: null },
-                    return_5y: { not: null },
-                    return_6m: { not: null },
-                    return_30d: { not: null },
-                    return_90d: { not: null },
-                }
-            }
+            // metrics: {
+            //     AND: {
+            //         return_3y: { not: null },
+            //         return_1y: { not: null },
+            //         return_5y: { not: null },
+            //         return_6m: { not: null },
+            //         return_30d: { not: null },
+            //         return_90d: { not: null },
+            //     }
+            // }
         };
 
         switch (category) {
@@ -246,6 +246,16 @@ export class MfQueryService {
                     ...baseQuery,
                     scheme_type: { contains: 'ETF/Index', mode: 'insensitive' }
                 };
+            case 'gold':
+                return {
+                    ...baseQuery,
+                    scheme_type: { contains: 'Gold-ETF', mode: 'insensitive' }
+                };
+            case 'silver':
+                return {
+                    ...baseQuery,
+                    scheme_type: { contains: 'Silver-ETF', mode: 'insensitive' }
+                };
             case 'global_others':
                 return {
                     ...baseQuery,
@@ -256,7 +266,7 @@ export class MfQueryService {
         }
     }
 
-    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others' | 'multi_cap', limit?: number, page?: number }) => {
+    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others' | 'multi_cap' | 'gold' | 'silver', limit?: number, page?: number }) => {
         const query = this.get_category_query(category);
         return await this.get_mutual_funds({
             pagination: { page, limit },
