@@ -375,11 +375,13 @@ class UserFinanceControllerClass {
             logger.debug("user mf data from finnsys --> ", user_mf_data)
             user_mf_data.forEach((item: any) => {
                 const folio = item.actualfolio;
+                const actual_folio = item.folio;
                 if (!folio) return;
 
                 if (!foliosMap.has(folio)) {
                     foliosMap.set(folio, {
                         folio: folio,
+                        actual_folio: actual_folio,
                         first_scheme_id: item.schemeid,
                         category: item.schemetype,
                         amount: 0,
@@ -413,6 +415,7 @@ class UserFinanceControllerClass {
                     return: Number(f.return.toFixed(2)),
                     return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
                     folio: f.folio,
+                    actual_folio: f.actual_folio,
                     bal_units: Number(f.bal_units.toFixed(2)),
                     img_url: amc_details.img_url,
                     transaction_rules: this.extract_relevant_transaction_rules(amc_details.transaction_rules)
