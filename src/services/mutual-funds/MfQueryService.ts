@@ -16,7 +16,7 @@ export type pagination = {
 
 export class MfQueryService {
 
-    get_mutual_funds = async ({ pagination, query, order, search }: { pagination: pagination, query?: MfProductWhereInput, order?: MfProductOrderByWithRelationInput, search?: string }) => {
+    get_mutual_funds = async ({ pagination, query, order, search }: { pagination: pagination, query?: MfProductWhereInput, order?: MfProductOrderByWithRelationInput | MfProductOrderByWithRelationInput[], search?: string }) => {
         const { page, limit } = pagination;
         const offset = (page - 1) * limit;
 
@@ -87,12 +87,13 @@ export class MfQueryService {
                 const whereClause = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
 
                 // 3. Define Sorting Threshold
+                const primaryOrder = Array.isArray(order) ? order[0] : order;
                 let sql_order_by = Prisma.sql`score DESC`;
-                if (order?.metrics?.return_90d) sql_order_by = Prisma.sql`m.return_90d DESC NULLS LAST, score DESC`;
-                else if (order?.metrics?.return_6m) sql_order_by = Prisma.sql`m.return_6m DESC NULLS LAST, score DESC`;
-                else if (order?.metrics?.return_1y) sql_order_by = Prisma.sql`m.return_1y DESC NULLS LAST, score DESC`;
-                else if (order?.metrics?.return_3y) sql_order_by = Prisma.sql`m.return_3y DESC NULLS LAST, score DESC`;
-                else if (order?.metrics?.return_5y) sql_order_by = Prisma.sql`m.return_5y DESC NULLS LAST, score DESC`;
+                if (primaryOrder?.metrics?.return_90d) sql_order_by = Prisma.sql`m.return_90d DESC NULLS LAST, score DESC`;
+                else if (primaryOrder?.metrics?.return_6m) sql_order_by = Prisma.sql`m.return_6m DESC NULLS LAST, score DESC`;
+                else if (primaryOrder?.metrics?.return_1y) sql_order_by = Prisma.sql`m.return_1y DESC NULLS LAST, score DESC`;
+                else if (primaryOrder?.metrics?.return_3y) sql_order_by = Prisma.sql`m.return_3y DESC NULLS LAST, score DESC`;
+                else if (primaryOrder?.metrics?.return_5y) sql_order_by = Prisma.sql`m.return_5y DESC NULLS LAST, score DESC`;
 
                 // 4. Execute Main Search Query
                 const searchResults = await db.$queryRaw<{ id: string, score: number }[]>`
@@ -192,16 +193,6 @@ export class MfQueryService {
     get_category_query = (category: string): Prisma.MfProductWhereInput => {
         const baseQuery: Prisma.MfProductWhereInput = {
             sip_allowed: true,
-            // metrics: {
-            //     AND: {
-            //         return_3y: { not: null },
-            //         return_1y: { not: null },
-            //         return_5y: { not: null },
-            //         return_6m: { not: null },
-            //         return_30d: { not: null },
-            //         return_90d: { not: null },
-            //     }
-            // }
         };
 
         switch (category) {
@@ -256,6 +247,16 @@ export class MfQueryService {
                     ...baseQuery,
                     scheme_type: { contains: 'Silver-ETF', mode: 'insensitive' }
                 };
+            case 'arbitrage':
+                return {
+                    ...baseQuery,
+                    scheme_type: { contains: 'Arbitrage Fund', mode: 'insensitive' }
+                };
+            case 'debt':
+                return {
+                    ...baseQuery,
+                    asset_type: 'Debt'
+                };
             case 'global_others':
                 return {
                     ...baseQuery,
@@ -266,12 +267,17 @@ export class MfQueryService {
         }
     }
 
-    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others' | 'multi_cap' | 'gold' | 'silver', limit?: number, page?: number }) => {
+    get_funds_by_category = async ({ category, limit = 4, page = 1 }: { category: 'arbitrage' | 'debt' | 'flexi_cap' | 'large_Mid_cap' | 'large_cap' | 'mid_cap' | 'small_cap' | 'index' | 'global_others' | 'multi_cap' | 'gold' | 'silver', limit?: number, page?: number }) => {
         const query = this.get_category_query(category);
         return await this.get_mutual_funds({
             pagination: { page, limit },
             query,
-            order: { metrics: { return_1y: 'desc' } }
+            order: [
+                { metrics: { return_3y: { sort: 'desc', nulls: 'last' } } },
+                { metrics: { return_1y: { sort: 'desc', nulls: 'last' } } },
+                { transaction_rules: { min_lump_sum_amount: 'asc' } },
+                { transaction_rules: { min_sip_amount: 'asc' } }
+            ]
         });
     }
 
@@ -292,7 +298,12 @@ export class MfQueryService {
         const result = await this.get_mutual_funds({
             pagination: { page: 1, limit },
             query,
-            order: { metrics: { return_3y: 'desc' } }
+            order: [
+                { metrics: { return_3y: { sort: 'desc', nulls: 'last' } } },
+                { metrics: { return_1y: { sort: 'desc', nulls: 'last' } } },
+                { transaction_rules: { min_lump_sum_amount: 'asc' } },
+                { transaction_rules: { min_sip_amount: 'asc' } }
+            ]
         });
 
         try {
