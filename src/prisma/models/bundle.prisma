@@ -6,6 +6,7 @@ model Bundle {
   commodity_percentage Float?           @default(0)
   debt_percentage      Float?           @default(0)
   hybrid_percentage    Float?           @default(0)
+  img_url              String?
   meta_data            Json?
   categories           BundleCategory[]
 }

@@ -3,12 +3,11 @@ import { AuthResponse, notification_type } from "../lib/types.js";
 import AppError from "../middleware/error.middleware.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import logger from "../middleware/logger.js";
-import { User } from "../prisma/generated/prisma/client.js";
-import { deviceParamsSchema, reqOtpSchema, validateOtpSchema } from "../schemas/auth.schema.js";
+import { deviceParamsSchema, req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
 import { auth_service } from "../services/auth.service.js";
+import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
-import { notification_producer_service } from "../services/notification.producer.service.js";
 
 class AuthControllerClass {
 
@@ -26,10 +25,10 @@ class AuthControllerClass {
 
             // Required Query Params
             logger.debug("Extracting device parameters for OTP request  ==> ", req.query);
-            const device_params = this.extract_device_params(req);
+            // const device_params = this.extract_device_params(req);
 
             // Validation
-            const validation = reqOtpSchema.safeParse(req.query);
+            const validation = req_otp_schema.safeParse(req.query);
             if (!validation.success) {
                 logger.error("Mobile number validation failed");
                 throw new AppError("A valid 10-digit mobile number is required", 400, "INVALID_PHONE_NUMBER");
@@ -37,13 +36,10 @@ class AuthControllerClass {
 
             const mob = validation.data.mob;
 
-            logger.info(`OTP Request for Mobile: ${mob}, Device: ${device_params.did}`);
+            logger.info(`OTP Request for Mobile: ${mob}`);
 
-            const auth_res: AuthResponse = await auth_service.req_otp(mob, device_params);
+            const auth_res = await auth_service.req_otp(mob);
 
-            if (auth_res.code !== 1) {
-                throw new AppError("Failed to request OTP", 500, "OTP_REQUEST_FAILED");
-            }
 
             const user = await user_service.create_user({
                 phone_no: mob

@@ -2,6 +2,26 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const env = {
+
+    // =====================  v2 ENVS ===================================
+
+    MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY!,
+    MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID!,
+    MSG91_BASE_URL: process.env.MSG91_BASE_URL!,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,

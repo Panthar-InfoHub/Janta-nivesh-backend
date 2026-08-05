@@ -1,10 +1,12 @@
 .env
+.env.*
 .agents/
 node_modules/
 dist/
 extras/
 plans/
 /src/prisma/generated/
+.claude
 
 # Editor / OS files
 .DS_Store
@@ -13,6 +15,7 @@ plans/
 data/
 
 migration_data.json
+bundle_logo_data.json
 notes.js
 implementation_plan.md
 

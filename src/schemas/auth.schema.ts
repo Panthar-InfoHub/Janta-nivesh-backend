@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const reqOtpSchema = z.object({
+export const req_otp_schema = z.object({
     mob: z.string().regex(/^[0-9]{10}$/, "Invalid mobile number"),
 });
 
