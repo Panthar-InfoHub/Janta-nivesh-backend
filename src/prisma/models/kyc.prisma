@@ -1,82 +1,131 @@
-model KycType {
-  id             String        @id @default(uuid())
-  user_id        String
-  kyc_type       KycTypeValue
-  status         KycStatus
-  failure_reason String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @default(now()) @updatedAt
-  user           User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  mfKycSessions  MfKycSession?
-
-  @@unique([user_id, kyc_type])
+enum OnboardingStage {
+  PAN_VERIFICATION
+  KYC_VERIFICATION
+  PENNY_DROP_VERIFICATION
+  INVESTOR_PROFILE
+  NOMINEE_ADDITION
+  COMPLETED
 }
 
-model MfKycSession {
-  id               String   @id @default(uuid())
-  kyc_type_id      String   @unique
-  merchant_id      String?
-  kyc_access_token String
-  digilocker_url   String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @default(now()) @updatedAt
-  kyc_type         KycType  @relation(fields: [kyc_type_id], references: [id], onDelete: Cascade)
+enum StageStatus {
+  PENDING
+  IN_PROGRESS
+  VERIFIED
+  FAILED
+  SKIPPED
 }
 
-model MfKycIdentity {
-  id                       String    @id @default(uuid())
-  user_id                  String    @unique
-  uid                      String
-  pan_no                   String?
-  full_name                String
-  dob                      String
-  gender                   String
-  full_address             String
-  address_line             String
-  land_mark                String
-  pincode                  String
-  city                     String
-  district                 String
-  state                    String
-  country                  String    @default("INDIA")
-  marital_status           String?
-  residential_status       String?
-  place_of_birth           String?
-  father_title             String?
-  father_name              String?
-  mother_title             String?
-  mother_name              String?
-  occupation_desc          String?
-  occupation_code          String?
-  kyc_account_code         String?   @default("01")
-  communication_addr_code  String?   @default("02")
-  permanent_addr_code      String?   @default("02")
-  citizenship_country_code String?   @default("101")
-  application_status_code  String?   @default("R")
-  mobile_no                String?
-  email_id                 String?
-  digilocker_photo_url     String?
-  aadhaar_pdf_url          String?
-  user_photo_url           String?
-  signature_url            String?
-  contract_pdf_url         String?
-  is_final_confirmed       Boolean   @default(false)
-  verified_at              DateTime?
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
-  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+// Resume-cursor / state machine for the onboarding flow:
+// PAN + readiness check -> (DigiLocker KYC, only if not readiness) -> penny drop -> investor profile -> nominee
+model UserOnboarding {
+  id                String          @id @default(cuid())
+  user_id           String          @unique
+  current_stage     OnboardingStage @default(PAN_VERIFICATION)
+  readiness_status  StageStatus     @default(PENDING)
+  kyc_status        StageStatus     @default(PENDING)
+  penny_drop_status StageStatus     @default(PENDING)
+  profile_status    StageStatus     @default(PENDING)
+  nominee_status    StageStatus     @default(PENDING) // VERIFIED once added, SKIPPED if "I will add nominees later"
+  is_completed      Boolean         @default(false)
+  completed_at      DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  user              User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
-enum KycTypeValue {
-  mf
-  fd
-  trading
-}
+// One KYC/compliance profile per user (shared across MF/FD/trading, not per-product like v1).
+// Same columns are populated either from Cybrilla's DigiLocker kyc_form response or from the
+// manual "Review Profile" screen (readiness = true path skips DigiLocker but still needs these
+// fields filled in) - see full_name/dob/city overlap note against User in the dev guide/PR.
+model KycProfile {
+  id      String @id @default(cuid())
+  user_id String @unique
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-enum KycStatus {
-  not_started
-  initiated
-  in_progress
-  verified
-  failed
+  // Cybrilla kyc_form session reference
+  cybrilla_kyc_form_id String? @unique
+  cybrilla_status      String?
+  cybrilla_type        String?
+  failure_reason       String?
+
+  // Fintech Primitives object ids - required to build investment_account.folio_defaults.
+  // Registered right after investor_profile is created (both need `profile` as a mandatory field).
+  fp_address_id String? @unique
+  fp_phone_id   String? @unique
+  fp_email_id   String? @unique
+
+  // Stage 1: PAN + readiness check (Cybrilla POA pre_verifications - async: "accepted" on
+  // create, readiness.status/completed_at only populate once Cybrilla finishes processing)
+  pan                              String?
+  is_readiness_verified            Boolean?
+  readiness_checked_at             DateTime?
+  cybrilla_pre_verification_id     String?   @unique
+  cybrilla_pre_verification_status String? // top-level "status": accepted | completed | ...
+  pre_verification_response        Json? // full raw response - per-field (name/pan/dob/bank_accounts) status detail lives here until we know the final vocab
+
+  // Identity - populated via DigiLocker (Cybrilla kyc_form) or manual entry
+  full_name                      String?
+  dob                            String?
+  gender                         String?
+  marital_status                 String?
+  residential_status             String?
+  father_name                    String?
+  spouse_name                    String?
+  occupation_type                String?
+  aadhaar_number                 String?
+  country_of_birth               String?
+  place_of_birth                 String?
+  nationality_country            String?
+  citizenship_countries          String[]
+  income_slab                    String?
+  pep_details                    String?
+  tax_residency_other_than_india Boolean  @default(false)
+  non_indian_tax_residency_1     Json?
+  non_indian_tax_residency_2     Json?
+  non_indian_tax_residency_3     Json?
+
+  // Investor-registration payload fields (Cybrilla investor create API) - not part of the
+  // kyc_form response, collected/derived on the "Review Profile" screen
+  investor_type                      String?   @default("individual") // "type" in the investor payload
+  tax_status                         String? // e.g. "resident_individual" - derived from residential_status + investor_type
+  occupation                         String? // broader category used by the investor payload, e.g. "business" - distinct from occupation_type
+  use_default_tax_residences         Boolean?  @default(true)
+  first_tax_residency                Json? // { country, taxid_type, taxid_number }
+  is_pep_declaration_confirmed       Boolean   @default(false) // literal "I am not a PEP" checkbox tick
+  is_residency_declaration_confirmed Boolean   @default(false) // literal resident/tax-resident checkbox tick
+  profile_confirmed_at               DateTime? // when "Confirm and proceed" was hit on the Review Profile screen
+
+  // Investor profile - manual "Review Profile" screen fields, not present in Cybrilla's kyc_form
+  address        String?
+  pincode        String?
+  city           String?
+  source_of_fund String? // maps to "source_of_wealth" in the investor payload
+  annual_income  String?
+
+  // Proof / esign / geolocation
+  signature_provided  Boolean  @default(false)
+  identity_proof_type String?
+  address_proof_type  String?
+  proof_fetch_url     String?
+  proof_status        String?
+  esign_url           String?
+  esign_status        String?
+  geo_latitude        Float?
+  geo_longitude       Float?
+  fields_needed       String[]
+
+  // Cybrilla kyc_form lifecycle timestamps
+  cybrilla_created_at    DateTime?
+  cybrilla_updated_at    DateTime?
+  review_completed_at    DateTime?
+  awaiting_esign_at      DateTime?
+  awaiting_submission_at DateTime?
+  submitted_at           DateTime?
+  failed_at              DateTime?
+  expires_at             DateTime?
+
+  raw_kyc_form_response Json? // full raw Cybrilla payload, forward-compat escape hatch
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }

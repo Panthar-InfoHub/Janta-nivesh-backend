@@ -71,7 +71,7 @@ export const map_digilocker_to_identity = (data: DigilockerData): any => ({
     aadhaar_pdf_url: data.fullImage || "",
 });
 
-export const map_kyc_data_to_identity = (data: UpdateKycDataInput): Prisma.MfKycIdentityUpdateInput => ({
+export const map_kyc_data_to_identity = (data: UpdateKycDataInput) => ({
     pan_no: data.panNumber,
     marital_status: data.maritalStatus,
     residential_status: data.residentialStatus,

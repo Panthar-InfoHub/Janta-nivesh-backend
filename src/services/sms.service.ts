@@ -2,7 +2,9 @@
  * SMS Service for MSG91 Integration
  */
 
+import axios from "axios";
 import { env } from "../lib/config-env.js";
+import logger from "../middleware/logger.js";
 
 // const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY!;
 // const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID!;
@@ -37,32 +39,35 @@ class SMS_SERVICE_CLASS {
             const payload = {
                 template_id: env.MSG91_TEMPLATE_ID,
                 realTimeResponse: 1,
+                short_url: "0",
                 recipients: [
                     {
                         mobiles: formattedPhone,
-                        OTP: otp, // Assuming VAR1 is the placeholder for OTP in the MSG91 template
+                        number: otp, // Assuming VAR1 is the placeholder for OTP in the MSG91 template
                     },
                 ],
             };
 
+            logger.debug(`Formatted phone for msg91 sms --> `, formattedPhone)
+            logger.debug(`Payload for otp --> `, payload)
+            logger.debug(`Base url --> `, env.MSG91_BASE_URL)
+            const response = await axios.post(
+                env.MSG91_BASE_URL,
+                payload,
+                {
+                    headers: {
+                        'accept': 'application/json',
+                        'content-type': 'application/json',
+                        'authkey': env.MSG91_AUTH_KEY
+                    }
+                }
+            );
+            logger.debug("msg 91 response ==> ", response.data)
 
-            const response = await fetch(env.MSG91_BASE_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "authkey": env.MSG91_AUTH_KEY,
-                    "accept": "application/json",
-                },
-                body: JSON.stringify(payload),
-            });
-            const result = await response.json();
-            if (result.type === "error") {
-                throw new Error(result.message);
-            }
-
-            return response.ok;
+            if (response.data.type != "success") return false
+            return true
         } catch (error) {
-            console.error("[SMS] Error sending MSG91 OTP:", error);
+            logger.error("[SMS] Error sending MSG91 OTP:", error);
             return false;
         }
     };

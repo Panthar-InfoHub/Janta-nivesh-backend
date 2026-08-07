@@ -16,10 +16,10 @@ export const require_mfKyc = async (req: Request, res: Response, next: NextFunct
 
         const kyc_record = await kyc_type_service.get_kyc_query(user_id, { kyc_type: "mf" });
 
-        if (!kyc_record || kyc_record.status !== "verified") {
-            logger.warn(`User ${user_id} attempted access without verified MF KYC`);
-            throw new AppError("Mutual Fund KYC verification required", 403, "MF_KYC_REQUIRED");
-        }
+        // if (!kyc_record || kyc_record.status !== "verified") {
+        //     logger.warn(`User ${user_id} attempted access without verified MF KYC`);
+        //     throw new AppError("Mutual Fund KYC verification required", 403, "MF_KYC_REQUIRED");
+        // }
 
         next();
     } catch (error) {
@@ -40,10 +40,10 @@ export const require_tradingKyc = async (req: Request, res: Response, next: Next
 
         const kyc_record = await kyc_type_service.get_kyc_query(user_id, { kyc_type: "trading" });
 
-        if (!kyc_record || kyc_record.status !== "verified") {
-            logger.warn(`User ${user_id} attempted access without verified Trading KYC`);
-            throw new AppError("Trading Account KYC verification required", 403, "TRADING_KYC_REQUIRED");
-        }
+        // if (!kyc_record || kyc_record.status !== "verified") {
+        //     logger.warn(`User ${user_id} attempted access without verified Trading KYC`);
+        //     throw new AppError("Trading Account KYC verification required", 403, "TRADING_KYC_REQUIRED");
+        // }
 
         next();
     } catch (error) {

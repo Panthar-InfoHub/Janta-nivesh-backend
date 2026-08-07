@@ -44,7 +44,7 @@ export class MfSipService {
         const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
 
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+        if (!user.investor_profile) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
         if (!direct_items || direct_items.length === 0) {
             throw new AppError("No SIP items provided", 400, "CART_EMPTY");
@@ -94,7 +94,7 @@ export class MfSipService {
             username: user_log,
             password: user_pwd,
             data: {
-                client_code: user.nse_client_code
+                client_code: user.investor_profile
             }
         });
         const activeSips = activeSipsReport?.code === 1 ? (activeSipsReport.data?.report_data || []) : [];
@@ -158,7 +158,7 @@ export class MfSipService {
             data: {
                 reg_data: [
                     {
-                        client_code: user.nse_client_code,
+                        client_code: user.investor_profile,
                         amount: new_mandate_amount.toString(),
                         mandate_type: "E" as const,
                         account_no: primary_bank.account_no,
@@ -205,7 +205,7 @@ export class MfSipService {
     execute_xsip_purchase = async (user_id: string, user_log: string, user_pwd: string, mandate_id?: string, direct_items?: Sip_purchase_item[]) => {
         const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-        if (!user.nse_client_code) throw new AppError("Trading account not set up", 400, "TRADING_ACCOUNT_MISSING");
+        if (!user.investor_profile) throw new AppError("Trading account not set up", 400, "TRADING_ACCOUNT_MISSING");
 
         let selected_mandate_id = mandate_id;
         if (!selected_mandate_id) {
@@ -240,7 +240,7 @@ export class MfSipService {
                 username: user_log,
                 password: user_pwd,
                 data: {
-                    client_code: user.nse_client_code
+                    client_code: user.investor_profile
                 }
             });
             const activeSips = activeSipsReport?.code === 1 ? (activeSipsReport.data?.report_data || []) : [];
@@ -267,7 +267,7 @@ export class MfSipService {
             sip_items.map(async (item: any, index: number) => ({
                 amc_code: item.amc_code || "",
                 sch_code: item.prod_code || "",
-                client_code: user.nse_client_code,
+                client_code: user.investor_profile,
                 bank_ref_no: primary_bank.account_no || "",
                 trans_mode: "P",
                 dp_txn_mode: "P",
@@ -325,10 +325,10 @@ export class MfSipService {
 
         logger.info(`xSIP orders created successfully. Order ID: ${order_id}`);
 
-        if (user.nse_client_code) {
-            const cache_key = `mf_xsip:finnsys:${user.nse_client_code}`;
+        if (user.investor_profile) {
+            const cache_key = `mf_xsip:finnsys:${user.investor_profile}`;
             await redis_buffer_client.del(cache_key);
-            logger.debug(`Invalidated xSIP cache for user: ${user.nse_client_code}`);
+            logger.debug(`Invalidated xSIP cache for user: ${user.investor_profile}`);
         }
 
         const xsip_url_res = await nse_service.get_short_url('XSIP_REG', order_id, user_log, user_pwd);
@@ -349,7 +349,7 @@ export class MfSipService {
             password: user_pwd,
             data: {
                 mandate_id: mandate_id,
-                client_code: user.nse_client_code
+                client_code: user.investor_profile
             }
         };
 
@@ -391,7 +391,7 @@ export class MfSipService {
     cancel_xsip = async (user_id: string, user_log: string, user_pwd: string, xsip_reg_no: string) => {
         const user = await user_service.get_user_by_id(user_id);
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+        if (!user.investor_profile) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
         const payload = {
             arn: env.ARN,
@@ -400,7 +400,7 @@ export class MfSipService {
             data: {
                 can_data: [
                     {
-                        client_code: user.nse_client_code,
+                        client_code: user.investor_profile,
                         xsip_reg_no,
                         remarks: "13:Velvet Invest App: xSIP Cancelled"
                     }
@@ -412,10 +412,10 @@ export class MfSipService {
 
         const finnsys_response = await mutual_fund_finnsys_service.cancel_xsip_finnsys(payload);
 
-        if (user.nse_client_code) {
-            const cache_key = `mf_xsip:finnsys:${user.nse_client_code}`;
+        if (user.investor_profile) {
+            const cache_key = `mf_xsip:finnsys:${user.investor_profile}`;
             await redis_buffer_client.del(cache_key);
-            logger.debug(`Invalidated xSIP cache for user: ${user.nse_client_code} after cancellation`);
+            logger.debug(`Invalidated xSIP cache for user: ${user.investor_profile} after cancellation`);
         }
 
         return finnsys_response;

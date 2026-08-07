@@ -82,7 +82,6 @@ class UserServiceClass {
             where: { id: user_id },
             data: { ...data },
         });
-        delete updated_user.pwd;
         delete updated_user.mpin;
         return updated_user;
     }
@@ -124,7 +123,7 @@ class UserServiceClass {
                         { updatedAt: 'desc' }
                     ]
                 },
-                mfKycIdentities: true,
+                // mfKycIdentities: true,
             }
         });
     }
@@ -140,7 +139,7 @@ class UserServiceClass {
     async get_user_by_invId(inv_id: number) {
         return await db.user.findUnique({
             where: {
-                inv_id: inv_id
+                id: inv_id.toString()
             }
         });
     }
@@ -157,7 +156,7 @@ class UserServiceClass {
     async get_user_by_usr(usr: string) {
         return await db.user.findUnique({
             where: {
-                usr: usr
+                id: usr
             }
         });
     }
@@ -172,7 +171,7 @@ class UserServiceClass {
     }
 
 
-    async get_user_fire_report_data(user_id: string): Promise<UserFireReportData | null> {
+    async get_user_fire_report_data(user_id: string) {
         return await db.user.findUnique({
             where: { id: user_id },
             include: {
@@ -196,7 +195,7 @@ class UserServiceClass {
     }
 
 
-    async get_all_user_data(user_id: string, options?: GetAllUserDataOptions): Promise<UserWithAllData | null> {
+    async get_all_user_data(user_id: string, options?: GetAllUserDataOptions) {
         const user = await db.user.findUnique({
             where: {
                 id: user_id
@@ -208,17 +207,16 @@ class UserServiceClass {
                 user_loan: options?.user_loan ?? false,
                 user_goals: options?.user_goals ?? false,
                 user_bank_details: options?.user_bank_details ?? false,
-                kyc_types: options?.kyc_types ? {
-                    select: {
-                        kyc_type: true,
-                        status: true,
-                    }
-                } : false,
-                mfKycIdentities: options?.mfKycIdentities ?? false,
+                // kyc_types: options?.kyc_types ? {
+                //     select: {
+                //         kyc_type: true,
+                //         status: true,
+                //     }
+                // } : false,
+                // mfKycIdentities: options?.mfKycIdentities ?? false,
             }
         });
 
-        delete user?.pwd;
         delete user?.mpin;
         return user
     }

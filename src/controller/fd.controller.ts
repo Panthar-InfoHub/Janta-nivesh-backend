@@ -331,7 +331,7 @@ class FdControllerClass {
             }
 
             const primary_bank = user.user_bank_details?.find((bank) => bank.is_primary) || user.user_bank_details?.[0];
-            const kyc_identity = user.mfKycIdentities;
+            const kyc_identity = [];
 
             const bank_payload = this.omit_empty({
                 user: {
@@ -353,44 +353,44 @@ class FdControllerClass {
             //     }
             // }
 
-            const nbfc_payload = this.omit_empty({
-                user: {
-                    name: user.full_name,
-                    fatherName: kyc_identity?.father_name,
-                    email: user.email || kyc_identity?.email_id,
-                    mobileNumber: user.phone_no,
-                    pan: kyc_identity?.pan_no,
-                    dob: this.to_dd_mm_yyyy(user.dob) || kyc_identity?.dob,
-                },
-                personalDetails: {
-                    maritalStatus: kyc_identity?.marital_status,
-                    gender: kyc_identity?.gender,
-                    // TODO: salutation is not stored in current DB models; will map once source is available.
-                    salutation: undefined,
-                },
-                bankAccount: {
-                    accountNo: primary_bank?.account_no,
-                    ifscCode: primary_bank?.ifsc_code,
-                    bankName: primary_bank?.bank_name,
-                    // TODO: branchName is not stored in current DB models; will map once source is available.
-                    branchName: undefined,
-                },
-                kyc: {
-                    timestamp: kyc_identity?.updatedAt?.getTime(),
-                    uid: kyc_identity?.uid,
-                    name: kyc_identity?.full_name,
-                    photoUrl: kyc_identity?.digilocker_photo_url,
-                    dob: kyc_identity?.dob,
-                    gender: kyc_identity?.gender,
-                    addressLine1: kyc_identity?.address_line,
-                    addressLine2: kyc_identity?.full_address,
-                    city: kyc_identity?.city,
-                    state: kyc_identity?.state,
-                    pincode: kyc_identity?.pincode,
-                    locality: kyc_identity?.district,
-                    landmark: kyc_identity?.land_mark,
-                }
-            });
+            // const nbfc_payload = this.omit_empty({
+            //     user: {
+            //         name: user.full_name,
+            //         fatherName: kyc_identity?.father_name,
+            //         email: user.email || kyc_identity?.email_id,
+            //         mobileNumber: user.phone_no,
+            //         pan: kyc_identity?.pan_no,
+            //         dob: this.to_dd_mm_yyyy(user.dob) || kyc_identity?.dob,
+            //     },
+            //     personalDetails: {
+            //         maritalStatus: kyc_identity?.marital_status,
+            //         gender: kyc_identity?.gender,
+            //         // TODO: salutation is not stored in current DB models; will map once source is available.
+            //         salutation: undefined,
+            //     },
+            //     bankAccount: {
+            //         accountNo: primary_bank?.account_no,
+            //         ifscCode: primary_bank?.ifsc_code,
+            //         bankName: primary_bank?.bank_name,
+            //         // TODO: branchName is not stored in current DB models; will map once source is available.
+            //         branchName: undefined,
+            //     },
+            //     kyc: {
+            //         timestamp: kyc_identity?.updatedAt?.getTime(),
+            //         uid: kyc_identity?.uid,
+            //         name: kyc_identity?.full_name,
+            //         photoUrl: kyc_identity?.digilocker_photo_url,
+            //         dob: kyc_identity?.dob,
+            //         gender: kyc_identity?.gender,
+            //         addressLine1: kyc_identity?.address_line,
+            //         addressLine2: kyc_identity?.full_address,
+            //         city: kyc_identity?.city,
+            //         state: kyc_identity?.state,
+            //         pincode: kyc_identity?.pincode,
+            //         locality: kyc_identity?.district,
+            //         landmark: kyc_identity?.land_mark,
+            //     }
+            // });
 
             res.status(200).json({
 
@@ -398,10 +398,10 @@ class FdControllerClass {
                 message: "Success",
                 user: {
                     name: user.full_name,
-                    email: user.email || kyc_identity?.email_id,
+                    email: user.email,
                     mobileNumber: user.phone_no,
-                    pan: kyc_identity?.pan_no,
-                    dob: this.to_dd_mm_yyyy(user.dob) || kyc_identity?.dob,
+                    // pan: kyc_identity?.pan_no, TODO
+                    dob: this.to_dd_mm_yyyy(user.dob),
                 },
                 // data: {
                 //     bank: bank_payload,

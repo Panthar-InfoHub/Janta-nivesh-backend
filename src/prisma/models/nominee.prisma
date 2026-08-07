@@ -1,0 +1,36 @@
+// One user can have multiple nominees (percentage_allocation across a user's nominees should
+// sum to 100 - enforced in the service layer, not the DB). Adding a nominee is optional at
+// onboarding time ("I will add Nominees later" -> UserOnboarding.nominee_status = SKIPPED).
+model Nominee {
+  id                    String  @id @default(cuid())
+  user_id               String
+  user                  User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  nominee_name          String
+  relationship          String
+  percentage_allocation Decimal @db.Decimal(5, 2)
+  dob                   String
+  fp_related_party_id   String? @unique // FP related_party object id - name/relationship/dob are
+  // immutable on FP's side once set, so editing those means creating a NEW related_party, not patching this one
+
+  // Required by FP's related_party for non-minor nominees - collected on the nominee-add screen.
+  // document_type/document_number are generic - maps to related_party's type-specific field
+  // (pan | aadhaar_number | driving_licence_number | passport_number) at call time, since FP
+  // doesn't have one generic "identity_proof_number" field, just one column per proof type.
+  document_type       String // pan | aadhaar | driving_licence | passport
+  document_number     String
+  email_address       String?
+  phone_isd           String?
+  phone_number        String?
+  address_line1       String?
+  address_line2       String?
+  address_line3       String?
+  address_city        String?
+  address_state       String?
+  address_postal_code String?
+  address_country     String? @default("IN")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([user_id])
+}

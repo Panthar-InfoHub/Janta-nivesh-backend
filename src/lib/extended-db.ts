@@ -96,6 +96,10 @@ export function extendPrismaClient(client: PrismaClient) {
                 ifsc_code: {
                     needs: { ifsc_code: true },
                     compute(b) { return decrypt(b.ifsc_code); }
+                },
+                account_holder_name: {
+                    needs: { account_holder_name: true },
+                    compute(b) { return decrypt(b.account_holder_name); }
                 }
             },
             userAssets: {
@@ -162,14 +166,20 @@ export function extendPrismaClient(client: PrismaClient) {
                     compute(g) { return decryptDecimal(g.post_retirement_return); }
                 }
             },
-            mfKycIdentity: {
-                uid: { needs: { uid: true }, compute(k) { return decrypt(k.uid); } },
-                pan_no: { needs: { pan_no: true }, compute(k) { return decrypt(k.pan_no); } },
+            kycProfile: {
+                pan: { needs: { pan: true }, compute(k) { return decrypt(k.pan); } },
                 full_name: { needs: { full_name: true }, compute(k) { return decrypt(k.full_name); } },
                 dob: { needs: { dob: true }, compute(k) { return decrypt(k.dob); } },
-                full_address: { needs: { full_address: true }, compute(k) { return decrypt(k.full_address); } },
-                mobile_no: { needs: { mobile_no: true }, compute(k) { return decrypt(k.mobile_no); } },
-                email_id: { needs: { email_id: true }, compute(k) { return decrypt(k.email_id); } }
+                address: { needs: { address: true }, compute(k) { return decrypt(k.address); } },
+                aadhaar_number: { needs: { aadhaar_number: true }, compute(k) { return decrypt(k.aadhaar_number); } }
+            },
+            nominee: {
+                nominee_name: { needs: { nominee_name: true }, compute(n) { return n.nominee_name ? decrypt(n.nominee_name) : null; } },
+                dob: { needs: { dob: true }, compute(n) { return n.dob ? decrypt(n.dob) : null; } },
+                document_number: { needs: { document_number: true }, compute(n) { return n.document_number ? decrypt(n.document_number) : null; } },
+                email_address: { needs: { email_address: true }, compute(n) { return n.email_address ? decrypt(n.email_address) : null; } },
+                phone_number: { needs: { phone_number: true }, compute(n) { return n.phone_number ? decrypt(n.phone_number) : null; } },
+                address_line1: { needs: { address_line1: true }, compute(n) { return n.address_line1 ? decrypt(n.address_line1) : null; } }
             }
         },
         query: {
@@ -214,6 +224,7 @@ export function extendPrismaClient(client: PrismaClient) {
                                 data.account_no = encrypt(data.account_no);
                             }
                             if (data.ifsc_code) data.ifsc_code = encrypt(data.ifsc_code);
+                            if (data.account_holder_name) data.account_holder_name = encrypt(data.account_holder_name);
                         }
 
                         if (modelName === "UserAssets") {
@@ -244,8 +255,15 @@ export function extendPrismaClient(client: PrismaClient) {
                             }
                         }
 
-                        if (modelName === "MfKycIdentity") {
-                            const fields = ["uid", "pan_no", "full_name", "dob", "full_address", "mobile_no", "email_id"];
+                        if (modelName === "KycProfile") {
+                            const fields = ["pan", "full_name", "dob", "address", "aadhaar_number"];
+                            for (const f of fields) {
+                                if (data[f] !== undefined && data[f] !== null) data[f] = encrypt(String(data[f]));
+                            }
+                        }
+
+                        if (modelName === "Nominee") {
+                            const fields = ["nominee_name", "dob", "document_number", "email_address", "phone_number", "address_line1"];
                             for (const f of fields) {
                                 if (data[f] !== undefined && data[f] !== null) data[f] = encrypt(String(data[f]));
                             }

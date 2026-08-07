@@ -56,9 +56,9 @@ export const login_require = async (req: Request, res: Response, next: NextFunct
 
         resData.id = user.id;
         resData.email = user.email ?? undefined;
-        resData.log = user.usr ?? undefined;
-        resData.pwd = user.pwd ?? undefined;
-        resData.inv_id = user.inv_id ?? undefined;
+        // resData.log = user.usr ?? undefined;
+        // resData.pwd = user.pwd ?? undefined;
+        // resData.inv_id = user.inv_id ?? undefined;
         logger.debug("User data from token ==> ", resData)
 
         req.user = {

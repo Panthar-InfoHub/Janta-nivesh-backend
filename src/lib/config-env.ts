@@ -22,6 +22,23 @@ export const env = {
 
 
 
+    // Cybrilla (POA / onboarding-KYC provider) - v2 Finnsys replacement
+    CYBRILLA_TOKEN_URL: process.env.CYBRILLA_TOKEN_URL!,
+    CYBRILLA_CLIENT_ID: process.env.CYBRILLA_CLIENT_ID!,
+    CYBRILLA_CLIENT_SECRET: process.env.CYBRILLA_CLIENT_SECRET!,
+    CYBRILLA_API_BASE_URL: process.env.CYBRILLA_API_BASE_URL!,
+    // Client-side redirect URLs (app deep link / web landing page) - NOT webhooks. Where the
+    // user's browser lands after finishing the DigiLocker / esign journey in the webview.
+    KYC_FORM_PROOF_CALLBACK_URL: process.env.KYC_FORM_PROOF_CALLBACK_URL!,
+    KYC_FORM_ESIGN_CALLBACK_URL: process.env.KYC_FORM_ESIGN_CALLBACK_URL!,
+
+    // Fintech Primitives / "Janta Nivesh" API (MF, bank account, file) - v2 Finnsys replacement
+    FINTECH_PRIMITIVE_TOKEN_URL: process.env.FINTECH_PRIMITIVE_TOKEN_URL!,
+    FINTECH_PRIMITIVE_CLIENT_ID: process.env.FINTECH_PRIMITIVE_CLIENT_ID!,
+    FINTECH_PRIMITIVE_CLIENT_SECRET: process.env.FINTECH_PRIMITIVE_CLIENT_SECRET!,
+    FINTECH_PRIMITIVE_API_BASE_URL: process.env.FINTECH_PRIMITIVE_API_BASE_URL!,
+    FINTECH_PRIMITIVE_TENANT_ID: process.env.FINTECH_PRIMITIVE_TENANT_ID!, // x-tenant-id header
+
     finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,

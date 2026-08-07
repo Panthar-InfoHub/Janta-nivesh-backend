@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { user_patch_schema, verify_mpin_schema } from "../lib/zod-schemas/user.schema.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
-import { fire_report_service } from "../services/fire.report.service.js";
+// import { fire_report_service } from "../services/fire.report.service.js";
 import { user_finnsys_service } from "../services/user.finnsys.service.js";
 import { user_savings_service } from "../services/user.savings.service.js";
 import { user_service } from "../services/user.service.js";
@@ -46,7 +46,7 @@ class UserFinanceControllerClass {
 
             logger.debug(`User data fetched successfully ==> `, data);
 
-            const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
+            // const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
             const user = req.user!;
             let goalIdToCurrvalMap = new Map<string, number>();
@@ -65,53 +65,53 @@ class UserFinanceControllerClass {
                 logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
             }
 
-            const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
+            // const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
 
-                if (goal.goal_id) {
-                    const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
-                    if (current_value > 0) {
-                        const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
-                        (goal as any).current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
-                    }
-                }
+            //     if (goal.goal_id) {
+            //         const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
+            //         if (current_value > 0) {
+            //             const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
+            //             (goal as any).current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
+            //         }
+            //     }
 
-                if (goal.goal_type_id === 3) {
-                    const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
-                    const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
+            //     if (goal.goal_type_id === 3) {
+            //         const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
+            //         const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
 
-                    const corpus_value = user_goal_controller.calculate_corpus_value(
-                        Number(goal.current_monthly_expense ?? 0),
-                        Number(goal.inflation_rate ?? 0) / 100,       // stored as % (e.g. 7), formula needs 0.07
-                        Number(goal.post_retirement_return ?? 0) / 100, // stored as % (e.g. 6), formula needs 0.06
-                        years_to_retirement,
-                        years_post_retirement
-                    );
+            //         const corpus_value = user_goal_controller.calculate_corpus_value(
+            //             Number(goal.current_monthly_expense ?? 0),
+            //             Number(goal.inflation_rate ?? 0) / 100,       // stored as % (e.g. 7), formula needs 0.07
+            //             Number(goal.post_retirement_return ?? 0) / 100, // stored as % (e.g. 6), formula needs 0.06
+            //             years_to_retirement,
+            //             years_post_retirement
+            //         );
 
-                    (goal as any).current_goal_cost = new Prisma.Decimal(Math.round(corpus_value));
-                    logger.debug(`Computed corpus value for retirement goal ${goal.goal_id}: ${corpus_value}`);
-                }
-                return goal;
-            }) : data.user_goals
+            //         (goal as any).current_goal_cost = new Prisma.Decimal(Math.round(corpus_value));
+            //         logger.debug(`Computed corpus value for retirement goal ${goal.goal_id}: ${corpus_value}`);
+            //     }
+            //     return goal;
+            // }) : data.user_goals
 
             res.status(200).json({
                 code: 200,
                 message: "User data fetched successfully",
                 data: {
                     ...data,
-                    user_goals: wrapper_user_goal,
-                    kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
-                        acc[kyc.kyc_type] = {
-                            status: kyc.status
-                        };
-                        return acc;
-                    }, {}) || {},
-                    kyc_progress: this.calculate_kyc_progress(data?.kyc_types || []),
-                    user_home_data: {
-                        fire_number,
-                        net_worth,
-                        total_expenses,
-                        fire_percentage
-                    }
+                    // user_goals: wrapper_user_goal,
+                    // kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
+                    //     acc[kyc.kyc_type] = {
+                    //         status: kyc.status
+                    //     };
+                    //     return acc;
+                    // }, {}) || {},
+                    // kyc_progress: this.calculate_kyc_progress(data?.kyc_types || []),
+                    // user_home_data: {
+                    //     fire_number,
+                    //     net_worth,
+                    //     total_expenses,
+                    //     fire_percentage
+                    // }
                 }
             });
             return;
@@ -301,14 +301,14 @@ class UserFinanceControllerClass {
 
             const user = await user_service.get_user_by_id(usr.id);
 
-            if (!user || !user.nse_client_code) {
+            if (!user) {
                 throw new AppError("User Finnsys credentials or client code not found", 400, "MISSING_FINNSYS_CREDENTIALS");
             }
 
             const data = await pending_orders_service.get_pending_orders(
                 usr.log!,
                 usr.pwd!,
-                user.nse_client_code
+                user.investor_profile
             );
 
             res.status(200).json({
@@ -571,8 +571,8 @@ class UserFinanceControllerClass {
                 const user_data = await user_service.get_user_by_id(user.id);
 
                 logger.debug('User data --> ', user_data)
-                if (user_data && user_data.nse_client_code) {
-                    const xsip_report = await wrapper_service.get_xsip_registration_report_cached(user_data.nse_client_code, user.log!, user.pwd!);
+                if (user_data) {
+                    const xsip_report = await wrapper_service.get_xsip_registration_report_cached(user_data.investor_profile, user.log!, user.pwd!);
 
                     logger.debug(`Xsip report ==> `, xsip_report)
                     if (xsip_report && (xsip_report.code == 1 || xsip_report.code == 0) && xsip_report.data && xsip_report.data.report_data) {

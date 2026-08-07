@@ -5,36 +5,36 @@ enum Mandate_status {
 }
 
 model User {
-  id                String                 @id @default(uuid())
-  full_name         String?
-  inv_id            Int?                   @unique
-  usr               String?                @unique
-  pwd               String?
-  email             String?                @unique
-  email_hash        String?                @unique
-  phone_no          String?                @unique
-  phone_hash        String?                @unique
-  city              String?
-  dob               String?
-  fcm_token         String?
-  meta_data         Json?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @default(now()) @updatedAt
-  nse_client_code   String?                @unique
-  refresh_token     String?
-  mpin              String?
-  fds               FdTransaction[]
-  kyc_types         KycType[]
-  mfKycIdentities   MfKycIdentity?
-  user_assets       UserAssets?
-  user_bank_details UserBankDetails[]
-  user_finance      UserFinance?
-  user_goals        UserGoals[]
-  user_insurance    UserInsurance?
-  user_loan         UserLoan[]
-  net_worth_history UserNetWorthSnapshot[]
-  mandates          Mandate[]
-  notifications     Notification[]
+  id                 String                 @id @default(uuid())
+  full_name          String?
+  email              String?                @unique
+  email_hash         String?                @unique
+  phone_no           String?                @unique
+  phone_hash         String?                @unique
+  city               String?
+  dob                String?
+  fcm_token          String?
+  meta_data          Json?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @default(now()) @updatedAt
+  investor_profile   String?                @unique
+  investment_account String?                @unique
+  refresh_token      String?
+  mpin               String?
+  fds                FdTransaction[]
+  onboarding         UserOnboarding?
+  kyc_profile        KycProfile?
+  nominees           Nominee[]
+  mf_purchase_plans  MfPurchasePlan[]
+  user_assets        UserAssets?
+  user_bank_details  UserBankDetails[]
+  user_finance       UserFinance?
+  user_goals         UserGoals[]
+  user_insurance     UserInsurance?
+  user_loan          UserLoan[]
+  net_worth_history  UserNetWorthSnapshot[]
+  mandates           Mandate[]
+  notifications      Notification[]
 }
 
 model UserNetWorthSnapshot {
@@ -48,23 +48,27 @@ model UserNetWorthSnapshot {
   year        Int // 2024
   createdAt   DateTime @default(now())
 
-
   @@unique([userId, month, year]) // Prevents duplicate entries for the same month
 }
 
 model Mandate {
-  id           String         @id @default(cuid())
-  user_id      String
-  mandate_id   String         @unique
-  amount       Decimal        @db.Decimal(12, 2)
-  status       Mandate_status @default(PENDING) // PENDING, SUCCESS, FAILED
-  umrn         String?
-  bank_account String?
-  start_date   DateTime?
-  end_date     DateTime?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @default(now()) @updatedAt
-  user         User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                 String         @id @default(cuid())
+  user_id            String
+  mandate_id         String         @unique // FP mandate id (create response), stringified
+  amount             Decimal        @db.Decimal(12, 2) // mandate_limit
+  status             Mandate_status @default(PENDING) // PENDING, SUCCESS, FAILED
+  mandate_type       String         @default("UPI") // always UPI for this app
+  provider_name      String         @default("CYBRILLAPOA") // mandatory + fixed for the ondc gateway
+  fp_bank_account_id String? // FP bank_account_id (old_id) used to create this mandate
+  fp_payment_id      String? // from the authorize response, distinct from mandate_id
+  failure_reason     String? // from the async authorization-outcome webhook
+  umrn               String?
+  bank_account       String?
+  start_date         DateTime?
+  end_date           DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @default(now()) @updatedAt
+  user               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
 }

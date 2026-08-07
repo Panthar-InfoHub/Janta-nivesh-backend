@@ -13,11 +13,11 @@ class MFKycIdentityServiceClass {
     upsert_from_digilocker = async (user_id: string, digilocker_data: DigilockerData) => {
         const mapped = map_digilocker_to_identity(digilocker_data);
 
-        return await db.mfKycIdentity.upsert({
-            where: { user_id },
-            create: { user: { connect: { id: user_id } }, ...mapped },
-            update: mapped
-        });
+        // return await db.mfKycIdentity.upsert({
+        //     where: { user_id },
+        //     create: { user: { connect: { id: user_id } }, ...mapped },
+        //     update: mapped
+        // });
     }
 
     /**
@@ -27,17 +27,17 @@ class MFKycIdentityServiceClass {
      *   update_identity(user_id, { user_photo_url: "url" })
      *   update_identity(user_id, { is_final_confirmed: true, verified_at: new Date() })
      */
-    update_identity = async (user_id: string, data: Prisma.MfKycIdentityUpdateInput) => {
-        return await db.mfKycIdentity.update({
-            where: { user_id },
-            data
-        });
+    update_identity = async (user_id: string, data) => {
+        // return await db.mfKycIdentity.update({
+        //     where: { user_id },
+        //     data
+        // });
     }
 
     get_by_user_id = async (user_id: string) => {
-        return await db.mfKycIdentity.findUnique({
-            where: { user_id }
-        });
+        // return await db.mfKycIdentity.findUnique({
+        //     where: { user_id }
+        // });
     }
 
     upsert_bank_details = async (user_id: string, bank_data: {
@@ -74,13 +74,13 @@ class MFKycIdentityServiceClass {
 
     get_verified_details = async (user_id: string, pan_no: string) => {
         try {
-            return await db.mfKycIdentity.findUnique({
-                where: {
-                    user_id,
-                    pan_no,
-                    is_final_confirmed: true
-                }
-            });
+            // return await db.mfKycIdentity.findUnique({
+            //     where: {
+            //         user_id,
+            //         pan_no,
+            //         is_final_confirmed: true
+            //     }
+            // });
         } catch (error) {
             logger.error("Error in fetching verified KYC details ==> ", error);
             throw error;

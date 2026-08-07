@@ -11,6 +11,16 @@ import { auth_router } from "./routes/auth.router.js"
 import { fire_report_router } from "./routes/fire-report.router.js"
 import { job_router } from "./routes/job.router.js"
 import { kyc_router } from "./routes/kyc.router.js"
+import { pan_verification_router } from "./routes/onboarding_routers/pan_verification.router.js"
+import { kyc_form_router } from "./routes/onboarding_routers/kyc_form.router.js"
+import { penny_drop_router } from "./routes/onboarding_routers/penny_drop.router.js"
+import { investor_profile_router } from "./routes/onboarding_routers/investor_profile.router.js"
+import { nominee_router } from "./routes/onboarding_routers/nominee.router.js"
+import { mandate_router } from "./routes/mandate.router.js"
+import { mandate_webhook_router } from "./routes/webhooks/mandate.webhook.router.js"
+import { mf_purchase_plan_router } from "./routes/mf-purchase-plan.router.js"
+import { mf_purchase_router } from "./routes/mf-purchase.router.js"
+import { mf_scheme_router } from "./routes/mf-scheme.router.js"
 import { mutual_fund_router } from "./routes/mutual-fund.router.js"
 import { onboarding_router } from "./routes/onboarding.router.js"
 import { user_assets_router } from "./routes/user/user.assets.router.js"
@@ -53,8 +63,19 @@ if (process.env.ENVIRONMENT === "dev") {
 
 
 //Routes
+app.use("/api/v2/auth", auth_router)
+app.use("/api/v2/onboarding/pan-verification", pan_verification_router)
+app.use("/api/v2/onboarding/kyc-form", kyc_form_router)
+app.use("/api/v2/onboarding/penny-drop", penny_drop_router)
+app.use("/api/v2/onboarding/investor-profile", investor_profile_router)
+app.use("/api/v2/onboarding/nominee", nominee_router)
+app.use("/api/v2/mandate", mandate_router)
+app.use("/api/v2/webhook/mandate", mandate_webhook_router)
+app.use("/api/v2/mf-purchase", mf_purchase_router)
+app.use("/api/v2/mf-scheme", mf_scheme_router)
+app.use("/api/v2/mf-purchase-plan", mf_purchase_plan_router)
 
-app.use("/api/v1/auth", auth_router)
+
 app.use("/api/v1/migration", migration_router)
 app.use("/api/v1/user", user_router)
 app.use("/api/v1/jobs", job_router)

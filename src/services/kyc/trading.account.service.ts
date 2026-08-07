@@ -15,31 +15,31 @@ class TradingAccountServiceClass extends NSEServiceClass {
 
     get_trading_account = async (user_id: string) => {
         try {
-            const [kyc_data, user_data] = await Promise.all([
-                db.mfKycIdentity.findUnique({
-                    where: { user_id },
-                    select: {
-                        gender: true,
-                        pan_no: true,
-                        place_of_birth: true,
-                        full_address: true,
-                        uid: true,
-                        pincode: true,
-                        city: true,
-                        district: true,
-                        state: true,
-                        country: true,
-                        marital_status: true,
-                        father_name: true,
-                        mother_name: true
-                    }
-                }),
-                user_service.get_user_by_id(user_id)
-            ])
+            // const [kyc_data, user_data] = await Promise.all([
+            //     db.mfKycIdentity.findUnique({
+            //         where: { user_id },
+            //         select: {
+            //             gender: true,
+            //             pan_no: true,
+            //             place_of_birth: true,
+            //             full_address: true,
+            //             uid: true,
+            //             pincode: true,
+            //             city: true,
+            //             district: true,
+            //             state: true,
+            //             country: true,
+            //             marital_status: true,
+            //             father_name: true,
+            //             mother_name: true
+            //         }
+            //     }),
+            //     user_service.get_user_by_id(user_id)
+            // ])
 
-            logger.debug("User kyc data for trading account kyc form ==> ", kyc_data)
-            logger.debug("User data for trading account kyc form ==> ", user_data)
-            return { kyc_data, user_data }
+            // logger.debug("User kyc data for trading account kyc form ==> ", kyc_data)
+            // logger.debug("User data for trading account kyc form ==> ", user_data)
+            // return { kyc_data, user_data }
         } catch (error) {
             logger.error("Error while fetching user data for trading account form ==> ", error)
         }

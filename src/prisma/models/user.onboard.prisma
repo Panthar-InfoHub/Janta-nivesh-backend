@@ -12,17 +12,25 @@ model UserFinance {
 }
 
 model UserBankDetails {
-  id              String   @id @default(cuid())
-  user_id         String
-  account_no      String
-  account_no_hash String   @default("")
-  ifsc_code       String
-  bank_name       String?
-  account_type    String
-  is_primary      Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now()) @updatedAt
-  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                        String      @id @default(cuid())
+  user_id                   String
+  account_no                String
+  account_no_hash           String      @default("")
+  ifsc_code                 String
+  bank_name                 String?
+  account_type              String?
+  account_holder_name       String? // as returned by penny drop / UPI verification
+  fp_bank_account_id        String?     @unique // FP bank_account object id (bac_...) - used by folio_defaults.payout_bank_account
+  fp_bank_account_old_id    Int? // same FP object's numeric old_id - what mandate creation's bank_account_id wants
+  is_primary                Boolean     @default(false)
+  verification_status       StageStatus @default(PENDING)
+  verification_method       String? // e.g. "PENNY_DROP"
+  verified_at               DateTime?
+  provider_reference_id     String? // penny drop transaction / provider ref id
+  raw_verification_response Json?
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @default(now()) @updatedAt
+  user                      User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, account_no_hash], name: "user_account_no_idx")
 }

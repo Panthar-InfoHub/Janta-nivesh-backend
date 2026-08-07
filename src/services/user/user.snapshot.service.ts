@@ -103,7 +103,7 @@ class UserSnapshotServiceClass {
      */
     async capture_all_users_snapshots() {
         const users = await db.user.findMany({
-            select: { id: true, usr: true, pwd: true }
+            select: { id: true }
         });
 
         logger.info(`Starting bulk snapshot capture for ${users.length} users...`);
@@ -113,7 +113,7 @@ class UserSnapshotServiceClass {
 
         for (const user of users) {
             try {
-                await this.capture_user_snapshot(user.id, user.usr || undefined, user.pwd || undefined);
+                await this.capture_user_snapshot(user.id);
                 success++;
             } catch (err) {
                 failed++;

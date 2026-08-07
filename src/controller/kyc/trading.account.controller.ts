@@ -20,29 +20,29 @@ class TradingAccountControllerClass {
             const user_id = req.user?.id!;
             logger.info("Fetching trading account data for user id ==> ", user_id);
 
-            const { user_data, kyc_data } = await trading_account_service.get_trading_account(user_id);
+            // const { user_data, kyc_data } = await trading_account_service.get_trading_account(user_id);
 
             res.status(200).json({
                 success: true,
                 message: "Trading account data fetched successfully",
                 data: {
-                    full_name: user_data.full_name,
-                    email: user_data.email,
-                    phone_no: user_data.phone_no,
-                    dob: new Date(user_data.dob).toISOString(),
-                    gender: kyc_data.gender,
-                    pan_no: kyc_data.pan_no,
-                    place_of_birth: kyc_data.place_of_birth,
-                    full_address: kyc_data.full_address,
-                    uid: kyc_data.uid,
-                    pin_code: kyc_data.pincode,
-                    city: kyc_data.city,
-                    district: kyc_data.district,
-                    state: kyc_data.state,
-                    country: kyc_data.country,
-                    martial_status: kyc_data.marital_status,
-                    father_name: kyc_data.father_name,
-                    mother_name: kyc_data.mother_name
+                    // full_name: user_data.full_name,
+                    // email: user_data.email,
+                    // phone_no: user_data.phone_no,
+                    // dob: new Date(user_data.dob).toISOString(),
+                    // gender: kyc_data.gender,
+                    // pan_no: kyc_data.pan_no,
+                    // place_of_birth: kyc_data.place_of_birth,
+                    // full_address: kyc_data.full_address,
+                    // uid: kyc_data.uid,
+                    // pin_code: kyc_data.pincode,
+                    // city: kyc_data.city,
+                    // district: kyc_data.district,
+                    // state: kyc_data.state,
+                    // country: kyc_data.country,
+                    // martial_status: kyc_data.marital_status,
+                    // father_name: kyc_data.father_name,
+                    // mother_name: kyc_data.mother_name
                 }
             });
             return;
@@ -107,7 +107,7 @@ class TradingAccountControllerClass {
              */
             await trading_account_service.client_registration(req.user!.id, result.data, user.log!, user.pwd!);
             const [_user, short_url_res] = await Promise.all([
-                user_service.update_user(req.user!.id, { nse_client_code: raw_payload.client_code }),
+                user_service.update_user(req.user!.id, { investor_profile: raw_payload.client_code }),
                 nse_service.get_short_url("CL_ACT", raw_payload.client_code, user.log!, user.pwd!)
             ]);
 
@@ -219,14 +219,14 @@ class TradingAccountControllerClass {
                 throw new AppError("User not found", 404, "USER_NOT_FOUND");
             }
 
-            // Guard: ensure user.nse_client_code exists (this is the IIN)
-            if (!user_data.nse_client_code) {
-                logger.warn(`Trading account confirmation failed for user id: ${user.id} - nse_client_code is missing`);
+            // Guard: ensure user.investor_profile exists (this is the IIN)
+            if (!user_data.investor_profile) {
+                logger.warn(`Trading account confirmation failed for user id: ${user.id} - investor_profile is missing`);
                 throw new AppError("NSE client code (IIN) is missing. Please create a trading account first.", 400, "MISSING_CLIENT_CODE");
             }
 
             // Check NSE Client Authorization Status
-            const auth_report = await nse_service.get_client_authorization_report(user_data.nse_client_code, user.log!, user.pwd!);
+            const auth_report = await nse_service.get_client_authorization_report(user_data.investor_profile, user.log!, user.pwd!);
             const auth_status = auth_report?.data?.report_data?.[0]?.auth_status;
 
             if (auth_status !== "SUCCESS") {
@@ -249,7 +249,7 @@ class TradingAccountControllerClass {
 
             // 5. Call Finnsys SaveNSEIIN
             const save_res = await kyc_finnsys_service.save_nse_iin(user.log!, user.pwd!, {
-                iin: user_data.nse_client_code,
+                iin: user_data.investor_profile,
                 tax_status,
                 holding_nature,
                 primary_name: user_data.full_name,

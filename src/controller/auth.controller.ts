@@ -7,6 +7,7 @@ import { deviceParamsSchema, req_otp_schema, validateOtpSchema } from "../schema
 import { auth_service } from "../services/auth.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
+import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 class AuthControllerClass {
@@ -27,7 +28,7 @@ class AuthControllerClass {
             logger.debug("Extracting device parameters for OTP request  ==> ", req.query);
             // const device_params = this.extract_device_params(req);
 
-            // Validation
+            // Validation   
             const validation = req_otp_schema.safeParse(req.query);
             if (!validation.success) {
                 logger.error("Mobile number validation failed");
@@ -40,11 +41,14 @@ class AuthControllerClass {
 
             const auth_res = await auth_service.req_otp(mob);
 
+            if (!auth_res) {
+                logger.error(`Error while sending otp`)
+                throw new AppError(`Error while sending otp`, 503, 'ERROR_SENDING_OTP')
+            }
 
             const user = await user_service.create_user({
                 phone_no: mob
             })
-
             logger.debug("User record ensured/created with ID: ", user.id);
 
 
@@ -69,8 +73,6 @@ class AuthControllerClass {
     auth_validate_otp = async (req: Request, res: Response, next: NextFunction) => {
         try {
 
-            const device_params = this.extract_device_params(req);
-
             const validation = validateOtpSchema.safeParse(req.body);
             if (!validation.success) {
                 logger.error("OTP validation payload invalid");
@@ -85,20 +87,17 @@ class AuthControllerClass {
                 throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
             }
 
-            logger.info(`Validating OTP for Mobile: ${mob}, Device: ${device_params.did}`);
-            const auth_res: AuthResponse = await auth_service.validate_otp(mob, otp, device_params);
+            logger.info(`Validating OTP for Mobile: ${mob}`);
+            const auth_res: Boolean = await auth_service.validate_otp(mob, otp);
             logger.debug("OTP Validation Response:", auth_res);
 
-            if (auth_res.code !== 1) {
+            if (!auth_res) {
                 throw new AppError("OTP validation failed", 401, "OTP_VALIDATION_FAILED");
             }
 
             const refresh_token = generate_JWT(user, "30d");
 
             const updated_user = await user_service.update_user(user.id, {
-                usr: auth_res.results[0].usr,
-                pwd: auth_res.results[0].pwd,
-                inv_id: auth_res.results[0].invid,
                 refresh_token: refresh_token,
                 fcm_token,
             });
@@ -108,8 +107,6 @@ class AuthControllerClass {
                 timestamp: new Date().toISOString(),
                 user_id: updated_user.id,
                 user_phone: updated_user.phone_no,
-                inv_id: String(auth_res.results?.[0]?.invid ?? ""),
-                finnsys_usr: auth_res.results?.[0]?.usr ?? "",
                 onboarding_stage: 0,
                 is_onboarding_completed: false
             });
@@ -127,6 +124,8 @@ class AuthControllerClass {
 
             const token = generate_JWT(updated_user);
 
+            const onboarding = await user_onboarding_service.get_status_summary(updated_user.id);
+
             res.status(200).json({
                 success: true,
                 message: "OTP validated successfully",
@@ -134,11 +133,8 @@ class AuthControllerClass {
                     user: {
                         user_id: updated_user.id,
                         phone_no: updated_user.phone_no,
-                        metadata: updated_user.meta_data ?? {
-                            onboarding_stage: 0,
-                            is_onboarding_completed: false,
-                        }
                     },
+                    onboarding,
                     token: token,
                     refresh_token: refresh_token
                 }
@@ -181,9 +177,9 @@ class AuthControllerClass {
             }
 
             const updated_user = await user_service.update_user(user.id, {
-                usr: auth_res.results.usr,
-                pwd: auth_res.results.pwd,
-                inv_id: auth_res.results.invid
+                // usr: auth_res.results.usr,
+                // pwd: auth_res.results.pwd,
+                // inv_id: auth_res.results.invid
             });
 
             const token = generate_JWT(updated_user);
@@ -237,9 +233,9 @@ class AuthControllerClass {
             }
 
             const updated_user = await user_service.update_user(user.id, {
-                usr: auth_res.results.usr,
-                pwd: auth_res.results.pwd,
-                inv_id: auth_res.results.invid
+                // usr: auth_res.results.usr,
+                // pwd: auth_res.results.pwd,
+                // inv_id: auth_res.results.invid
             });
 
             const token = generate_JWT(updated_user);

@@ -107,7 +107,7 @@ class FrontendControllerClass {
                 user_phone: user_data.phone_no ?? "",
                 full_name: user_data.full_name ?? "",
                 email: user_data.email ?? "",
-                inv_id: user_data.inv_id ? String(user_data.inv_id) : undefined,
+                // inv_id: user_data.inv_id ? String(user_data.inv_id) : undefined,
                 connection_type: type,
                 message: message
             });

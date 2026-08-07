@@ -1,3 +1,0 @@
-DROP TABLE IF EXISTS "BundleProduct";
-
-DROP TABLE IF EXISTS "Bundle";

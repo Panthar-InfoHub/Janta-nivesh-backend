@@ -25,7 +25,7 @@ export class MfOrderService {
                 scheme_code: item.prod_code,
                 trxn_type: "P",
                 buy_sell_type: item.folio ? "ADDITIONAL" : "FRESH",
-                client_code: user.nse_client_code,
+                client_code: user.investor_profile,
                 demat_physical: "P",
                 order_amount: item.txn_amount || item.sip_amt,
                 folio_no: item.folio || "",
@@ -59,7 +59,7 @@ export class MfOrderService {
     execute_lumpsum_purchase = async (user_id: string, user_log: string, user_pwd: string, direct_items?: any[]) => {
         const user = await user_service.get_all_user_data(user_id, { user_bank_details: true });
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+        if (!user.investor_profile) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
         let lumpsum_items: any[];
         if (direct_items && direct_items.length > 0) {
@@ -110,7 +110,7 @@ export class MfOrderService {
             scheme_code: prod_code,
             trxn_type: "R",
             buy_sell_type: "FRESH",
-            client_code: user.nse_client_code,
+            client_code: user.investor_profile,
             demat_physical: "P",
             order_amount: is_full ? "" : (redem_data.redemption_amount ? String(redem_data.redemption_amount) : ""),
             folio_no: folio_no,
@@ -159,8 +159,8 @@ export class MfOrderService {
 
         const payload = {
             arn: env.ARN,
-            username: user.usr,
-            password: user_pwd,
+            // username: user.usr,
+            // password: user_pwd,
             data: { transaction_details: [transaction_detail] }
         };
         logger.info(`Executing Redemption for User ${user_id}. Source: ${redem_data.source}. Payload: ${JSON.stringify(payload)}`);
@@ -193,7 +193,7 @@ export class MfOrderService {
     cancel_order = async (user_id: string, user_log: string, user_pwd: string, order_no: string) => {
         const user = await user_service.get_user_by_id(user_id);
         if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-        if (!user.nse_client_code) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
+        if (!user.investor_profile) throw new AppError("Trading account not set up (Client Code missing)", 400, "TRADING_ACCOUNT_MISSING");
 
         const payload = {
             arn: env.ARN,
@@ -202,7 +202,7 @@ export class MfOrderService {
             data: {
                 can_data: [
                     {
-                        client_code: user.nse_client_code,
+                        client_code: user.investor_profile,
                         order_no,
                         remarks: "13:Velvet Invest App: Order Cancelled"
                     }
