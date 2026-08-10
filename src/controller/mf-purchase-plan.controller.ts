@@ -16,7 +16,13 @@ class MfPurchasePlanControllerClass {
             const input = create_mf_purchase_plan_schema.parse(req.body);
 
             const raw_ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress || "127.0.0.1";
-            const user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip).split(",")[0].replace("::ffff:", "").trim();
+            let user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip).split(",")[0].replace("::ffff:", "").trim();
+            
+            // Fintech Primitives only accepts IPv4 addresses. 
+            // If the user connects via IPv6 (e.g. from a mobile network), we must fallback.
+            if (!require("net").isIPv4(user_ip)) {
+                user_ip = "127.0.0.1";
+            }
 
             const user = await user_service.get_user_by_id(user_id);
             if (!user?.investment_account) {
