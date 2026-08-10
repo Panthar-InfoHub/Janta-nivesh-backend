@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { isIPv4 } from "net";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import { create_mf_purchase_plan_schema, verify_purchase_plan_confirmation_otp_schema } from "../lib/zod-schemas/mf-purchase-plan.schema.js";
@@ -17,10 +18,10 @@ class MfPurchasePlanControllerClass {
 
             const raw_ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress || "127.0.0.1";
             let user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip).split(",")[0].replace("::ffff:", "").trim();
-            
+
             // Fintech Primitives only accepts IPv4 addresses. 
             // If the user connects via IPv6 (e.g. from a mobile network), we must fallback.
-            if (!require("net").isIPv4(user_ip)) {
+            if (!isIPv4(user_ip)) {
                 user_ip = "127.0.0.1";
             }
 
