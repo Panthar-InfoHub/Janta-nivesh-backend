@@ -22,3 +22,9 @@ export const create_mf_purchase_plan_schema = z.object({
 );
 
 export type CreateMfPurchasePlanInput = z.infer<typeof create_mf_purchase_plan_schema>;
+
+export const verify_purchase_plan_confirmation_otp_schema = z.object({
+    otp: z.string().length(4),
+});
+
+export type VerifyPurchasePlanConfirmationOtpInput = z.infer<typeof verify_purchase_plan_confirmation_otp_schema>;

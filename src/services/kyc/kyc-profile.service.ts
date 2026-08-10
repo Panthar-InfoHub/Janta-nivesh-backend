@@ -142,6 +142,11 @@ class KycProfileServiceClass {
             source_of_fund: input.source_of_fund,
             income_slab: input.income_slab,
 
+            marital_status: input.marital_status,
+            father_name: input.father_name,
+            spouse_name: input.spouse_name,
+            place_of_birth: input.place_of_birth,
+
             is_pep_declaration_confirmed: input.pep_confirmed,
             is_residency_declaration_confirmed: input.residency_confirmed,
             tax_residency_other_than_india: !input.residency_confirmed,

@@ -50,7 +50,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
             initiated_by: "investor",
             initiated_via: "mobile_app",
             gateway: "ondc",
-            euin: env.EUIN,
+            // euin: env.EUIN,
             user_ip,
         };
 
@@ -66,6 +66,51 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
         } catch (error: any) {
             logger.error("Error creating FP mf_purchase_plan ==> ", error?.response?.data || error.message);
             throw new AppError("Failed to create MF purchase plan", 502, "MF_PURCHASE_PLAN_CREATE_FAILED");
+        }
+    }
+
+    /**
+     * PATCH /v2/mf_purchase_plans - moves review_completed -> confirmed by attaching consent.
+     * Docs' working example sends only { id, state, consent } - no payment_method/payment_source
+     * re-sent (already set at create), no otp field on consent either despite the plan object's
+     * consent hash having one - our own OTP gate happens before this call, not inside it.
+     */
+    confirm_purchase_plan = async (fp_purchase_plan_id: string, consent: { email: string; isd_code: string; mobile: string }) => {
+        const payload = {
+            id: fp_purchase_plan_id,
+            state: "confirmed",
+            consent,
+        };
+
+        logger.debug("Confirming FP mf_purchase_plan", { fp_purchase_plan_id });
+
+        try {
+            const response = await axios.patch(`${this.base_url}/v2/mf_purchase_plans`, payload, {
+                headers: await this.auth_headers({ "Content-Type": "application/json" }),
+            });
+
+            logger.debug("FP mf_purchase_plan confirm response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error confirming FP mf_purchase_plan ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to confirm MF purchase plan", 502, "MF_PURCHASE_PLAN_CONFIRM_FAILED");
+        }
+    }
+
+    /** GET /v2/mf_purchase_plans/:id */
+    get_purchase_plan = async (fp_purchase_plan_id: string) => {
+        logger.debug("Fetching FP mf_purchase_plan", { fp_purchase_plan_id });
+
+        try {
+            const response = await axios.get(`${this.base_url}/v2/mf_purchase_plans/${fp_purchase_plan_id}`, {
+                headers: await this.auth_headers(),
+            });
+
+            logger.debug("FP mf_purchase_plan fetch response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching FP mf_purchase_plan ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to fetch MF purchase plan", 502, "MF_PURCHASE_PLAN_FETCH_FAILED");
         }
     }
 }

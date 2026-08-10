@@ -1,0 +1,81 @@
+enum MfPlanType {
+  PURCHASE
+  REDEMPTION
+  SWITCH
+}
+
+// One table for every systematic plan (SIP / SWP / STP) - FP calls this whole family
+// "FP Transaction Plans". They share ~90% of their shape and the same ondc lifecycle
+// (created -> review_completed -> confirmed -> submitted -> active), so this is a single
+// ledger of "what has this user set up" rather than one table per FP endpoint.
+// Type-specific fields are nullable here; their per-type mandatory-ness is enforced in the
+// zod schemas (e.g. folio_number is required for REDEMPTION, not for PURCHASE).
+// Note: the consent OTP itself is deliberately NOT stored - only who consented and when.
+model MfTransactionPlan {
+  id                    String     @id @default(cuid())
+  user_id               String
+  user                  User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan_type             MfPlanType
+  fp_plan_id            String     @unique // mfpp_... | mfrp_... | mfsp_...
+  mf_investment_account String // mfia_...
+
+  scheme          String // ISIN
+  folio_number    String? // required for REDEMPTION (can only redeem from a folio you hold)
+  amount          Decimal @db.Decimal(12, 2)
+  systematic      Boolean @default(true)
+  frequency       String // monthly | daily (redemption supports monthly only)
+  installment_day Int? // null for frequency = daily
+
+  number_of_installments    Int
+  remaining_installments    Int?
+  requested_activation_date DateTime?
+  start_date                DateTime?
+  end_date                  DateTime?
+  next_installment_date     DateTime?
+  previous_installment_date DateTime?
+
+  state                          String // created | review_completed | confirmed | submitted | active | failed | cancelled | completed
+  auto_generate_installments     Boolean @default(true)
+  generate_first_installment_now Boolean @default(false) // REDEMPTION only
+
+  // PURCHASE only - redemptions pay out, no mandate involved
+  payment_method String? // "mandate"
+  payment_source String? // the mandate id
+  purpose        String?
+
+  // SWITCH only (not built yet)
+  switch_to_scheme String?
+
+  source_ref_id String?
+  partner       String?
+  gateway       String  @default("ondc")
+  euin          String?
+  user_ip       String?
+  server_ip     String?
+  initiated_by  String?
+  initiated_via String?
+
+  // Consent (attestation that investor confirmed the order) - OTP value itself not persisted
+  consent_email    String?
+  consent_isd_code String?
+  consent_mobile   String?
+  consent_given_at DateTime?
+
+  fp_created_at             DateTime?
+  activated_at              DateTime?
+  cancelled_at              DateTime?
+  cancellation_scheduled_on DateTime?
+  cancellation_code         String?
+  auto_cancelled            Boolean?
+  failed_at                 DateTime?
+  completed_at              DateTime?
+  reason                    String?
+
+  raw_response Json? // full FP payload, forward-compat escape hatch
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([user_id])
+  @@index([user_id, plan_type])
+}

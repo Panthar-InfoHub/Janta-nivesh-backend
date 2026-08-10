@@ -19,6 +19,7 @@ import { nominee_router } from "./routes/onboarding_routers/nominee.router.js"
 import { mandate_router } from "./routes/mandate.router.js"
 import { mandate_webhook_router } from "./routes/webhooks/mandate.webhook.router.js"
 import { mf_purchase_plan_router } from "./routes/mf-purchase-plan.router.js"
+import { mf_redemption_plan_router } from "./routes/mf-redemption-plan.router.js"
 import { mf_purchase_router } from "./routes/mf-purchase.router.js"
 import { mf_scheme_router } from "./routes/mf-scheme.router.js"
 import { mutual_fund_router } from "./routes/mutual-fund.router.js"
@@ -74,6 +75,7 @@ app.use("/api/v2/webhook/mandate", mandate_webhook_router)
 app.use("/api/v2/mf-purchase", mf_purchase_router)
 app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf-purchase-plan", mf_purchase_plan_router)
+app.use("/api/v2/mf-redemption-plan", mf_redemption_plan_router)
 
 
 app.use("/api/v1/migration", migration_router)

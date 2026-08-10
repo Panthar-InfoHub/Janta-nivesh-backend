@@ -52,6 +52,10 @@ export const profile_stage_schema = z.object({
     address: z.string().min(1),
     pincode: z.string().min(1),
     city: z.string().min(1),
+    marital_status: z.enum(["married", "unmarried", "others"]), //married, unmarried and others
+    father_name: z.string().optional(),
+    spouse_name: z.string().optional(),
+    place_of_birth: z.string().min(1),
     occupation: z.enum([
         "business", "professional", "retired", "house_wife", "student",
         "public_sector_service", "private_sector_service", "government_service",

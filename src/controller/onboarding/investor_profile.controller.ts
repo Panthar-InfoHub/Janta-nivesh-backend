@@ -33,7 +33,7 @@ class InvestorProfileControllerClass {
             const user_id = req.user?.id!;
             const input = profile_stage_schema.parse(req.body);
 
-            logger.info("Completing profile stage", { user_id });
+            logger.info(`Completing profile stage for user ${user_id} with payload --> `, { input });
 
             const kyc_profile = await kyc_profile_service.upsert_profile_stage(user_id, input);
 
@@ -93,7 +93,7 @@ class InvestorProfileControllerClass {
             // 2b. If penny drop already saved a bank account, register it with FP too (needs
             // `profile`, so couldn't happen at penny-drop time - investor_profile didn't exist yet)
             const primary_bank = await user_bank_details_service.get_primary(user_id);
-            if (primary_bank && !primary_bank.fp_bank_account_id) {
+            if (primary_bank) {
                 const bank_account = await fintech_primitive_bank_account_service.create_bank_account(investor_profile.id, {
                     primary_account_holder_name: primary_bank.account_holder_name ?? kyc_profile.full_name!,
                     account_number: primary_bank.account_no,

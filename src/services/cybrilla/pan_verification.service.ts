@@ -8,6 +8,13 @@ type PreVerificationInput = {
     pan: string;
     name: string;
     date_of_birth: string; // YYYY-MM-DD
+    bank_accounts?: Array<{
+        account_number: string;
+        ifsc_code: string;
+        account_type: string;
+        bank_account_proof?: string; // only needed for nre_savings/nro_savings, not plain savings
+        verify_manually_if_required?: boolean;
+    }>;
 };
 
 // Thin Cybrilla API client - no DB writes here, that's the controller's job (calls this,
@@ -22,11 +29,13 @@ class CybrillaPanVerificationServiceClass {
     }
 
     /**
-     * POST /poa/pre_verifications - kicks off the PAN readiness check.
+     * POST /poa/pre_verifications - kicks off the PAN readiness check, optionally also
+     * verifying a bank account in the same call (fired again after penny drop, once we have
+     * the account details - this is the SAME resource/poll endpoint, just an extended response).
      * Async: response comes back with status "accepted" and readiness.status still null.
      * Cybrilla finishes processing later (poll or webhook - TBD, not wired up yet).
      */
-    create_pre_verification = async ({ pan, name, date_of_birth }: PreVerificationInput) => {
+    create_pre_verification = async ({ pan, name, date_of_birth, bank_accounts }: PreVerificationInput) => {
         const token = await provider_token_service.get_cybrilla_token();
 
         const payload = {
@@ -34,9 +43,20 @@ class CybrillaPanVerificationServiceClass {
             pan: { value: pan },
             name: { value: name },
             date_of_birth: { value: date_of_birth },
+            ...(bank_accounts ? {
+                bank_accounts: bank_accounts.map((b) => ({
+                    value: {
+                        account_number: b.account_number,
+                        ifsc_code: b.ifsc_code,
+                        account_type: b.account_type,
+                        // ...(b.bank_account_proof ? { bank_account_proof: b.bank_account_proof } : {}),
+                    },
+                    // verify_manually_if_required: b.verify_manually_if_required ?? true,
+                })),
+            } : {}),
         };
 
-        logger.debug("Creating Cybrilla pre-verification (PAN readiness check)", { pan });
+        logger.debug("Creating Cybrilla pre-verification (PAN readiness check)", { payload });
 
         try {
             const response = await axios.post(`${this.base_url}/poa/pre_verifications`, payload, {

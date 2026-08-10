@@ -13,6 +13,9 @@ class UserBankDetailsServiceClass {
      * mfkyc_identity_service.upsert_bank_details: pass the plain account_no in the
      * account_no_hash slot of the unique-index where clause, the Prisma extension rewrites
      * it to the actual blind-index hash before hitting the DB.
+     * verification_status is IN_PROGRESS, not VERIFIED - the frontend's own UPI flow isn't a
+     * real verification on our side, Cybrilla's pre_verifications bank_accounts check (fired
+     * right after this) is the actual authority. See sync_verification_from_pre_verification.
      */
     save_from_penny_drop = async (user_id: string, input: PennyDropInput) => {
         logger.debug("Persisting penny drop bank details", { user_id });
@@ -32,9 +35,8 @@ class UserBankDetailsServiceClass {
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,
-                verification_status: "VERIFIED",
-                verification_method: "UPI",
-                verified_at: new Date(),
+                verification_status: "IN_PROGRESS",
+                verification_method: "CYBRILLA_PRE_VERIFICATION",
             },
             update: {
                 ifsc_code: input.ifsc_code,
@@ -42,9 +44,22 @@ class UserBankDetailsServiceClass {
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,
-                verification_status: "VERIFIED",
-                verification_method: "UPI",
-                verified_at: new Date(),
+                verification_status: "IN_PROGRESS",
+                verification_method: "CYBRILLA_PRE_VERIFICATION",
+            }
+        });
+    }
+
+    /** Syncs verification_status/raw_verification_response from a pre_verification's bank_accounts[0] entry. */
+    sync_verification_from_pre_verification = async (id: string, bank_account_result: any) => {
+        const status = bank_account_result?.status; // verified | failed | null (in progress)
+
+        return await db.userBankDetails.update({
+            where: { id },
+            data: {
+                verification_status: status === "verified" ? "VERIFIED" : status === "failed" ? "FAILED" : "IN_PROGRESS",
+                verified_at: status === "verified" ? new Date() : undefined,
+                raw_verification_response: bank_account_result ?? undefined,
             }
         });
     }

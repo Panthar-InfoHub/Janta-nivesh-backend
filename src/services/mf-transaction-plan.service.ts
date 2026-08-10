@@ -1,27 +1,35 @@
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
 
-class MfPurchasePlanServiceClass {
+export type MfPlanType = "PURCHASE" | "REDEMPTION" | "SWITCH";
 
-    get_all = async (user_id: string) => {
-        return await db.mfPurchasePlan.findMany({ where: { user_id }, orderBy: { createdAt: "desc" } });
+// One ledger for every systematic plan (SIP/SWP/STP). The FP payloads for purchase and
+// redemption plans are near-identical, so one upsert handles both - type-specific fields
+// just come back undefined for the type that doesn't use them.
+class MfTransactionPlanServiceClass {
+
+    get_all = async (user_id: string, plan_type?: MfPlanType) => {
+        return await db.mfTransactionPlan.findMany({
+            where: { user_id, ...(plan_type ? { plan_type } : {}) },
+            orderBy: { createdAt: "desc" }
+        });
     }
 
-    get_by_fp_id = async (user_id: string, fp_purchase_plan_id: string) => {
-        return await db.mfPurchasePlan.findFirst({ where: { user_id, fp_purchase_plan_id } });
+    get_by_fp_id = async (user_id: string, fp_plan_id: string) => {
+        return await db.mfTransactionPlan.findFirst({ where: { user_id, fp_plan_id } });
     }
 
     /**
-     * Upserts from an FP mf_purchase_plan payload (create/fetch/update all return the same
-     * shape), keyed on fp_purchase_plan_id so repeated syncs just refresh the row.
-     * The consent OTP is deliberately not persisted - only who consented.
+     * Upserts from an FP plan payload (create/fetch/update all return the same shape),
+     * keyed on fp_plan_id so repeated syncs just refresh the row.
      */
-    upsert_from_fp = async (user_id: string, plan: any) => {
-        logger.debug("Persisting mf_purchase_plan", { user_id, fp_purchase_plan_id: plan?.id, state: plan?.state });
+    upsert_from_fp = async (user_id: string, plan_type: MfPlanType, plan: any) => {
+        logger.debug("Persisting mf transaction plan", { user_id, plan_type, fp_plan_id: plan?.id, state: plan?.state });
 
         const data = {
             user_id,
-            fp_purchase_plan_id: plan.id,
+            plan_type,
+            fp_plan_id: plan.id,
             mf_investment_account: plan.mf_investment_account,
             scheme: plan.scheme,
             folio_number: plan.folio_number ?? null,
@@ -40,9 +48,12 @@ class MfPurchasePlanServiceClass {
 
             state: plan.state,
             auto_generate_installments: plan.auto_generate_installments ?? true,
+            generate_first_installment_now: plan.generate_first_installment_now ?? false,
+
             payment_method: plan.payment_method ?? null,
             payment_source: plan.payment_source ?? null,
             purpose: plan.purpose ?? null,
+
             source_ref_id: plan.source_ref_id ?? null,
             partner: plan.partner ?? null,
             gateway: plan.gateway ?? "ondc",
@@ -69,12 +80,17 @@ class MfPurchasePlanServiceClass {
             raw_response: plan,
         };
 
-        return await db.mfPurchasePlan.upsert({
-            where: { fp_purchase_plan_id: plan.id },
+        return await db.mfTransactionPlan.upsert({
+            where: { fp_plan_id: plan.id },
             create: data,
             update: data,
         });
     }
+
+    /** Records that our own OTP gate was passed and consent was sent to FP - not the OTP value itself. */
+    mark_consent_given = async (id: string) => {
+        return await db.mfTransactionPlan.update({ where: { id }, data: { consent_given_at: new Date() } });
+    }
 }
 
-export const mf_purchase_plan_service = new MfPurchasePlanServiceClass();
+export const mf_transaction_plan_service = new MfTransactionPlanServiceClass();

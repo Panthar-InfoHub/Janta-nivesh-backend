@@ -5,6 +5,7 @@ import { pan_verification_schema } from "../../lib/zod-schemas/kyc-onboarding.sc
 import { cybrilla_pan_verification_service } from "../../services/cybrilla/pan_verification.service.js";
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
+import { user_bank_details_service } from "../../services/user-bank-details.service.js";
 
 class PanVerificationControllerClass {
 
@@ -155,13 +156,36 @@ class PanVerificationControllerClass {
                     }
                 }
 
-                // All checks passed! Advance readiness_status and current_stage in UserOnboarding
+                // All checks passed! Advance readiness_status and current_stage in UserOnboarding.
+                // Only move current_stage forward the FIRST time - this same endpoint gets
+                // polled again after penny drop (now with bank_accounts attached), and by then
+                // the user is already past this stage - don't regress the cursor on that poll.
                 if (readiness?.status === "verified" && pan_obj?.status === "verified" && name_obj?.status === "verified" && dob_obj?.status === "verified") {
-                    logger.info("PAN readiness and hashes verified successfully, advancing onboarding stage", { user_id });
+                    logger.info("PAN readiness and hashes verified successfully", { user_id });
+
+                    const onboarding_before = await user_onboarding_service.get_or_create(user_id);
                     await user_onboarding_service.update_stage(user_id, {
                         readiness_status: "VERIFIED",
-                        current_stage: "PENNY_DROP_VERIFICATION"
+                        kyc_status: "VERIFIED",
+                        ...(onboarding_before.current_stage === "PAN_VERIFICATION" ? { current_stage: "PENNY_DROP_VERIFICATION" } : {}),
                     });
+                }
+
+                // Bank account verification (only present once penny drop has fired a second
+                // pre_verification with bank_accounts attached) - sync UserBankDetails, no
+                // thrown errors on failure per-code here, just surface the raw result.
+                const bank_accounts = pre_verification?.bank_accounts;
+                if (Array.isArray(bank_accounts) && bank_accounts.length > 0) {
+                    const primary_bank = await user_bank_details_service.get_primary(user_id);
+                    if (primary_bank) {
+                        await user_bank_details_service.sync_verification_from_pre_verification(primary_bank.id, bank_accounts[0]);
+
+                        if (bank_accounts[0]?.status === "verified") {
+                            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "VERIFIED" });
+                        } else if (bank_accounts[0]?.status === "failed") {
+                            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
+                        }
+                    }
                 }
             }
 
@@ -175,6 +199,7 @@ class PanVerificationControllerClass {
                     status: pre_verification?.status,
                     is_processing_complete,
                     readiness: pre_verification?.readiness,
+                    bank_accounts: pre_verification?.bank_accounts ?? null,
                     onboarding
                 }
             });
