@@ -55,6 +55,7 @@ export const env = {
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,
     MF_LATEST_URL: process.env.MF_LATEST_URL!,
+    MFAPI_BASE_URL: process.env.MFAPI_BASE_URL || "https://api.mfapi.in", // NAV source (scheme master + per-fund latest NAV)
     KYC_BASE_URL: process.env.KYC_BASE_URL!,
     ARN: process.env.ARN!,
     EUIN: process.env.EUIN!,

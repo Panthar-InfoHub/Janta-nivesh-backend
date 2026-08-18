@@ -89,11 +89,11 @@ app.use("/api/v2/mf-redemption-plan", mf_redemption_plan_router)
 // since it mints auth tokens, but e.g. /mf-product-import needs to run in production too and
 // relies on admin_require's x-admin-secret check alone.
 app.use("/api/v2/admin", admin_router)
+app.use("/api/v2/jobs", job_router)
 
 
 app.use("/api/v1/migration", migration_router)
 app.use("/api/v1/user", user_router)
-app.use("/api/v1/jobs", job_router)
 app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)

@@ -4,10 +4,17 @@ import { job_controller } from "../controller/job.controller.js";
 export const job_router = Router();
 
 // mf-daily removed - replaced by POST /api/v2/admin/mf-product-import (curated JSON list) plus
-// the per-ISIN sync job TODO'd below. mf-nav-history and mf-single-nav/:id are disabled, not
-// removed - both keyed NAV lookups off a Finnsys column (mapping_code) that no longer exists on
-// MfProduct; NAV sourcing for the curated catalogue is an explicitly deferred decision. See the
-// TODO above job.service.ts's now-commented nav_history_job/process_nav_history/single_nav_history_job.
+// the per-ISIN FP sync TODO'd below. The old Finnsys-backed mf-nav-history and mf-single-nav/:id
+// are gone too, superseded by the two mfapi.in jobs below.
+//
+// NAV pipeline, in order:
+//   1. POST /api/v2/admin/mf-product-import  - curated CSV/JSON -> MfProduct (name + isin)
+//   2. POST /api/v1/jobs/mf-scheme-code-sync - match our isin against mfapi's master list to
+//      learn each fund's scheme_code. Occasional; one bulk fetch of ~40k rows.
+//   3. POST /api/v1/jobs/mf-nav-daily        - per-fund latest NAV -> MfProduct.latest_nav +
+//      an MfNavHistory point. Daily; one HTTP call per fund, concurrency-capped.
+job_router.post("/mf-scheme-code-sync", job_controller.mf_scheme_code_sync_job);
+job_router.post("/mf-nav-daily", job_controller.mf_nav_daily_job);
 job_router.post("/mf-metrics-calc", job_controller.mf_metrics_calc_job);
 job_router.post("/fd-daily", job_controller.daily_fd_product_sync_job);
 job_router.post("/user-snapshot", job_controller.monthly_user_snapshot_job);

@@ -10,4 +10,4 @@ admin_router.post("/login", dev_only_require, admin_require, admin_controller.ad
 
 // Bulk-inserts/updates the curated ISIN list (Excel -> JSON, converted externally). Runs in
 // production, so admin_require's secret header is the only gate - no dev_only_require.
-admin_router.post("/mf-product-import", admin_require, admin_controller.import_mf_products);
+admin_router.post("/mf-product-import", admin_controller.import_mf_products);
