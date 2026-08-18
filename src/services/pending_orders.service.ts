@@ -1,7 +1,6 @@
 import { mutual_fund_finnsys_service } from "./finnsys/mf.finnsys.service.js";
 import { env } from "../lib/config-env.js";
 import logger from "../middleware/logger.js";
-import { wrapper_service } from "./wrapper.service.js";
 
 class PendingOrdersServiceClass {
     /**
@@ -155,26 +154,12 @@ class PendingOrdersServiceClass {
                 return dateB.getTime() - dateA.getTime();
             });
 
-            // Map logos and AMCs to the pending orders
-            const amcSet = new Set<string>();
-            const nseCodeSet = new Set<string>();
-
-            pendingOrders.forEach(order => {
-                if (order.type === "SIP" && order.amc) {
-                    amcSet.add(order.amc);
-                } else if (order.type === "LUMPSUM" && order.amc) {
-                    // For lumpsum, order.amc currently holds the scheme_code (NSE code)
-                    nseCodeSet.add(order.amc);
-                }
-            });
-
-            // Fetch AMC names & logos for Lumpsum orders via NSE codes
-            const nseCodes = Array.from(nseCodeSet);
-            const nseDetailsMap = await wrapper_service.get_details_by_nse_codes(nseCodes);
-
-            // Fetch logos for SIP orders via AMC names
-            const amcNames = Array.from(amcSet);
-            const logoMap = await wrapper_service.get_logos_of_amc(amcNames);
+            // wrapper_service.get_details_by_nse_codes / get_logos_of_amc queried MfProduct
+            // columns (nse_scheme_code, amc_name) dropped in the Cybrilla/FP catalogue migration
+            // - both are commented out there. Empty maps here degrade to blank AMC name/logo
+            // rather than crashing pending-orders display; a v2-catalogue equivalent isn't built yet.
+            const nseDetailsMap = new Map<string, { amc_name: string, img_url: string }>();
+            const logoMap = new Map<string, string>();
 
             pendingOrders.forEach(order => {
                 if (order.type === "LUMPSUM") {

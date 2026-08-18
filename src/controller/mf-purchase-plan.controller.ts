@@ -120,7 +120,7 @@ class MfPurchasePlanControllerClass {
             if (!plan) {
                 throw new AppError("Purchase plan not found", 404, "MF_PURCHASE_PLAN_NOT_FOUND");
             }
-            if (plan.state !== "review_completed") {
+            if (plan.state !== "REVIEW_COMPLETED") {
                 throw new AppError(`Plan must be in review_completed state to confirm, currently ${plan.state}`, 400, "MF_PURCHASE_PLAN_NOT_REVIEW_COMPLETED");
             }
 

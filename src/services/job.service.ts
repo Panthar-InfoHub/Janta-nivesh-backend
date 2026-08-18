@@ -1,13 +1,14 @@
 import { env } from "../lib/config-env.js";
 import { FdCustomerType, FdPayoutFrequency, Prisma } from "../prisma/generated/prisma/client.js";
-import { chunkArray, logMemoryUsage, map_mf_asset_type } from "../lib/utils.js";
-import { v4 as uuidv4 } from 'uuid';
+import { chunkArray, logMemoryUsage } from "../lib/utils.js";
 import cuid from 'cuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
-import pLimit from "p-limit";
-import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
+// pLimit and MfNavHistoryCreateManyInput were only used by the now-disabled NAV history jobs
+// below (see the TODO there) - re-import both if that block is restored.
+// import pLimit from "p-limit";
+// import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
 import { user_snapshot_service } from "./user/user.snapshot.service.js";
 
 
@@ -25,146 +26,10 @@ class JobServiceClass {
         }
     }
 
-    daily_mf_product_job = async () => {
-
-        logMemoryUsage("START OF JOB");
-
-        const api_res = await axios.get(`${env.FINNSYS_MASTER_URL}`, {
-            params: {
-                gwname: "NSE",
-                ...(env.ENVIRONMENT === "dev" && { tot: 5 })
-            }
-        }).then(res => res.data);
-
-        const api_data: any[] = api_res.result ?? [];
-        if (api_data.length === 0) return logger.info("No data received.");
-
-
-        const batches = chunkArray(api_data, 1000);
-
-        try {
-            // --- START OF GLOBAL TRANSACTION ---
-            // Everything inside this block is "All-or-Nothing"
-            await db.$transaction(async (tx) => {
-
-                for (const batch of batches) {
-
-
-                    // -> Prepare MF Product Values
-                    const product_values = batch.map((mf: any) => {
-                        const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
-                        const normalizedAssetType = map_mf_asset_type(mf.ASSET_TYPE_ID, mf.ASSET_TYPE);
-                        return Prisma.sql`(
-                        ${uuidv4()}, ${String(mf.SCHM_ID)}, ${mf.ISIN || ""}, ${mf.MAPPING_CODE}, ${mf.NSE_SCHEME_CODE || ""}, ${mf.PLATFORM_SCHEME_CODE}, ${mf.SCHEME_NAME},
-                        ${mf.AMC_ID ? String(mf.AMC_ID) : null}, ${mf.AMC_CODE}, ${mf.AMC_NAME}, 
-                        ${normalizedAssetType}, ${mf.SCHEME_TYPE}, ${mf.STRUCTURE}, ${mf.RISK_NAME}, 
-                        ${mf.RISK_ID ? parseInt(mf.RISK_ID) : null}, ${mf.NAV ? parseFloat(mf.NAV) : null},
-                        ${navDate}, ${mf.PURCHASE_ALLOWED === "Y"}, ${mf.SIP_ALLOWED === "Y"}, 
-                        ${mf.REDEMPTION_ALLOWED === "Y"}, ${mf.SWITCH_ALLOWED === "Y"}, NOW()
-                    )`;
-                    });
-
-                    // -> Execute Bulk Upsert for Products with RETURNING to get actual IDs back
-                    // Why raw sql? Because prisma don't support upsertMany and we want to do this in 1 query for 30k records
-                    // RETURNING gives us the real id for both new inserts AND conflict-updated rows — no extra findMany needed
-                    const products: { id: string, scheme_id: string, isin: string | null, nse_scheme_code: string | null, mapping_code: string | null }[] = await tx.$queryRaw`
-                    INSERT INTO "MfProduct" (
-                        id, scheme_id, isin, mapping_code, nse_scheme_code, platform_code, scheme_name, 
-                        amc_id, amc_code, amc_name, asset_type, scheme_type, 
-                        structure, risk_name, risk_level, latest_nav, 
-                        latest_nav_date, purchase_allowed, sip_allowed, 
-                        redemption_allowed, switch_allowed, "updatedAt"
-                    )
-                    VALUES ${Prisma.join(product_values)}
-                    ON CONFLICT (scheme_id, isin, nse_scheme_code) DO UPDATE SET
-                        latest_nav = EXCLUDED.latest_nav,
-                        latest_nav_date = EXCLUDED.latest_nav_date,
-                        purchase_allowed = EXCLUDED.purchase_allowed,
-                        sip_allowed = EXCLUDED.sip_allowed,
-                        redemption_allowed = EXCLUDED.redemption_allowed,
-                        switch_allowed = EXCLUDED.switch_allowed,
-                        "updatedAt" = NOW()
-                    RETURNING id, scheme_id, isin, nse_scheme_code, mapping_code;
-                `;
-
-                    logger.info(`Batch of ${batch.length} products upserted successfully.`);
-
-                    // -> Create a Map for O(1) access to product IDs (built directly from RETURNING result)
-                    const productMap = new Map(products.map(p => [
-                        `${p.scheme_id}-${p.isin || ""}-${p.nse_scheme_code || ""}`.toUpperCase(),
-                        p.id
-                    ]));
-                    logger.debug(`Product Map created with ${productMap.size} entries.`);
-
-                    // -> Prepare & Execute Metrics and Rules Bulk Upsert
-
-                    const ruleValues: Prisma.Sql[] = [];
-
-                    for (const mf of batch) {
-                        const tripleKey = `${mf.SCHM_ID}-${mf.ISIN || ""}-${mf.NSE_SCHEME_CODE || ""}`.toUpperCase();
-                        const pId = productMap.get(tripleKey);
-                        if (!pId) continue;
-
-                        // Transaction Rules Data
-                        const sipDates = mf.SIP_DATES ? mf.SIP_DATES.split(",").map(Number) : [];
-                        const freq = mf.SYSTEMATIC_FREQUENCIES ? mf.SYSTEMATIC_FREQUENCIES.split(",") : [];
-                        ruleValues.push(Prisma.sql`(${cuid()}, ${pId}, ${sipDates}, ${freq}, ${Number(mf.MIN_SIP_AMT ?? 0)}, ${Number(mf.MIN_PUR_AMT ?? 0)}, NOW())`);
-                    }
-
-                    if (ruleValues.length > 0) {
-                        await tx.$executeRaw`
-                        INSERT INTO "MfSchemeTransactionRules" (id, mf_product_id, sip_allowed_dates, sip_frequencies, min_sip_amount, min_lump_sum_amount, "updatedAt")
-                        VALUES ${Prisma.join(ruleValues)}
-                        ON CONFLICT (mf_product_id) DO UPDATE SET
-                            sip_allowed_dates = EXCLUDED.sip_allowed_dates,
-                            sip_frequencies = EXCLUDED.sip_frequencies,
-                            min_sip_amount = EXCLUDED.min_sip_amount,
-                            min_lump_sum_amount = EXCLUDED.min_lump_sum_amount,
-                            "updatedAt" = NOW();
-                    `;
-                    }
-                    logger.info(`Batch of mf rules : ${ruleValues.length} rules upserted successfully.`);
-
-                    // -> Append today's NAV to history (prevents need for heavy full-history job in production)
-                    const navHistoryValues: Prisma.Sql[] = [];
-
-                    for (const mf of batch) {
-                        const tripleKey = `${mf.SCHM_ID}-${mf.ISIN}-${mf.NSE_SCHEME_CODE}`.toUpperCase();
-                        const pId = productMap.get(tripleKey);
-                        if (!pId || !mf.NAV) continue;
-
-                        const navDate = mf.NAV_DATE ? new Date(mf.NAV_DATE) : new Date();
-                        navHistoryValues.push(Prisma.sql`(
-                            ${cuid()}, ${pId}, ${String(mf.MAPPING_CODE)},
-                            ${parseFloat(mf.NAV)}, ${navDate}, NOW()
-                        )`);
-                    }
-
-                    if (navHistoryValues.length > 0) {
-                        await tx.$executeRaw`
-                            INSERT INTO "MfNavHistory" (id, mf_product_id, scheme_id, nav, nav_date, "updatedAt")
-                            VALUES ${Prisma.join(navHistoryValues)}
-                            ON CONFLICT (mf_product_id, nav_date) DO NOTHING;
-                        `;
-                    }
-                    logger.info(`Batch: ${navHistoryValues.length} NAV history points appended.`);
-
-                }
-            }, {
-                timeout: 60000, // Increase timeout to 60s for 30k records
-                maxWait: 10000
-            });
-
-            logger.info(`Daily MF Sync: ${api_data.length} synchronized atomically.`);
-            return true;
-
-        } catch (error) {
-            logger.error("FATAL: Mutual Fund Job failed. Database rolled back to previous state.", error);
-            throw error;
-        } finally {
-            logMemoryUsage("END OF JOB"); // Check if memory cleared or leaked
-        }
-    }
+    // daily_mf_product_job (the Finnsys ~30k bulk upsert) was removed as part of the Cybrilla/FP
+    // migration - replaced by POST /api/v2/admin/mf-product-import (curated JSON list) and the
+    // per-ISIN sync job TODO'd in job.router.ts. Unlike the NAV jobs below, this had a clear,
+    // already-decided replacement, so there was nothing worth leaving commented as a breadcrumb.
 
 
 
@@ -362,13 +227,14 @@ class JobServiceClass {
 
 
 
-    /**
-     * Scheduled Job to fetch and store NAV history for mutual funds
-     * Flow :
-     * 1. Fetch all mutual fund products from the database.
-     * 2. For each product, call the external API to get NAV history.
-     * 3. Store the NAV history in the database.
-     */
+    // nav_history_job / process_nav_history / single_nav_history_job disabled - all three keyed
+    // NAV lookups off MfProduct.mapping_code, a Finnsys column removed by the Cybrilla/FP
+    // catalogue migration. Unlike daily_mf_product_job (deleted above), NAV sourcing for the
+    // curated catalogue has no decided replacement yet, so this is commented rather than removed,
+    // to keep the gap visible instead of erasing it.
+    // TODO: blocked on a NAV-source decision. Once chosen, rewrite process_nav_history to key
+    // off product.isin instead of mapping_code (isin survives the slim-down and is unique).
+    /*
     nav_history_job = async () => {
 
         const endDate = (new Date()).toISOString().split('T')[0];
@@ -489,6 +355,7 @@ class JobServiceClass {
 
         await this.process_nav_history(mf_product, startDate, endDate);
     }
+    */
 
     calculate_all_mf_metrics = async () => {
         logger.info("Starting MF Metrics calculation job...");

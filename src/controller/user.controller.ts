@@ -178,22 +178,14 @@ class UserFinanceControllerClass {
             const { sip_items, lump_sum_items } = this.extract_cart_items(user_cart_res);
 
             logger.info("Mapping logo img for funds...")
-            const amc_set = new Set<string>();
-            sip_items.forEach((item: any) => {
-                if (item.amc_name) amc_set.add(item.amc_name);
-            });
-            lump_sum_items.forEach((item: any) => {
-                if (item.amc_name) amc_set.add(item.amc_name);
-            });
 
-            const amc_names = Array.from(amc_set);
-            const logo_map = await wrapper_service.get_logos_of_amc(amc_names);
-
-            const prod_codes: string[] = [];
-            sip_items.forEach((item: any) => prod_codes.push(item.prod_code));
-            lump_sum_items.forEach((item: any) => prod_codes.push(item.prod_code));
-
-            const rules_map = await wrapper_service.get_transaction_rules_by_nse_codes(prod_codes);
+            // wrapper_service.get_logos_of_amc / get_transaction_rules_by_nse_codes queried
+            // MfProduct columns (amc_name, nse_scheme_code, transaction_rules) dropped in the
+            // Cybrilla/FP catalogue migration - both are commented out there. Empty maps here
+            // degrade cart items to blank logo/rules rather than crashing cart fetch; a
+            // v2-catalogue equivalent isn't built yet.
+            const logo_map = new Map<string, string>();
+            const rules_map = new Map<string, any>();
 
             // Enrich items with img_url and transaction_rules
             const enriched_sip_items = sip_items.map((item: any) => {
@@ -398,9 +390,12 @@ class UserFinanceControllerClass {
                 folioGroup.bal_units += this.toNumber(item.balunits)
             });
 
-            // Get AMC details for the first scheme in each folio
-            const first_scheme_ids = Array.from(foliosMap.values()).map((f: any) => String(f.first_scheme_id)).filter(Boolean);
-            const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(first_scheme_ids);
+            // wrapper_service.getAmcDetailsForSchemes queried MfProduct columns (scheme_id,
+            // amc_name, transaction_rules) dropped in the Cybrilla/FP catalogue migration - it's
+            // commented out there. Empty map degrades every folio to the existing "Mutual Fund"
+            // fallback below rather than crashing portfolio fetch; a v2-catalogue equivalent isn't
+            // built yet.
+            const amc_details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
 
             const mf_investment_items = Array.from(foliosMap.values()).map((f: any) => {
                 const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "", product_id: "", transaction_rules: {} };
@@ -475,37 +470,41 @@ class UserFinanceControllerClass {
             min_lump_sum_amount: Math.round(rules.min_lump_sum_amount),
             sip_allowed_dates: rules.sip_allowed_dates,
             sip_frequencies: rules.sip_frequencies,
-            min_investment_amount: rules.min_investment_amount,
-            min_lumpsum_add_on_amount: rules.min_lumpsum_add_on_amount,
-            min_redem_qty: rules.min_redem_qty,
-            min_redem_amount: rules.min_redem_amount,
+            // Dropped in the Fintech Primitives migration - these columns no longer exist.
+            // min_investment_amount: rules.min_investment_amount,
+            // min_lumpsum_add_on_amount: rules.min_lumpsum_add_on_amount,
+            // min_redem_qty: rules.min_redem_qty,
+            // min_redem_amount: rules.min_redem_amount,
             min_sip_amount: rules.min_sip_amount // default fallback
         };
 
-        if (sip_freq) {
-            switch (sip_freq) {
-                case "DZ":
-                case "D":
-                    clean_rules.min_sip_amount = rules.min_daily_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-                case "OW":
-                case "WD":
-                    clean_rules.min_sip_amount = rules.min_weekly_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-                case "OM":
-                    clean_rules.min_sip_amount = rules.min_monthly_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-                case "Q":
-                    clean_rules.min_sip_amount = rules.min_quarterly_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-                case "H":
-                    clean_rules.min_sip_amount = rules.min_semi_annual_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-                case "Y":
-                    clean_rules.min_sip_amount = rules.min_annual_sip_amount ?? clean_rules.min_sip_amount;
-                    break;
-            }
-        }
+        // The per-frequency SIP minimums this switched over were dropped with the FP migration.
+        // Left commented rather than rewritten - this whole path gets replaced by MfSchemePlan's
+        // sip_daily_* / sip_monthly_* thresholds.
+        // if (sip_freq) {
+        //     switch (sip_freq) {
+        //         case "DZ":
+        //         case "D":
+        //             clean_rules.min_sip_amount = rules.min_daily_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //         case "OW":
+        //         case "WD":
+        //             clean_rules.min_sip_amount = rules.min_weekly_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //         case "OM":
+        //             clean_rules.min_sip_amount = rules.min_monthly_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //         case "Q":
+        //             clean_rules.min_sip_amount = rules.min_quarterly_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //         case "H":
+        //             clean_rules.min_sip_amount = rules.min_semi_annual_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //         case "Y":
+        //             clean_rules.min_sip_amount = rules.min_annual_sip_amount ?? clean_rules.min_sip_amount;
+        //             break;
+        //     }
+        // }
 
         return clean_rules;
     }
@@ -531,8 +530,12 @@ class UserFinanceControllerClass {
             // Filter by folio
             const folio_items = user_mf_data.filter((item: any) => item.actualfolio === folio_id);
 
-            const mf_scheme_ids = folio_items.map((item: any) => String(item.schemeid)).filter(Boolean);
-            const amc_details_map = await wrapper_service.getAmcDetailsForSchemes(mf_scheme_ids);
+            // wrapper_service.getAmcDetailsForSchemes queried MfProduct columns (scheme_id,
+            // amc_name, transaction_rules) dropped in the Cybrilla/FP catalogue migration - it's
+            // commented out there. Empty map degrades gracefully (amc_details below is undefined,
+            // handled with optional chaining) rather than crashing folio detail; a v2-catalogue
+            // equivalent isn't built yet.
+            const amc_details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
 
             const mf_investment_items = folio_items.map((item: any) => {
                 const amc_details = amc_details_map.get(String(item.schemeid));

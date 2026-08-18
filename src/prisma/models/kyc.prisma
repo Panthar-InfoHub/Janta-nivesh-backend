@@ -1,7 +1,9 @@
 enum OnboardingStage {
+  BASIC_DETAILS
   PAN_VERIFICATION
   KYC_VERIFICATION
   PENNY_DROP_VERIFICATION
+  EMAIL_VERIFICATION
   INVESTOR_PROFILE
   NOMINEE_ADDITION
   COMPLETED
@@ -16,21 +18,24 @@ enum StageStatus {
 }
 
 // Resume-cursor / state machine for the onboarding flow:
-// PAN + readiness check -> (DigiLocker KYC, only if not readiness) -> penny drop -> investor profile -> nominee
+// basic details (name+dob, or skip the whole flow) -> PAN + readiness check ->
+// (DigiLocker KYC, only if not readiness) -> penny drop -> email OTP -> investor profile -> nominee
 model UserOnboarding {
-  id                String          @id @default(cuid())
-  user_id           String          @unique
-  current_stage     OnboardingStage @default(PAN_VERIFICATION)
-  readiness_status  StageStatus     @default(PENDING)
-  kyc_status        StageStatus     @default(PENDING)
-  penny_drop_status StageStatus     @default(PENDING)
-  profile_status    StageStatus     @default(PENDING)
-  nominee_status    StageStatus     @default(PENDING) // VERIFIED once added, SKIPPED if "I will add nominees later"
-  is_completed      Boolean         @default(false)
-  completed_at      DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @default(now()) @updatedAt
-  user              User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                    String          @id @default(cuid())
+  user_id               String          @unique
+  current_stage         OnboardingStage @default(BASIC_DETAILS)
+  basic_details_status  StageStatus     @default(PENDING) // VERIFIED only if the real form was submitted - SKIPPED if the user skipped the whole flow. Strict in recompute_completion: SKIPPED here must never read as completed.
+  readiness_status      StageStatus     @default(PENDING)
+  kyc_status            StageStatus     @default(PENDING)
+  penny_drop_status     StageStatus     @default(PENDING)
+  email_status          StageStatus     @default(PENDING) // VERIFIED only - email OTP is never skippable, the address lands in FP/Cybrilla compliance records
+  profile_status        StageStatus     @default(PENDING)
+  nominee_status        StageStatus     @default(PENDING) // VERIFIED once added, SKIPPED if "I will add nominees later"
+  is_completed          Boolean         @default(false)
+  completed_at          DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @default(now()) @updatedAt
+  user                  User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 // One KYC/compliance profile per user (shared across MF/FD/trading, not per-product like v1).

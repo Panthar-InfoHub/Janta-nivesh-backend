@@ -48,7 +48,7 @@ class PennyDropControllerClass {
             // i know this is a shitty approach three db call for one this just bear with me for the compliance phase
             await user_onboarding_service.update_stage(user_id, {
                 penny_drop_status: "IN_PROGRESS",
-                current_stage: "INVESTOR_PROFILE",
+                current_stage: "EMAIL_VERIFICATION",
             });
             await user_onboarding_service.recompute_completion(user_id);
 

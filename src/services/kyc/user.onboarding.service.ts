@@ -4,7 +4,7 @@ import logger from "../../middleware/logger.js";
 
 // Not to be confused with `onboarding_service` (src/services/onboarding.service.ts) -
 // that one tracks the financial/goals onboarding flow via User.meta_data.
-// This one tracks the KYC/investor onboarding flow (readiness -> kyc -> penny drop -> profile).
+// This one tracks the KYC/investor onboarding flow (basic details -> readiness -> kyc -> penny drop -> email -> profile).
 class UserOnboardingServiceClass {
 
     /**
@@ -31,7 +31,7 @@ class UserOnboardingServiceClass {
     }
 
     /**
-     * Checks all five stage columns and flips is_completed/current_stage/completed_at once
+     * Checks all seven stage columns and flips is_completed/current_stage/completed_at once
      * every stage is in an acceptable terminal state (VERIFIED, or SKIPPED where that's valid -
      * kyc and nominee only). current_stage can already be ahead of an unfinished stage (e.g.
      * NOMINEE_ADDITION while kyc is still IN_PROGRESS) since the cursor doesn't hard-block
@@ -41,9 +41,11 @@ class UserOnboardingServiceClass {
         const onboarding = await this.get_or_create(user_id);
 
         const is_done =
-            ["VERIFIED", "SKIPPED"].includes(onboarding.readiness_status) &&
+            onboarding.basic_details_status === "VERIFIED" && // strict - mandatory stage, no skip path exists
+            onboarding.readiness_status === "VERIFIED" && // strict - SKIPPED here means "deferred the whole flow", never completable
             ["VERIFIED", "SKIPPED"].includes(onboarding.kyc_status) &&
             onboarding.penny_drop_status === "VERIFIED" &&
+            onboarding.email_status === "VERIFIED" && // strict - email OTP is never skippable
             onboarding.profile_status === "VERIFIED" &&
             ["VERIFIED", "SKIPPED"].includes(onboarding.nominee_status);
 
@@ -69,9 +71,11 @@ class UserOnboardingServiceClass {
             current_stage: onboarding.current_stage,
             is_completed: onboarding.is_completed,
             stages: {
+                basic_details: onboarding.basic_details_status,
                 readiness: onboarding.readiness_status,
                 kyc: onboarding.kyc_status,
                 penny_drop: onboarding.penny_drop_status,
+                email: onboarding.email_status,
                 profile: onboarding.profile_status,
                 nominee: onboarding.nominee_status
             },

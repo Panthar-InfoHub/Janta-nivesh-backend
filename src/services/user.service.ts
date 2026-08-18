@@ -1,5 +1,5 @@
 import axios from "axios";
-import { UserFireReportData, UserWithAllData } from "../lib/types.js";
+import { UserFireReportData, UserWithAllData, pagination } from "../lib/types.js";
 import {
     FdTransactionOrderByWithRelationInput,
     FdTransactionWhereInput,
@@ -12,7 +12,6 @@ import { user_assets_service } from "./onboarding/user.assets.service.js";
 import { user_insurance_service } from "./onboarding/user.insurance.service.js";
 import { user_loan_service } from "./onboarding/user.loan.service.js";
 import { user_goal_service } from "./onboarding/user.goal.service.js";
-import { pagination } from "./mutual-fund.service.js";
 import { hash_mpin, compare_mpin } from "../lib/utils.js";
 import { generate_JWT } from "../middleware/jwt.js";
 
@@ -126,6 +125,12 @@ class UserServiceClass {
                 // mfKycIdentities: true,
             }
         });
+    }
+
+    // Runs against ciphertext - extended-db rewrites the `email` filter to the `email_hash`
+    // blind index, so this is a real unique lookup and not a full scan.
+    async get_user_by_email(email: string) {
+        return await db.user.findUnique({ where: { email } });
     }
 
     get_user_by_refresh_token(refresh_token: string) {

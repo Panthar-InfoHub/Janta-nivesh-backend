@@ -5,7 +5,7 @@ import {
     FdProductOrderByWithRelationInput,
     FdProductWhereInput
 } from "../../prisma/generated/prisma/models.js";
-import { pagination } from "../mutual-fund.service.js";
+import { pagination } from "../../lib/types.js";
 
 class FdServiceClass {
 

@@ -2,13 +2,30 @@ import { z } from "zod";
 
 // Not to be confused with onboarding.schema.ts (financial/goals onboarding).
 // This file holds input schemas for the KYC/investor onboarding flow
-// (readiness -> kyc -> penny drop -> profile -> nominee).
+// (basic details -> readiness -> kyc -> penny drop -> profile -> nominee).
 
-export const pan_verification_schema = z.object({
-    pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "Invalid PAN format"),
-    name: z.string().min(1, "Name is required"),
+// First stage - name + DOB. Mandatory, no skip: every user provides these before anything else,
+// and the PAN stage reads them straight off KycProfile rather than re-collecting them.
+export const basic_details_schema = z.object({
+    full_name: z.string().min(1, "Name is required"),
     date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date_of_birth must be YYYY-MM-DD"),
 });
+
+export type BasicDetailsInput = z.infer<typeof basic_details_schema>;
+
+// Second stage, and the one place the user can defer the rest of onboarding. name/date_of_birth
+// are no longer collected here - they come from the basic-details stage that runs first, so the
+// controller reads them off KycProfile.
+// Mirrors nominee_stage_schema's { skip: true } | { skip: false, ... } shape - same discriminator
+// pattern, same "skip now, do it for real later" semantics (SKIPPED is not a dead end, just an
+// incomplete stage the user can resubmit whenever they choose).
+export const pan_verification_schema = z.discriminatedUnion("skip", [
+    z.object({ skip: z.literal(true) }),
+    z.object({
+        skip: z.literal(false),
+        pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "Invalid PAN format"),
+    }),
+]);
 
 export type PanVerificationInput = z.infer<typeof pan_verification_schema>;
 
@@ -41,11 +58,24 @@ export const kyc_form_update_schema = z.object({
 
 export type KycFormUpdateInput = z.infer<typeof kyc_form_update_schema>;
 
-// The "Review Profile" screen (Email + Full Name/DOB/Gender/Address/Pincode/City/Occupation/
+// Email verification stage - sits between penny drop and the Review Profile screen. The address
+// has to be proven before it reaches FP/Cybrilla, so it's collected and OTP'd here rather than
+// riding along with profile_stage_schema like it used to.
+export const email_otp_request_schema = z.object({
+    email: z.string().email(),
+});
+
+// No email field on purpose - verify_otp reads the address out of the Redis payload written by
+// request-otp. Letting the client re-send it would allow verifying one address and saving another.
+export const email_otp_verify_schema = z.object({
+    otp: z.string().min(4).max(6),
+});
+
+// The "Review Profile" screen (Full Name/DOB/Gender/Address/Pincode/City/Occupation/
 // Source of Fund/Annual Income + PEP & residency checkboxes). Feeds both the investor_profile
 // create (Fintech Primitives) and whatever's still outstanding in the kyc_form PATCH (Cybrilla).
+// Email is NOT here - it comes from User.email, written by the email verification stage.
 export const profile_stage_schema = z.object({
-    email: z.string().email(),
     full_name: z.string().min(1),
     dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dob must be YYYY-MM-DD"),
     gender: z.enum(["male", "female", "transgender"]),

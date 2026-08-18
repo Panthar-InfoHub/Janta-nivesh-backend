@@ -1,45 +1,33 @@
+// Curated fund catalogue, sourced from the client's Cybrilla/Fintech Primitives ISIN list
+// (Excel -> JSON, imported via POST /api/v2/admin/mf-product-import) rather than the old Finnsys
+// bulk dump. isin is trustworthy as a unique key here - the curated list guarantees it, unlike
+// Finnsys's feed where isin defaulted to "" and could repeat. Every v1-only column (scheme_id,
+// mapping_code, nse_scheme_code, platform_code, amc_*, asset_type, scheme_type, structure, risk_*,
+// *_allowed, maturity_date, nfo_end_date, display_name_*) is gone along with the v1 catalogue code
+// that read them (mutual-fund.controller.ts and friends - excluded from the build, see tsconfig.json).
+// latest_nav/latest_nav_date are kept so mf-metrics-calc keeps running unmodified; they stay null
+// for newly-imported funds until a NAV source is chosen (deliberately undecided for now). img_url
+// is kept too - settable directly per fund via the import endpoint, no amc_name-keyed lookup needed.
 model MfProduct {
-  id                 String                    @id @default(cuid())
-  scheme_id          String
-  isin               String                    @default("")
-  img_url            String?                   @default("")
-  mapping_code       String
-  scheme_name        String
-  display_name_001   String?                   @default("")
-  display_name_002   String?                   @default("")
-  amc_id             String?
-  amc_code           String?
-  amc_name           String?
-  asset_type         String?
-  scheme_type        String?
-  structure          String?
-  risk_name          String?
-  risk_level         Int?
-  latest_nav         Decimal?                  @db.Decimal(12, 4)
-  latest_nav_date    DateTime?
-  purchase_allowed   Boolean                   @default(false)
-  sip_allowed        Boolean                   @default(false)
-  redemption_allowed Boolean                   @default(false)
-  switch_allowed     Boolean                   @default(false)
-  maturity_date      DateTime?
-  nfo_end_date       DateTime?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @default(now()) @updatedAt
-  nse_scheme_code    String                    @default("")
-  platform_code      String?
-  metrics            MfMetrics?
-  nav_history        MfNavHistory[]
-  transaction_rules  MfSchemeTransactionRules?
+  id              String    @id @default(cuid())
+  name            String
+  isin            String    @unique
+  img_url         String?
+  latest_nav      Decimal?  @db.Decimal(12, 4)
+  latest_nav_date DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
 
-  @@unique([scheme_id, isin, nse_scheme_code])
-  @@index([amc_code])
-  @@index([scheme_type])
+  nav_history MfNavHistory[]
+  metrics     MfMetrics?
+  scheme_plan MfSchemePlan?
+
   @@index([latest_nav_date])
-  @@index([risk_level])
-  @@index([amc_name(ops: raw("gist_trgm_ops"))], map: "mf_amc_name_trgm_idx", type: Gist)
-  @@index([scheme_name(ops: raw("gist_trgm_ops"))], map: "mf_scheme_name_trgm_idx", type: Gist)
 }
 
+// Left untouched by the Cybrilla migration, including the already-dead scheme_id column (nothing
+// ever reads it - mf_product_id is the only FK anything queries by). NAV history mechanism/source
+// going forward is a separate, explicitly deferred decision.
 model MfNavHistory {
   id            String    @id @default(cuid())
   mf_product_id String
@@ -55,30 +43,62 @@ model MfNavHistory {
   @@index([mf_product_id, nav_date])
 }
 
-model MfSchemeTransactionRules {
-  id                        String   @id @default(uuid())
-  mf_product_id             String   @unique
-  min_sip_amount            Decimal  @default(0) @db.Decimal(12, 2)
-  min_lump_sum_amount       Decimal  @default(0) @db.Decimal(12, 2)
-  sip_allowed_dates         Int[]
-  sip_frequencies           String[]
-  min_investment_amount     Decimal  @default(0) @db.Decimal(12, 2)
-  min_lumpsum_add_on_amount Decimal  @default(0) @db.Decimal(12, 2)
-  min_redem_qty             Decimal  @default(0) @db.Decimal(12, 2)
-  min_redem_amount          Decimal  @default(0) @db.Decimal(12, 2)
+// Fintech Primitives / Cybrilla scheme-plan data, from GET /v2/mf_scheme_plans/cybrillapoa/:isin.
+// The sole source of transaction rules/thresholds now - MfSchemeTransactionRules (Finnsys-sourced,
+// only ever written by the now-discarded mf-daily job) was dropped rather than left to go stale.
+// mf_product_id is a real required FK (not the nullable best-guess link from the pre-curated-list
+// design) since MfProduct.isin is now trustworthy - no more ambiguity to hedge against.
+model MfSchemePlan {
+  id            String    @id @default(cuid())
+  mf_product_id String    @unique
+  mf_product    MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+  isin          String    @unique // FP's natural key, duplicated here for sync-by-isin without a join
 
-  // Sip frequency wise min amount
-  min_daily_sip_amount       Decimal @default(0) @db.Decimal(12, 2)
-  min_weekly_sip_amount      Decimal @default(0) @db.Decimal(12, 2)
-  min_fortnightly_sip_amount Decimal @default(0) @db.Decimal(12, 2)
-  min_monthly_sip_amount     Decimal @default(0) @db.Decimal(12, 2)
-  min_quarterly_sip_amount   Decimal @default(0) @db.Decimal(12, 2)
-  min_semi_annual_sip_amount Decimal @default(0) @db.Decimal(12, 2)
-  min_annual_sip_amount      Decimal @default(0) @db.Decimal(12, 2)
+  scheme_name String // mf_scheme.name
+  fund_name   String // mf_fund.name
+  gateway     String  @default("cybrillapoa")
+  plan_type   String // "type" in the payload: regular | direct
+  option      String // growth | idcw
+  idcw_option String? // payout | reinvestment - only when option = idcw
+  active      Boolean @default(true)
 
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now()) @updatedAt
-  mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+  // thresholds[] flattened to the four modes we transact on. Anything else FP sends (switch,
+  // other SIP frequencies) is preserved in raw_response rather than modelled.
+  // The *_allowed booleans matter because a MISSING threshold entry is meaningful: no sip/daily
+  // entry means daily SIPs aren't accepted, which differs from one with a null minimum.
+  lumpsum_allowed               Boolean  @default(false)
+  lumpsum_amount_min            Decimal? @db.Decimal(14, 2)
+  lumpsum_amount_max            Decimal? @db.Decimal(14, 2)
+  lumpsum_amount_multiples      Decimal? @db.Decimal(14, 2)
+  lumpsum_additional_amount_min Decimal? @db.Decimal(14, 2)
+
+  withdrawal_allowed          Boolean  @default(false) // SWP / redeem
+  withdrawal_amount_min       Decimal? @db.Decimal(14, 2)
+  withdrawal_amount_max       Decimal? @db.Decimal(14, 2)
+  withdrawal_amount_multiples Decimal? @db.Decimal(14, 2)
+  withdrawal_units_min        Decimal? @db.Decimal(18, 4)
+  withdrawal_units_multiples  Decimal? @db.Decimal(18, 4)
+
+  sip_daily_allowed          Boolean  @default(false)
+  sip_daily_amount_min       Decimal? @db.Decimal(14, 2)
+  sip_daily_amount_max       Decimal? @db.Decimal(14, 2)
+  sip_daily_amount_multiples Decimal? @db.Decimal(14, 2)
+  sip_daily_installments_min Int?
+
+  sip_monthly_allowed          Boolean  @default(false)
+  sip_monthly_amount_min       Decimal? @db.Decimal(14, 2)
+  sip_monthly_amount_max       Decimal? @db.Decimal(14, 2)
+  sip_monthly_amount_multiples Decimal? @db.Decimal(14, 2)
+  sip_monthly_installments_min Int?
+  sip_monthly_dates            Int[] // FP's monthly `dates`, commonly 1..30
+
+  raw_response   Json? // full FP payload, forward-compat escape hatch
+  last_synced_at DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([active])
 }
 
 model MfMetrics {

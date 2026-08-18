@@ -19,8 +19,9 @@ const TERMINAL_KYC_STATUSES = ["failed", "expired", "submitted"];
 class InvestorProfileControllerClass {
 
     /**
-     * Profile stage ("Review Profile" screen):
-     * 1. Save email + create the Fintech Primitives investor_profile (id -> User.investor_profile).
+     * Profile stage ("Review Profile" screen). Requires the email stage to have passed first -
+     * the address reaches FP and Cybrilla from here, so it has to be OTP-proven before this runs.
+     * 1. Create the Fintech Primitives investor_profile (id -> User.investor_profile).
      * 2. Register address/phone/email as FP objects, and the penny-drop bank account (if saved)
      *    as an FP bank_account object - all required to build folio_defaults later. Investment
      *    account creation itself moved to the Nominee stage (needs related_party ids too).
@@ -34,6 +35,11 @@ class InvestorProfileControllerClass {
             const input = profile_stage_schema.parse(req.body);
 
             logger.info(`Completing profile stage for user ${user_id} with payload --> `, { input });
+
+            const onboarding_before = await user_onboarding_service.get_or_create(user_id);
+            if (onboarding_before.email_status !== "VERIFIED") {
+                throw new AppError("Verify your email first", 400, "EMAIL_VERIFICATION_REQUIRED");
+            }
 
             const kyc_profile = await kyc_profile_service.upsert_profile_stage(user_id, input);
 
@@ -64,7 +70,7 @@ class InvestorProfileControllerClass {
                 throw new AppError("Failed to create investor profile", 502, "INVESTOR_PROFILE_CREATE_FAILED");
             }
 
-            const user = await user_service.update_user(user_id, { investor_profile: investor_profile.id, email: input.email });
+            const user = await user_service.update_user(user_id, { investor_profile: investor_profile.id });
 
             // 2. Register address/phone/email as FP objects - all mandatory-for-folio_defaults,
             // and all require `profile` (investor_profile.id), so this is the earliest point they can exist.
@@ -80,8 +86,10 @@ class InvestorProfileControllerClass {
                 investor_profile.id, "91", user.phone_no!, "self"
             );
 
+            // user.email was written by the email verification stage - the guard at the top of this
+            // handler is what guarantees it's present and proven by the time we get here.
             const email = await fintech_primitive_email_address_service.create_email_address(
-                investor_profile.id, input.email, "self"
+                investor_profile.id, user.email!, "self"
             );
 
             await kyc_profile_service.upsert(user_id, {

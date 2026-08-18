@@ -2,7 +2,6 @@ import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import { bundle_service } from "../services/bundle.services.js";
 import { create_bundle_zod_schema } from "../lib/zod-schemas/bundle.schema.js";
-import { mutual_funds_service } from "../services/mutual-fund.service.js";
 
 class BundleControllerClass {
 
@@ -56,12 +55,13 @@ class BundleControllerClass {
 
             logger.debug("Bundle result ==> ", bundle_result)
 
-            const result = await Promise.all(bundle_result.categories.map(async (cat) => {
-                const category_funds = await mutual_funds_service.query.get_top_funds_by_category_cached(cat.category_name, 10)
-                return {
-                    ...cat,
-                    funds: category_funds.mutual_funds
-                }
+            // "Trending in category" used the v1 Finnsys-backed catalogue query, which is retired
+            // as part of the Cybrilla/FP catalogue migration (MfQueryService.ts is excluded from
+            // the build - see tsconfig.json). Degrading to an empty funds list rather than
+            // crashing the whole bundle response; a v2-catalogue equivalent isn't built yet.
+            const result = bundle_result.categories.map((cat) => ({
+                ...cat,
+                funds: [] as unknown[],
             }))
 
             res.status(200).json({

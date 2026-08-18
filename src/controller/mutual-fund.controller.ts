@@ -644,10 +644,12 @@ class MutualFundControllerClass {
                         throw new AppError(`Mutual fund product not found for scheme: ${item.scheme_id}`, 404, "PRODUCT_NOT_FOUND");
                     }
 
-                    const min_lumpsum = product.transaction_rules?.min_investment_amount ? Number(product.transaction_rules.min_investment_amount) : 0;
-                    if (min_lumpsum && item.amount < min_lumpsum) {
-                        throw new AppError(`Minimum lumpsum investment amount for fund ${product.scheme_name} is ${min_lumpsum}`, 400);
-                    }
+                    // min_investment_amount was dropped in the FP migration (it was never populated,
+                    // so this guard could never fire). Replaced later by MfSchemePlan.lumpsum_amount_min.
+                    // const min_lumpsum = product.transaction_rules?.min_investment_amount ? Number(product.transaction_rules.min_investment_amount) : 0;
+                    // if (min_lumpsum && item.amount < min_lumpsum) {
+                    //     throw new AppError(`Minimum lumpsum investment amount for fund ${product.scheme_name} is ${min_lumpsum}`, 400);
+                    // }
 
                     return {
                         prod_code: product.platform_code || "",
@@ -688,10 +690,12 @@ class MutualFundControllerClass {
                 }
 
                 // SIP validation
-                const min_sip = mf_product.transaction_rules?.min_investment_amount ? Number(mf_product.transaction_rules.min_investment_amount) : 0;
-                if (min_sip && amount < min_sip) {
-                    throw new AppError(`Minimum SIP investment amount for this fund is ${min_sip}`, 400);
-                }
+                // min_investment_amount was dropped in the FP migration (never populated, so this
+                // guard could never fire). Replaced later by MfSchemePlan.sip_monthly_amount_min.
+                // const min_sip = mf_product.transaction_rules?.min_investment_amount ? Number(mf_product.transaction_rules.min_investment_amount) : 0;
+                // if (min_sip && amount < min_sip) {
+                //     throw new AppError(`Minimum SIP investment amount for this fund is ${min_sip}`, 400);
+                // }
 
                 if (sip_day && !mf_product.transaction_rules?.sip_allowed_dates.includes(sip_day)) {
                     throw new AppError(`SIP day ${sip_day} is not allowed for this mutual fund`, 400);

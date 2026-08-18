@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
-import { mutual_funds_service } from "../services/mutual-fund.service.js";
 import { bundle_service } from "../services/bundle.services.js";
 import { redis_buffer_client } from "../lib/redis.js";
 import { compress_json, decompress_json } from "../lib/utils.js";
@@ -28,15 +27,21 @@ class FrontendControllerClass {
                 return;
             }
 
+            // Category browse (flexi/large-mid/large/mid/small cap, index, global) used the v1
+            // Finnsys-backed catalogue query, which is retired as part of the Cybrilla/FP
+            // catalogue migration (MfQueryService.ts is excluded from the build - see
+            // tsconfig.json). Degrading each section to an empty list rather than crashing the
+            // whole homepage payload; a v2-catalogue equivalent isn't built yet.
+            const empty_category = { mutual_funds: [] as unknown[] };
             const [bundle, flexi_cap, large_mid_cap, large_cap, mid_cap, small_cap, index, global_others] = await Promise.all([
                 bundle_service.get_bundles({ page: 1, limit: 4 }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'flexi_cap' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'large_Mid_cap' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'large_cap' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'mid_cap' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'small_cap' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'index' }),
-                mutual_funds_service.query.get_funds_by_category({ category: 'global_others' }),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
+                Promise.resolve(empty_category),
             ]);
 
             // bundle.bundles = bundle.bundles.map(bundle => {

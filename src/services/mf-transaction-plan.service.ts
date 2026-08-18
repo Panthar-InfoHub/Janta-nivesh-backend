@@ -1,11 +1,37 @@
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
+import AppError from "../middleware/error.middleware.js";
 
 export type MfPlanType = "PURCHASE" | "REDEMPTION" | "SWITCH";
 
-// One ledger for every systematic plan (SIP/SWP/STP). The FP payloads for purchase and
-// redemption plans are near-identical, so one upsert handles both - type-specific fields
-// just come back undefined for the type that doesn't use them.
+// Mirrors the MfTransactionState enum in prisma/models/mf-transaction-plan.prisma. Hand-rolled
+// rather than imported from the generated client, same convention as MfPlanType above.
+export type MfTransactionState =
+    | "CREATED" | "REVIEW_COMPLETED" | "CONFIRMED" | "SUBMITTED" | "ACTIVE"
+    | "COMPLETED" | "SUCCESSFUL" | "FAILED" | "CANCELLED" | "REVERSED";
+
+const MF_TRANSACTION_STATES: readonly string[] = [
+    "CREATED", "REVIEW_COMPLETED", "CONFIRMED", "SUBMITTED", "ACTIVE",
+    "COMPLETED", "SUCCESSFUL", "FAILED", "CANCELLED", "REVERSED",
+];
+
+// FP sends lowercase snake_case state strings (e.g. "review_completed"); our enum is
+// SCREAMING_SNAKE_CASE to match every other enum in this codebase. Validates rather than
+// blindly casting - an unrecognized value should fail loudly here, not as an opaque Postgres
+// enum-constraint error out of the upsert below.
+const to_mf_transaction_state = (raw: string): MfTransactionState => {
+    const upper = raw.toUpperCase();
+    if (MF_TRANSACTION_STATES.includes(upper)) {
+        return upper as MfTransactionState;
+    }
+    logger.error("Unrecognized FP transaction state", { raw });
+    throw new AppError(`Unrecognized transaction state from FP: ${raw}`, 502, "UNKNOWN_FP_STATE");
+};
+
+// One ledger for every MF transaction a user makes - systematic plans (SIP/SWP/STP) and
+// one-shot orders (lumpsum purchase/redemption/switch) both live here, discriminated by
+// `systematic`. The FP payloads across all of these are near-identical, so one upsert handles
+// all of them - type-specific fields just come back undefined for the type that doesn't use them.
 class MfTransactionPlanServiceClass {
 
     get_all = async (user_id: string, plan_type?: MfPlanType) => {
@@ -16,29 +42,30 @@ class MfTransactionPlanServiceClass {
     }
 
     get_by_fp_id = async (user_id: string, fp_plan_id: string) => {
-        return await db.mfTransactionPlan.findFirst({ where: { user_id, fp_plan_id } });
+        return await db.mfTransactionPlan.findFirst({ where: { user_id, fp_id: fp_plan_id } });
     }
 
     /**
-     * Upserts from an FP plan payload (create/fetch/update all return the same shape),
-     * keyed on fp_plan_id so repeated syncs just refresh the row.
+     * Upserts from an FP plan/order payload (create/fetch/update all return the same shape),
+     * keyed on fp_id so repeated syncs just refresh the row.
      */
     upsert_from_fp = async (user_id: string, plan_type: MfPlanType, plan: any) => {
-        logger.debug("Persisting mf transaction plan", { user_id, plan_type, fp_plan_id: plan?.id, state: plan?.state });
+        const state = to_mf_transaction_state(plan?.state);
+        logger.debug("Persisting mf transaction plan", { user_id, plan_type, fp_id: plan?.id, state });
 
         const data = {
             user_id,
             plan_type,
-            fp_plan_id: plan.id,
+            fp_id: plan.id,
             mf_investment_account: plan.mf_investment_account,
             scheme: plan.scheme,
             folio_number: plan.folio_number ?? null,
             amount: plan.amount,
             systematic: plan.systematic ?? true,
-            frequency: plan.frequency,
+            frequency: plan.frequency ?? null,
             installment_day: plan.installment_day ?? null,
 
-            number_of_installments: plan.number_of_installments,
+            number_of_installments: plan.number_of_installments ?? null,
             remaining_installments: plan.remaining_installments ?? null,
             requested_activation_date: plan.requested_activation_date ? new Date(plan.requested_activation_date) : null,
             start_date: plan.start_date ? new Date(plan.start_date) : null,
@@ -46,7 +73,7 @@ class MfTransactionPlanServiceClass {
             next_installment_date: plan.next_installment_date ? new Date(plan.next_installment_date) : null,
             previous_installment_date: plan.previous_installment_date ? new Date(plan.previous_installment_date) : null,
 
-            state: plan.state,
+            state,
             auto_generate_installments: plan.auto_generate_installments ?? true,
             generate_first_installment_now: plan.generate_first_installment_now ?? false,
 
@@ -81,7 +108,7 @@ class MfTransactionPlanServiceClass {
         };
 
         return await db.mfTransactionPlan.upsert({
-            where: { fp_plan_id: plan.id },
+            where: { fp_id: plan.id },
             create: data,
             update: data,
         });

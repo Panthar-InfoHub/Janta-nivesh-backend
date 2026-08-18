@@ -9,6 +9,12 @@ export const env = {
     MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID!,
     MSG91_BASE_URL: process.env.MSG91_BASE_URL!,
 
+    // MSG91 email API - same authkey as the SMS flow above, different endpoint + template.
+    // Sending domain and the OTP template have to be set up in the MSG91 panel first.
+    MSG91_EMAIL_URL: process.env.MSG91_EMAIL_URL || "https://control.msg91.com/api/v5/email/send",
+    MSG91_EMAIL_TEMPLATE_ID: process.env.MSG91_EMAIL_TEMPLATE_ID!,
+    MSG91_EMAIL_DOMAIN: process.env.MSG91_EMAIL_DOMAIN!,
+    MSG91_FROM_EMAIL: process.env.MSG91_FROM_EMAIL!,
 
 
 
@@ -21,6 +27,12 @@ export const env = {
 
 
 
+
+
+    // Shared secret for the dev-only admin routes (OTP-bypass login). No default on purpose -
+    // a hardcoded fallback would be a publicly known secret. Unset means admin routes reject
+    // everything, which is the safe direction to fail.
+    ADMIN_API_SECRET: process.env.ADMIN_API_SECRET,
 
     // Cybrilla (POA / onboarding-KYC provider) - v2 Finnsys replacement
     CYBRILLA_TOKEN_URL: process.env.CYBRILLA_TOKEN_URL!,

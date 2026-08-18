@@ -58,64 +58,28 @@ class JobControllerClass {
 
 
 
-    daily_mf_job = async (req: Request, res: Response, next: NextFunction) => {
-        try {
+    // daily_mf_job (Finnsys ~30k bulk upsert) removed - see the comment above
+    // job_service.daily_mf_product_job's old location in job.service.ts for the replacement.
 
-            const scheduler_token = req.headers["x-scheduler-token"];
-            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+    // mf_nav_history_job disabled - job_service.nav_history_job is commented out (keyed off a
+    // Finnsys column that no longer exists; NAV sourcing for the curated catalogue is an
+    // explicitly deferred decision). See the TODO in job.service.ts.
+    // mf_nav_history_job = async (req: Request, res: Response, next: NextFunction) => {
+    //     try {
+    //         const scheduler_token = req.headers["x-scheduler-token"];
+    //         const secret = process.env.SCHEDULER_SECRET || "default_secret";
+    //         if (scheduler_token !== secret) {
+    //             throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+    //         }
+    //         await job_service.nav_history_job();
+    //         res.status(200).json({ success: true, message: "MF NAV history job completed successfully" })
+    //         return;
+    //     } catch (error: any) {
+    //         next(error);
+    //         return;
+    //     }
+    // }
 
-            if (scheduler_token !== secret) {
-                console.warn(`[SECURITY] Unauthorized attempt to access daily mf job with token: ${scheduler_token}`);
-                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
-            }
-
-            logger.info("Running daily mutual fund job...");
-
-            await job_service.daily_mf_product_job();
-
-            res.status(200).json({
-                success: true,
-                message: "Daily mutual fund job completed successfully"
-            })
-            return;
-
-        } catch (error: any) {
-            console.error("Error while running daily mf job ==> ", error);
-            // logger.error("Error while running daily mf job ==> ", error.message);
-            next(error);
-            return;
-        }
-    }
-
-
-    mf_nav_history_job = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-
-            const scheduler_token = req.headers["x-scheduler-token"];
-            const secret = process.env.SCHEDULER_SECRET || "default_secret";
-
-            if (scheduler_token !== secret) {
-                console.warn(`[SECURITY] Unauthorized attempt to access mf nav history job with token: ${scheduler_token}`);
-                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
-            }
-
-            logger.info("Running mf nav history job...");
-
-            await job_service.nav_history_job();
-
-            res.status(200).json({
-                success: true,
-                message: "MF NAV history job completed successfully"
-            })
-            return;
-
-        } catch (error: any) {
-            console.error("Error while running mf nav history job ==> ", error.message);
-            // logger.error("Error while running mf nav history job ==> ", error.message);
-            next(error);
-            return;
-        }
-    }
     monthly_user_snapshot_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const scheduler_token = req.headers["x-scheduler-token"];
@@ -144,38 +108,24 @@ class JobControllerClass {
         }
     }
 
-    mf_single_nav_history_job = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-
-            const scheme_id = req.params.id as string;
-
-            logger.info(`Running single nav history job for scheme code: ${scheme_id}...`);
-
-            const scheduler_token = req.headers["x-scheduler-token"];
-            const secret = process.env.SCHEDULER_SECRET || "default_secret";
-
-            if (scheduler_token !== secret) {
-                console.warn(`[SECURITY] Unauthorized attempt to access mf single nav history job with token: ${scheduler_token}`);
-                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
-            }
-
-            logger.info("Running mf single nav history job...");
-
-            await job_service.single_nav_history_job(scheme_id);
-
-            res.status(200).json({
-                success: true,
-                message: "MF NAV history job completed successfully"
-            })
-            return;
-
-        } catch (error: any) {
-            console.error("Error while running mf nav history job ==> ", error.message);
-            // logger.error("Error while running mf nav history job ==> ", error.message);
-            next(error);
-            return;
-        }
-    }
+    // mf_single_nav_history_job disabled alongside mf_nav_history_job - same underlying
+    // job_service.single_nav_history_job is commented out. See the TODO in job.service.ts.
+    // mf_single_nav_history_job = async (req: Request, res: Response, next: NextFunction) => {
+    //     try {
+    //         const scheme_id = req.params.id as string;
+    //         const scheduler_token = req.headers["x-scheduler-token"];
+    //         const secret = process.env.SCHEDULER_SECRET || "default_secret";
+    //         if (scheduler_token !== secret) {
+    //             throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+    //         }
+    //         await job_service.single_nav_history_job(scheme_id);
+    //         res.status(200).json({ success: true, message: "MF NAV history job completed successfully" })
+    //         return;
+    //     } catch (error: any) {
+    //         next(error);
+    //         return;
+    //     }
+    // }
 
     mf_metrics_calc_job = async (req: Request, res: Response, next: NextFunction) => {
         try {

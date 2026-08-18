@@ -18,6 +18,21 @@
     "src",
   ],
   "exclude": [
-    "src/report"
+    "src/report",
+    // v1 Finnsys-backed MF catalogue, retired by the Cybrilla/FP migration. Every inbound edge
+    // from still-compiled files was severed first (server.ts's mount, plus the cascade fixes in
+    // bundle.controller.ts/frontend.controller.ts/user.controller.ts/pending_orders.service.ts) -
+    // these files are now true orphans, so excluding them keeps `tsc --noEmit` clean without
+    // mechanically commenting out hundreds of lines. wrapper.service.ts is NOT here - two of its
+    // eight methods (get_user_portfolio_cached, get_xsip_registration_report_cached) are still
+    // live and don't touch MfProduct; only its six MfProduct-dependent methods are commented out
+    // in place.
+    "src/controller/mutual-fund.controller.ts",
+    "src/routes/mutual-fund.router.ts",
+    "src/services/mutual-fund.service.ts",
+    "src/services/mutual-funds/MfQueryService.ts",
+    "src/services/mutual-funds/MfCartService.ts",
+    "src/services/mutual-funds/MfOrderService.ts",
+    "src/services/mutual-funds/MfSipService.ts"
   ]
 }

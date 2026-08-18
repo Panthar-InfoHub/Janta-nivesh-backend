@@ -11,9 +11,12 @@ import { auth_router } from "./routes/auth.router.js"
 import { fire_report_router } from "./routes/fire-report.router.js"
 import { job_router } from "./routes/job.router.js"
 import { kyc_router } from "./routes/kyc.router.js"
+import { basic_details_router } from "./routes/onboarding_routers/basic_details.router.js"
 import { pan_verification_router } from "./routes/onboarding_routers/pan_verification.router.js"
 import { kyc_form_router } from "./routes/onboarding_routers/kyc_form.router.js"
 import { penny_drop_router } from "./routes/onboarding_routers/penny_drop.router.js"
+import { email_verification_router } from "./routes/onboarding_routers/email_verification.router.js"
+import { admin_router } from "./routes/admin.router.js"
 import { investor_profile_router } from "./routes/onboarding_routers/investor_profile.router.js"
 import { nominee_router } from "./routes/onboarding_routers/nominee.router.js"
 import { mandate_router } from "./routes/mandate.router.js"
@@ -22,7 +25,9 @@ import { mf_purchase_plan_router } from "./routes/mf-purchase-plan.router.js"
 import { mf_redemption_plan_router } from "./routes/mf-redemption-plan.router.js"
 import { mf_purchase_router } from "./routes/mf-purchase.router.js"
 import { mf_scheme_router } from "./routes/mf-scheme.router.js"
-import { mutual_fund_router } from "./routes/mutual-fund.router.js"
+// mutual_fund_router (v1 Finnsys catalogue) retired as part of the Cybrilla/FP migration - the
+// controller/router and their dedicated services are excluded from the build (tsconfig.json).
+// import { mutual_fund_router } from "./routes/mutual-fund.router.js"
 import { onboarding_router } from "./routes/onboarding.router.js"
 import { user_assets_router } from "./routes/user/user.assets.router.js"
 import { user_finance_router } from "./routes/user/user.finance.router.js"
@@ -65,9 +70,11 @@ if (process.env.ENVIRONMENT === "dev") {
 
 //Routes
 app.use("/api/v2/auth", auth_router)
+app.use("/api/v2/onboarding/basic-details", basic_details_router)
 app.use("/api/v2/onboarding/pan-verification", pan_verification_router)
 app.use("/api/v2/onboarding/kyc-form", kyc_form_router)
 app.use("/api/v2/onboarding/penny-drop", penny_drop_router)
+app.use("/api/v2/onboarding/email", email_verification_router)
 app.use("/api/v2/onboarding/investor-profile", investor_profile_router)
 app.use("/api/v2/onboarding/nominee", nominee_router)
 app.use("/api/v2/mandate", mandate_router)
@@ -76,6 +83,12 @@ app.use("/api/v2/mf-purchase", mf_purchase_router)
 app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf-purchase-plan", mf_purchase_plan_router)
 app.use("/api/v2/mf-redemption-plan", mf_redemption_plan_router)
+
+// Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
+// level via middleware (see admin.middleware.ts): /login additionally requires dev_only_require
+// since it mints auth tokens, but e.g. /mf-product-import needs to run in production too and
+// relies on admin_require's x-admin-secret check alone.
+app.use("/api/v2/admin", admin_router)
 
 
 app.use("/api/v1/migration", migration_router)
@@ -86,7 +99,7 @@ app.use("/api/v1/frontend", frontend_router)
 app.use("/api/v1/fd", fd_router)
 app.use("/api/v1/test", test_router)
 app.use("/api/v1/fd/webhook", fd_webhook_router)
-app.use("/api/v1/mf", mutual_fund_router)
+// app.use("/api/v1/mf", mutual_fund_router) // retired - see the import comment above
 app.use("/api/v1/onboarding", onboarding_router)
 app.use("/api/v1/user-assets", user_assets_router)
 app.use("/api/v1/user-finance", user_finance_router)

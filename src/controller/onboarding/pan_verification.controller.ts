@@ -9,12 +9,44 @@ import { user_bank_details_service } from "../../services/user-bank-details.serv
 
 class PanVerificationControllerClass {
 
+    /**
+     * PAN readiness check, and the one place the user can defer the rest of onboarding.
+     *
+     * skip: true  -> readiness_status: SKIPPED, current_stage left at PAN_VERIFICATION so the
+     *                client can resume here later. No "resume" endpoint exists - the user coming
+     *                back and submitting this same endpoint with skip:false is what un-skips them,
+     *                same shape as the nominee skip. Nothing is sent to Cybrilla.
+     * skip: false -> the real readiness check. name/dob come from the basic-details stage that
+     *                runs first, never from this request body.
+     */
     verify_pan = async (req: Request, res: Response, next: NextFunction) => {
         try {
             logger.info("PAN readiness verification requested");
 
             const user_id = req.user?.id!;
-            const { pan, name, date_of_birth } = pan_verification_schema.parse(req.body);
+            const input = pan_verification_schema.parse(req.body);
+
+            if (input.skip === true) {
+                logger.info("User skipped the PAN stage (deferring onboarding)", { user_id });
+                await user_onboarding_service.update_stage(user_id, { readiness_status: "SKIPPED" });
+
+                res.status(200).json({
+                    success: true,
+                    message: "Onboarding skipped",
+                    data: { onboarding: await user_onboarding_service.get_status_summary(user_id) }
+                });
+                return;
+            }
+
+            const { pan } = input;
+
+            // name/dob now come from the basic-details stage that runs first, not this request body.
+            const kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
+            if (!kyc_profile?.full_name || !kyc_profile?.dob) {
+                throw new AppError("Complete basic details first", 400, "BASIC_DETAILS_REQUIRED");
+            }
+            const name = kyc_profile.full_name;
+            const date_of_birth = kyc_profile.dob;
 
             await user_onboarding_service.update_stage(user_id, { readiness_status: "IN_PROGRESS" });
 

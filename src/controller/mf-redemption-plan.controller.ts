@@ -34,7 +34,7 @@ class MfRedemptionPlanControllerClass {
             if (source_plan.plan_type !== "PURCHASE") {
                 throw new AppError(`Plan is a ${source_plan.plan_type} plan, not a purchase plan`, 400, "NOT_A_PURCHASE_PLAN");
             }
-            if (source_plan.state !== "active") {
+            if (source_plan.state !== "ACTIVE") {
                 throw new AppError(`Purchase plan must be active to redeem against, currently ${source_plan.state}`, 400, "PURCHASE_PLAN_NOT_ACTIVE");
             }
             // Folio is only allotted once an installment has actually been processed - until then
@@ -140,7 +140,7 @@ class MfRedemptionPlanControllerClass {
             if (!plan) {
                 throw new AppError("Redemption plan not found", 404, "MF_REDEMPTION_PLAN_NOT_FOUND");
             }
-            if (plan.state !== "review_completed") {
+            if (plan.state !== "REVIEW_COMPLETED") {
                 throw new AppError(`Plan must be in review_completed state to confirm, currently ${plan.state}`, 400, "MF_REDEMPTION_PLAN_NOT_REVIEW_COMPLETED");
             }
 

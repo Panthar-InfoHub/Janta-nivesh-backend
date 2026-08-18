@@ -8,6 +8,14 @@ export interface DeviceDetails {
     did: string;
 }
 
+// Relocated from services/mutual-funds/MfQueryService.ts - that whole v1 file is excluded from
+// the build (tsconfig.json) as part of the Cybrilla/FP catalogue migration, but this generic
+// { page, limit } shape is still used by user.service.ts and fd/fd.service.ts.
+export type pagination = {
+    page: number;
+    limit: number;
+}
+
 export interface AuthResponse {
     code: number;
     results?: any;
