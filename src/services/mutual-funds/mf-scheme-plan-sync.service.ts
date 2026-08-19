@@ -16,7 +16,7 @@ type MfSchemeThreshold = {
 
     units_min?: number | null;
     units_max?: number | null;
-    unit_multiples?: number | null;
+    units_multiples?: number | null;
 
     installments_min?: number | null;
     dates?: number[] | null;
@@ -92,7 +92,7 @@ export const map_thresholds_to_scheme_plan = (
                 threshold.amount_multiples ?? null;
             mapped.withdrawal_units_min = threshold.units_min ?? null;
             mapped.withdrawal_units_multiples =
-                threshold.unit_multiples ?? null;
+                threshold.units_multiples ?? null;
         }
 
         if (

@@ -24,4 +24,4 @@ job_router.post("/user-snapshot", job_controller.monthly_user_snapshot_job);
 // A missing entry means that mode is unsupported -> leave its *_allowed false.
 // FP has no bulk endpoint - one HTTP call per ISIN, needs rate limiting. Cadence TBD.
 // Newly JSON-imported products have no MfSchemePlan row until this runs once.
-// job_router.post("/mf-scheme-plan-sync", job_controller.mf_scheme_plan_sync_job);
+job_router.post("/mf-scheme-plan-sync", job_controller.mf_scheme_plan_sync_job);
