@@ -23,9 +23,10 @@ model MfProduct {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
 
-  nav_history MfNavHistory[]
-  metrics     MfMetrics?
-  scheme_plan MfSchemePlan?
+  nav_history     MfNavHistory[]
+  metrics         MfMetrics?
+  scheme_plan     MfSchemePlan?
+  mf_transactions MfTransactionPlan[] // Restrict on the other side - a fund with orders can't be deleted
 
   @@index([latest_nav_date])
   @@index([scheme_code])

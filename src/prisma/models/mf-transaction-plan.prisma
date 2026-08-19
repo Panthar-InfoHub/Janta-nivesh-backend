@@ -6,7 +6,9 @@ enum MfPlanType {
 
 enum MfTransactionState {
   CREATED
-  REVIEW_COMPLETED
+  UNDER_REVIEW // one-shot orders start here - FP reviews asynchronously
+  PENDING // review passed; awaiting consent + payment
+  REVIEW_COMPLETED // plan equivalent of PENDING
   CONFIRMED
   SUBMITTED
   ACTIVE
@@ -28,24 +30,35 @@ enum MfTransactionState {
 // schemas, not here.
 // state is one shared enum across both families - plans move through
 // CREATED -> REVIEW_COMPLETED -> CONFIRMED -> SUBMITTED -> ACTIVE -> COMPLETED, one-shot orders
-// move through CREATED -> CONFIRMED -> SUBMITTED -> SUCCESSFUL/REVERSED - which subset applies
-// depends on `systematic`. FP sends lowercase snake_case; map to this enum on write (see
-// mf-transaction-plan.service.ts) rather than storing FP's raw casing.
+// move through UNDER_REVIEW -> PENDING -> CONFIRMED -> SUBMITTED -> SUCCESSFUL/REVERSED - which
+// subset applies depends on `systematic`. FP sends lowercase snake_case; map to this enum on write
+// (see mf-transaction-plan.service.ts) rather than storing FP's raw casing.
 // Note: the consent OTP itself is deliberately NOT stored - only who consented and when.
 model MfTransactionPlan {
   id                    String     @id @default(cuid())
   user_id               String
   user                  User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
   plan_type             MfPlanType
-  fp_id                 String     @unique // FP's id for this row - mfpp_/mfrp_/mfsp_ for plans; one-shot order id prefix unconfirmed, no real response seen yet
+  fp_id                 String     @unique // FP's id for this row - mfpp_/mfrp_/mfsp_ for plans, mfp_ for one-shot orders
+  fp_old_id             Int? // numeric id off the same object - what the older /api/pg/* surface wants (payments), same split as bank accounts
+  fp_payment_id         String? // payment created against a one-shot order, mirrors Mandate.fp_payment_id
   mf_investment_account String // mfia_...
 
-  scheme          String // ISIN
+  // Link to the curated catalogue, resolved from `scheme` on write (mf-transaction-plan.service.ts).
+  // Nullable: rows predating this column have none, and a fund can be absent from the catalogue.
+  // onDelete Restrict, NOT Cascade - MfSchemePlan/MfNavHistory cascade because they're derived and
+  // regenerable; transaction history is neither. Delisting a fund must never delete a user's orders.
+  mf_product_id String?
+  mf_product    MfProduct? @relation(fields: [mf_product_id], references: [id], onDelete: Restrict)
+
+  scheme          String // ISIN - kept alongside the FK: it's what FP echoes and what payloads send
   folio_number    String? // required for REDEMPTION (can only redeem from a folio you hold)
-  amount          Decimal @db.Decimal(12, 2)
-  systematic      Boolean @default(true) // false = one-shot order (lumpsum purchase/redemption/switch)
+  amount          Decimal? @db.Decimal(12, 2) // optional on one-shot redemption - see `units`
+  units           Decimal? @db.Decimal(18, 4) // redeem-by-units; amount AND units both null = redeem the entire holding
+  systematic      Boolean  @default(true) // false = one-shot order (lumpsum purchase/redemption/switch)
   frequency       String? // monthly | daily (redemption supports monthly only) - plan only, null for one-shot orders
   installment_day Int? // null for frequency = daily
+  scheduled_on    DateTime?
 
   number_of_installments    Int? // plan only
   remaining_installments    Int?
@@ -82,6 +95,17 @@ model MfTransactionPlan {
   consent_mobile   String?
   consent_given_at DateTime?
 
+  // Settlement / allotment - populated by the RTA, so null until the order actually processes.
+  // These are what a portfolio screen or contract note needs; without them a SUCCESSFUL order
+  // tells you nothing about what the user actually got.
+  traded_on         DateTime?
+  submitted_at      DateTime?
+  succeeded_at      DateTime?
+  allotted_units    Decimal?  @db.Decimal(18, 4)
+  allotted_nav_date DateTime?
+  purchased_amount  Decimal?  @db.Decimal(14, 2)
+  purchased_price   Decimal?  @db.Decimal(12, 4)
+
   fp_created_at             DateTime?
   activated_at              DateTime?
   cancelled_at              DateTime?
@@ -99,4 +123,5 @@ model MfTransactionPlan {
 
   @@index([user_id])
   @@index([user_id, plan_type])
+  @@index([mf_product_id])
 }

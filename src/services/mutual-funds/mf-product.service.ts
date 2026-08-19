@@ -13,6 +13,11 @@ type MfProductImportRow = {
 // for the raw-SQL bulk-upsert trick job.service.ts used for the discarded mf-daily job.
 class MfProductServiceClass {
 
+    /** Catalogue lookup by our own id - how the transaction flows resolve the ISIN to send FP. */
+    get_by_id = async (id: string) => {
+        return await db.mfProduct.findUnique({ where: { id } });
+    }
+
     bulk_upsert = async (products: MfProductImportRow[]) => {
         const isins = products.map(p => p.isin);
         const existing = await db.mfProduct.findMany({

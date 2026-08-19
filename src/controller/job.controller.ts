@@ -165,17 +165,19 @@ class JobControllerClass {
      */
     mf_nav_daily_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const scheduler_token = req.headers["x-scheduler-token"];
-            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+            // const scheduler_token = req.headers["x-scheduler-token"];
+            // const secret = process.env.SCHEDULER_SECRET || "default_secret";
 
-            if (scheduler_token !== secret) {
-                console.warn(`[SECURITY] Unauthorized attempt to access mf nav daily job with token: ${scheduler_token}`);
-                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
-            }
+            // if (scheduler_token !== secret) {
+            //     console.warn(`[SECURITY] Unauthorized attempt to access mf nav daily job with token: ${scheduler_token}`);
+            //     throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            // }
 
             logger.info("Running MF daily NAV job...");
 
             const data = await job_service.mf_nav_daily_job();
+
+            logger.info(`MF daily NAV job completed. Results --> `, data)
 
             res.status(200).json({
                 success: true,

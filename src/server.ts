@@ -79,8 +79,10 @@ app.use("/api/v2/onboarding/investor-profile", investor_profile_router)
 app.use("/api/v2/onboarding/nominee", nominee_router)
 app.use("/api/v2/mandate", mandate_router)
 app.use("/api/v2/webhook/mandate", mandate_webhook_router)
-app.use("/api/v2/mf-purchase", mf_purchase_router)
 app.use("/api/v2/mf-scheme", mf_scheme_router)
+
+
+app.use("/api/v2/mf-purchase", mf_purchase_router)
 app.use("/api/v2/mf-purchase-plan", mf_purchase_plan_router)
 app.use("/api/v2/mf-redemption-plan", mf_redemption_plan_router)
 

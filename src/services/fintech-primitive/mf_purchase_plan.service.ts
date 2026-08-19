@@ -3,7 +3,7 @@ import { env } from "../../lib/config-env.js";
 import logger from "../../middleware/logger.js";
 import AppError from "../../middleware/error.middleware.js";
 import { provider_token_service } from "../tokens/provider-token.service.js";
-import type { CreateMfPurchasePlanInput } from "../../lib/zod-schemas/mf-purchase-plan.schema.js";
+import type { ResolvedMfPurchasePlanInput } from "../../lib/zod-schemas/mf-purchase-plan.schema.js";
 
 // 1-year plan - 12 monthly installments (or 12 daily ones, if daily frequency is picked)
 const NUMBER_OF_INSTALLMENTS = 12;
@@ -29,7 +29,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
 
     /** POST /v2/mf_purchase_plans - 1-year plan (12 installments), mandate-funded, ondc gateway. */
     create_purchase_plan = async (
-        input: CreateMfPurchasePlanInput,
+        input: ResolvedMfPurchasePlanInput,
         mf_investment_account: string,
         mandate_id: string,
         user_ip: string

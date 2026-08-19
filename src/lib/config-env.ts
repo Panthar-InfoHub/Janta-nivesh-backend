@@ -51,6 +51,16 @@ export const env = {
     FINTECH_PRIMITIVE_API_BASE_URL: process.env.FINTECH_PRIMITIVE_API_BASE_URL!,
     FINTECH_PRIMITIVE_TENANT_ID: process.env.FINTECH_PRIMITIVE_TENANT_ID!, // x-tenant-id header
 
+
+
+
+
+
+
+
+
+
+
     finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,
