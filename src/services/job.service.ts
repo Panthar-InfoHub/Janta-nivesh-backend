@@ -5,12 +5,12 @@ import cuid from 'cuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
-// pLimit and MfNavHistoryCreateManyInput were only used by the now-disabled NAV history jobs
-// below (see the TODO there) - re-import both if that block is restored.
-// import pLimit from "p-limit";
+// pLimit is used to cap concurrent FP scheme-plan sync requests.
+// MfNavHistoryCreateManyInput was only used by the now-disabled NAV history jobs.
+import pLimit from "p-limit";
 // import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
 import { user_snapshot_service } from "./user/user.snapshot.service.js";
-
+import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.service.js";
 
 class JobServiceClass {
 
@@ -32,7 +32,56 @@ class JobServiceClass {
     // already-decided replacement, so there was nothing worth leaving commented as a breadcrumb.
 
 
+    mf_scheme_plan_sync_job = async () => {
+        logger.info("Starting MF scheme-plan sync job...");
 
+        const products = await db.mfProduct.findMany({
+            select: {
+                id: true,
+                isin: true,
+            },
+            orderBy: {
+                id: "asc",
+            },
+        });
+
+        logger.info(
+            `[MF SCHEME SYNC] Found ${products.length} curated MF products`
+        );
+
+        // FP has no bulk endpoint, so limit concurrent requests.
+        // The old NAV job used pLimit(2), so use the same conservative limit.
+        const limit = pLimit(2);
+        let successful = 0;
+        let failed = 0;
+        const tasks = products.map((product) =>
+            limit(async () => {
+                try {
+                    await mf_scheme_plan_sync_service.sync_by_isin(product.isin);
+                    successful++;
+                    logger.info(
+                        `[MF SCHEME SYNC] Successfully synced ISIN ${product.isin}`);
+                } catch (error: any) {
+                    failed++;
+                    logger.error(
+                        `[MF SCHEME SYNC] Failed to sync ISIN ${product.isin}`,
+                        {
+                            isin: product.isin,
+                            error: error?.message,
+                        });
+                }
+            }));
+        await Promise.allSettled(tasks);
+        const result = {
+            total: products.length,
+            successful,
+            failed,
+        };
+        logger.info(
+            "[MF SCHEME SYNC] Scheme-plan sync job completed",
+            result);
+        return result;
+    };
 
     daily_fd_job = async (token: string) => {
         try {
