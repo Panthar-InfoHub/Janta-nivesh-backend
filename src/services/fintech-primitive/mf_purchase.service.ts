@@ -3,7 +3,7 @@ import { env } from "../../lib/config-env.js";
 import logger from "../../middleware/logger.js";
 import AppError from "../../middleware/error.middleware.js";
 import { provider_token_service } from "../tokens/provider-token.service.js";
-import type { CreateMfPurchaseInput } from "../../lib/zod-schemas/mf-purchase.schema.js";
+import type { ResolvedMfPurchaseInput } from "../../lib/zod-schemas/mf-purchase.schema.js";
 
 // Thin Fintech Primitives client for the lumpsum mf_purchase resource - distinct from
 // mf_purchase_plan.service.ts (SIP/systematic). No DB writes here, per current scope.
@@ -25,17 +25,14 @@ class FintechPrimitiveMfPurchaseServiceClass {
     }
 
     /** POST /v2/mf_purchases - gateway is always "ondc" for this app. */
-    create_purchase = async (input: CreateMfPurchaseInput, mf_investment_account: string, user_ip: string) => {
+    create_purchase = async (input: ResolvedMfPurchaseInput, mf_investment_account: string, user_ip: string) => {
         const payload = {
             mf_investment_account,
             scheme: input.scheme,
             folio_number: input.folio_number,
             amount: input.amount,
             user_ip,
-            source_ref_id: input.source_ref_id ?? crypto.randomUUID(), // idempotency ref - generated since we're not persisting a transaction id yet
-            euin: env.EUIN,
             scheduled_on: input.scheduled_on,
-            partner: input.partner,
             gateway: "ondc",
         };
 
@@ -51,6 +48,50 @@ class FintechPrimitiveMfPurchaseServiceClass {
         } catch (error: any) {
             logger.error("Error creating FP mf_purchase ==> ", error?.response?.data || error.message);
             throw new AppError("Failed to create MF purchase", 502, "MF_PURCHASE_CREATE_FAILED");
+        }
+    }
+
+    /** GET /v2/mf_purchases/:id - polled while the order sits in under_review. */
+    get_purchase = async (fp_id: string) => {
+        logger.debug("Fetching FP mf_purchase", { fp_id });
+
+        try {
+            const response = await axios.get(`${this.base_url}/v2/mf_purchases/${fp_id}`, {
+                headers: await this.auth_headers(),
+            });
+
+            logger.debug("FP mf_purchase fetch response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching FP mf_purchase ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to fetch MF purchase", 502, "MF_PURCHASE_FETCH_FAILED");
+        }
+    }
+
+    /**
+     * PATCH /v2/mf_purchases - `state` and `consent` are both Conditional per the docs, so this
+     * one method covers both steps of the confirm sequence: consent first (order stays pending),
+     * then state: "confirmed" once the payment exists. Consent is immutable once set on FP's
+     * side - the caller is responsible for not re-sending it.
+     */
+    update_purchase = async (
+        fp_id: string,
+        update: { consent?: { email: string; isd_code: string; mobile: string }; state?: "confirmed" }
+    ) => {
+        const payload = { id: fp_id, ...update };
+
+        logger.debug("Updating FP mf_purchase", { fp_id, fields: Object.keys(update) });
+
+        try {
+            const response = await axios.patch(`${this.base_url}/v2/mf_purchases`, payload, {
+                headers: await this.auth_headers({ "Content-Type": "application/json" }),
+            });
+
+            logger.debug("FP mf_purchase update response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error updating FP mf_purchase ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to update MF purchase", 502, "MF_PURCHASE_UPDATE_FAILED");
         }
     }
 }

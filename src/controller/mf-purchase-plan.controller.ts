@@ -2,9 +2,11 @@ import { NextFunction, Request, Response } from "express";
 import { isIPv4 } from "net";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
-import { create_mf_purchase_plan_schema, verify_purchase_plan_confirmation_otp_schema } from "../lib/zod-schemas/mf-purchase-plan.schema.js";
+import { create_mf_purchase_plan_schema, verify_purchase_plan_confirmation_otp_schema, type ResolvedMfPurchasePlanInput } from "../lib/zod-schemas/mf-purchase-plan.schema.js";
 import { fintech_primitive_mf_purchase_plan_service } from "../services/fintech-primitive/mf_purchase_plan.service.js";
 import { mf_transaction_plan_service } from "../services/mf-transaction-plan.service.js";
+import { mf_threshold_validation_service } from "../services/mutual-funds/mf-threshold-validation.service.js";
+import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
 import { mandate_service } from "../services/mandate.service.js";
 import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
@@ -37,10 +39,28 @@ class MfPurchasePlanControllerClass {
                 throw new AppError("No approved mandate found - create and authorize a mandate first", 400, "APPROVED_MANDATE_REQUIRED");
             }
 
-            logger.info("Creating MF purchase plan", { user_id, scheme: input.scheme, amount: input.amount, frequency: input.frequency });
+            // The client names the fund by our catalogue id; the ISIN FP needs is derived here.
+            // An unresolvable id is rejected before FP is called, so no plan can exist against a
+            // fund we don't have - which is what guarantees mf_product_id is never null on the row.
+            const product = await mf_product_service.get_by_id(input.mf_product_id);
+            if (!product) {
+                throw new AppError("Fund not found in the catalogue", 404, "MF_PRODUCT_NOT_FOUND");
+            }
+
+            const { mf_product_id, ...rest } = input;
+            const resolved_input: ResolvedMfPurchasePlanInput = { ...rest, scheme: product.isin };
+
+            logger.info("Creating MF purchase plan", { user_id, scheme: product.isin, amount: input.amount, frequency: input.frequency });
+
+            // Per-fund limits before the FP call. installment_day is checked against the fund's own
+            // allowed dates here - the zod bound is only a loose sanity check.
+            // No-op until the scheme-plan sync populates MfSchemePlan for this fund.
+            await mf_threshold_validation_service.validate_sip(
+                product.isin, input.amount, input.frequency, input.installment_day
+            );
 
             const plan = await fintech_primitive_mf_purchase_plan_service.create_purchase_plan(
-                input, user.investment_account, approved_mandate.mandate_id, user_ip
+                resolved_input, user.investment_account, approved_mandate.mandate_id, user_ip
             );
 
             if (!plan?.id) {
@@ -48,7 +68,7 @@ class MfPurchasePlanControllerClass {
                 throw new AppError("Failed to create MF purchase plan", 502, "MF_PURCHASE_PLAN_CREATE_FAILED");
             }
 
-            await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", plan);
+            await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", plan, true);
 
             res.status(200).json({
                 success: true,
@@ -66,7 +86,7 @@ class MfPurchasePlanControllerClass {
     get_purchase_plans = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user_id = req.user?.id!;
-            const purchase_plans = await mf_transaction_plan_service.get_all(user_id, "PURCHASE");
+            const purchase_plans = await mf_transaction_plan_service.get_all(user_id, "PURCHASE", true);
 
             res.status(200).json({
                 success: true,
@@ -95,7 +115,7 @@ class MfPurchasePlanControllerClass {
             }
 
             const plan = await fintech_primitive_mf_purchase_plan_service.get_purchase_plan(fp_purchase_plan_id);
-            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", plan);
+            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", plan, true);
 
             res.status(200).json({
                 success: true,
@@ -179,7 +199,7 @@ class MfPurchasePlanControllerClass {
                 mobile: user.phone_no,
             });
 
-            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", confirmed);
+            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", confirmed, true);
             await mf_transaction_plan_service.mark_consent_given(updated.id);
 
             res.status(200).json({

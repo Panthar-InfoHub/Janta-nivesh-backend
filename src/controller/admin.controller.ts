@@ -7,6 +7,10 @@ import { user_service } from "../services/user.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
 
+import * as fs from 'fs';
+import path from "path";
+import { db } from "../server.js";
+
 class AdminControllerClass {
 
     /**
@@ -84,18 +88,58 @@ class AdminControllerClass {
      */
     import_mf_products = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { products } = mf_product_import_schema.parse(req.body);
 
-            logger.info("Admin MF product import requested", { count: products.length });
+            const filePath = path.join(process.cwd(), 'extras/output_new.json');
+            logger.debug(`Starting mf product migration from file: ${filePath}`);
 
-            const result = await mf_product_service.bulk_upsert(products);
+            const fileContent = fs.readFileSync(filePath, 'utf-8');
+            const data = JSON.parse(fileContent);
 
-            logger.info("Admin MF product import completed", result);
+            logger.info(`Total records to insert in mf product: ${data.length}`);
+
+            let successCount = 0;
+            let skipCount = 0;
+            const failedIds: string[] = [];
+
+            // Process EVERYTHING now, no slicing.
+            for (const row of data) {
+                logger.debug(`Total success count - ${successCount} where row is --> `, row)
+                try {
+                    await db.mfProduct.upsert({
+                        where: { isin: row.isin },
+                        update: {
+                            name: row.name
+                        },
+                        create: {
+                            isin: row.isin,
+                            name: row.name
+                        }
+                    });
+                    successCount++;
+
+                    if (successCount % 500 === 0) {
+                        logger.info(`✔ Progress: ${successCount} records upserted...`);
+                    }
+                } catch (err: any) {
+                    // We catch the error but DON'T 'throw' it.
+                    // This allows the loop to move to the next record.
+                    logger.error(`Error inserting row ${row.isin}:`, err);
+                    skipCount++;
+                    failedIds.push(row.id);
+                }
+            }
+
+            logger.info(`\n Data upsertion finished! 🎉`);
+            logger.info(`✅ Successfully upserted: ${successCount}`);
+            logger.info(`!!!!! Failed to upsert: ${skipCount}`);
+
+            if (failedIds.length > 0) {
+                logger.warn(`Failed IDs: ${failedIds.slice(0, 5).join(', ')}`);
+            }
 
             res.status(200).json({
                 success: true,
                 message: "MF products imported",
-                data: result,
             });
             return;
         } catch (error) {

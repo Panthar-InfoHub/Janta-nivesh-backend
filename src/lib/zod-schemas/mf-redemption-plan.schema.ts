@@ -13,7 +13,9 @@ export const create_mf_redemption_plan_schema = z.object({
     purchase_plan_id: z.string().min(1),   // fp_plan_id of the PURCHASE plan
     amount: z.number().positive(),
     frequency: z.literal("monthly"),
-    installment_day: z.number().int().min(1).max(28),
+    // Loose sanity bound only - see the note in mf-purchase-plan.schema.ts. The per-fund list is
+    // MfSchemePlan.sip_monthly_dates, enforced in mf-threshold-validation.service.ts.
+    installment_day: z.number().int().min(1).max(31),
 });
 
 export type CreateMfRedemptionPlanInput = z.infer<typeof create_mf_redemption_plan_schema>;

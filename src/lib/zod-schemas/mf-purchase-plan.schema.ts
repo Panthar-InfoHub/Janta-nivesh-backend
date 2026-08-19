@@ -6,11 +6,16 @@ import { z } from "zod";
 //   payment_source        -> the user's APPROVED mandate id
 //   number_of_installments -> 12 (1 year)
 //   systematic/payment_method/gateway/initiated_by/initiated_via/euin/user_ip -> constants or server-side
+// mf_product_id, not ISIN - see the note in mf-purchase.schema.ts. The controller resolves the
+// ISIN from it, so an order can never reference a fund outside the curated catalogue.
 export const create_mf_purchase_plan_schema = z.object({
-    scheme: z.string().min(1), // ISIN
+    mf_product_id: z.string().min(1),
     amount: z.number().positive(),
     frequency: z.enum(["monthly", "daily"]), // only these two are supported per the docs
-    installment_day: z.number().int().min(1).max(28).optional(), // must be null for frequency = daily
+    // Loose sanity bound only - the real per-fund constraint is MfSchemePlan.sip_monthly_dates,
+    // checked in mf-threshold-validation.service.ts. FP ships dates up to 30, so the old max(28)
+    // was rejecting valid days.
+    installment_day: z.number().int().min(1).max(31).optional(), // must be null for frequency = daily
     folio_number: z.string().optional(),
     purpose: z.enum(["children_education", "children_marriage", "house", "car", "travel", "retirement", "others"]).optional(),
 }).refine(
@@ -22,6 +27,11 @@ export const create_mf_purchase_plan_schema = z.object({
 );
 
 export type CreateMfPurchasePlanInput = z.infer<typeof create_mf_purchase_plan_schema>;
+
+// Client input with mf_product_id swapped for the resolved ISIN - what the FP client posts.
+export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_product_id"> & {
+    scheme: string;
+};
 
 export const verify_purchase_plan_confirmation_otp_schema = z.object({
     otp: z.string().length(4),

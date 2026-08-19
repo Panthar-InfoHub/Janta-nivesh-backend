@@ -4,8 +4,10 @@ import logger from "../middleware/logger.js";
 import { create_mf_redemption_plan_schema, verify_redemption_plan_confirmation_otp_schema, type ResolvedMfRedemptionPlanInput } from "../lib/zod-schemas/mf-redemption-plan.schema.js";
 import { fintech_primitive_mf_redemption_plan_service } from "../services/fintech-primitive/mf_redemption_plan.service.js";
 import { mf_transaction_plan_service } from "../services/mf-transaction-plan.service.js";
+import { mf_threshold_validation_service } from "../services/mutual-funds/mf-threshold-validation.service.js";
 import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
+import { isIPv4 } from "net";
 
 class MfRedemptionPlanControllerClass {
 
@@ -15,7 +17,11 @@ class MfRedemptionPlanControllerClass {
             const input = create_mf_redemption_plan_schema.parse(req.body);
 
             const raw_ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress || "127.0.0.1";
-            const user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip).split(",")[0].replace("::ffff:", "").trim();
+            let user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip).split(",")[0].replace("::ffff:", "").trim();
+
+            if (!isIPv4(user_ip)) {
+                user_ip = "127.0.0.1";
+            }
 
             const user = await user_service.get_user_by_id(user_id);
             if (!user?.investment_account) {
@@ -59,6 +65,11 @@ class MfRedemptionPlanControllerClass {
                 amount: resolved_input.amount,
             });
 
+            // Per-fund limits before the FP call. Uses the `withdrawal` thresholds - FP's master
+            // data ships no SWP-specific entry, so the same limits cover SWP and one-shot redeem.
+            // No-op until the scheme-plan sync populates MfSchemePlan for this fund.
+            await mf_threshold_validation_service.validate_redemption(resolved_input.scheme, resolved_input.amount);
+
             const plan = await fintech_primitive_mf_redemption_plan_service.create_redemption_plan(
                 resolved_input, user.investment_account, user_ip
             );
@@ -68,7 +79,7 @@ class MfRedemptionPlanControllerClass {
                 throw new AppError("Failed to create MF redemption plan", 502, "MF_REDEMPTION_PLAN_CREATE_FAILED");
             }
 
-            await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", plan);
+            await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", plan, true);
 
             res.status(200).json({
                 success: true,
@@ -86,7 +97,7 @@ class MfRedemptionPlanControllerClass {
     get_redemption_plans = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user_id = req.user?.id!;
-            const redemption_plans = await mf_transaction_plan_service.get_all(user_id, "REDEMPTION");
+            const redemption_plans = await mf_transaction_plan_service.get_all(user_id, "REDEMPTION", true);
 
             res.status(200).json({
                 success: true,
@@ -115,7 +126,7 @@ class MfRedemptionPlanControllerClass {
             }
 
             const plan = await fintech_primitive_mf_redemption_plan_service.get_redemption_plan(fp_plan_id);
-            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", plan);
+            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", plan, true);
 
             res.status(200).json({
                 success: true,
@@ -193,7 +204,7 @@ class MfRedemptionPlanControllerClass {
                 mobile: user.phone_no,
             });
 
-            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", confirmed);
+            const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", confirmed, true);
             await mf_transaction_plan_service.mark_consent_given(updated.id);
 
             res.status(200).json({

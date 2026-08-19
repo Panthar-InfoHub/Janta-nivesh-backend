@@ -51,10 +51,21 @@ export const env = {
     FINTECH_PRIMITIVE_API_BASE_URL: process.env.FINTECH_PRIMITIVE_API_BASE_URL!,
     FINTECH_PRIMITIVE_TENANT_ID: process.env.FINTECH_PRIMITIVE_TENANT_ID!, // x-tenant-id header
 
+
+
+
+
+
+
+
+
+
+
     finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,
     MF_LATEST_URL: process.env.MF_LATEST_URL!,
+    MFAPI_BASE_URL: process.env.MFAPI_BASE_URL || "https://api.mfapi.in", // NAV source (scheme master + per-fund latest NAV)
     KYC_BASE_URL: process.env.KYC_BASE_URL!,
     ARN: process.env.ARN!,
     EUIN: process.env.EUIN!,

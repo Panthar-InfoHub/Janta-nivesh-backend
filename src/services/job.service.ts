@@ -5,10 +5,8 @@ import cuid from 'cuid';
 import axios from "axios";
 import logger from "../middleware/logger.js";
 import { db } from "../server.js";
-// pLimit is used to cap concurrent FP scheme-plan sync requests.
-// MfNavHistoryCreateManyInput was only used by the now-disabled NAV history jobs.
 import pLimit from "p-limit";
-// import { MfNavHistoryCreateManyInput } from "../prisma/generated/prisma/models.js";
+import { mfapi_service } from "./mutual-funds/mfapi.service.js";
 import { user_snapshot_service } from "./user/user.snapshot.service.js";
 import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.service.js";
 
@@ -274,137 +272,144 @@ class JobServiceClass {
 
 
 
+    /**
+     * mfapi returns dates as DD-MM-YYYY ("29-05-2008"), which `new Date()` parses as Invalid Date.
+     * Reorders to YYYY-MM-DD before parsing. Returns null on anything unparseable so callers can
+     * skip the record rather than writing a bad timestamp.
+     */
+    private parse_mfapi_date = (raw: string): Date | null => {
+        if (typeof raw !== "string") return null;
 
+        const parts = raw.split("-");
+        const parsed = (parts.length === 3 && parts[0].length === 2)
+            ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
+            : new Date(raw);
 
-    // nav_history_job / process_nav_history / single_nav_history_job disabled - all three keyed
-    // NAV lookups off MfProduct.mapping_code, a Finnsys column removed by the Cybrilla/FP
-    // catalogue migration. Unlike daily_mf_product_job (deleted above), NAV sourcing for the
-    // curated catalogue has no decided replacement yet, so this is commented rather than removed,
-    // to keep the gap visible instead of erasing it.
-    // TODO: blocked on a NAV-source decision. Once chosen, rewrite process_nav_history to key
-    // off product.isin instead of mapping_code (isin survives the slim-down and is unique).
-    /*
-    nav_history_job = async () => {
-
-        const endDate = (new Date()).toISOString().split('T')[0];
-        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
-
-        logger.debug(`NAV History Job: startDate=${startDate} endDate=${endDate}`);
-
-        // const mf_products = await db.mfProduct.findMany({
-        //     select: { id: true, scheme_id: true, mapping_code: true }
-        // });
-
-        let cursor: string | null = null;
-        const BATCH_SIZE = 100;
-        const limit = pLimit(2);
-
-        while (true) {
-
-            // Implemented cursor pagination to avoid loading all products in memory at once.....
-            // Hehehe... recently learned about this
-
-
-            const products: any[] = await db.mfProduct.findMany({
-                take: BATCH_SIZE,
-                skip: cursor ? 1 : 0,
-                cursor: cursor ? { id: cursor } : undefined,
-                select: { id: true, mapping_code: true },
-                orderBy: { id: 'asc' }
-            });
-
-            if (products.length === 0) break;
-
-            const tasks = products.map(product =>
-                limit(() => this.process_nav_history(product, startDate, endDate))
-            );
-
-            await Promise.allSettled(tasks);
-
-            cursor = products[products.length - 1].id;
-        }
+        return isNaN(parsed.getTime()) ? null : parsed;
     }
 
+    /**
+     * Stage 2 of the NAV pipeline: resolve each curated fund's mfapi scheme_code.
+     *
+     * mfapi has no lookup-by-isin endpoint, so this pulls the whole master list once (~40k rows)
+     * and builds an in-memory isin -> schemeCode map. Both isinGrowth and isinDivReinvestment are
+     * indexed - a fund sits in one or the other depending on whether it's the growth or the
+     * IDCW-reinvestment plan, and ISINs are globally unique so either match is the right fund.
+     *
+     * Returns the unmatched ISINs: those funds have no code, so mf_nav_daily_job will skip them
+     * and they'll never get a NAV until someone looks into why.
+     */
+    mf_scheme_code_sync_job = async () => {
+        const master = await mfapi_service.get_master_list();
 
+        const isin_to_code = new Map<string, number>();
+        for (const row of master) {
+            if (!row?.schemeCode) continue;
+            if (row.isinGrowth) isin_to_code.set(row.isinGrowth.trim().toUpperCase(), row.schemeCode);
+            if (row.isinDivReinvestment) isin_to_code.set(row.isinDivReinvestment.trim().toUpperCase(), row.schemeCode);
+        }
+        logger.info(`mfapi isin map built: ${isin_to_code.size} ISINs across ${master.length} schemes`);
 
+        const products = await db.mfProduct.findMany({ select: { id: true, isin: true, scheme_code: true } });
 
-    process_nav_history = async (product: { id: string, mapping_code: string }, startDate: string, endDate: string) => {
-        try {
-            const nav_history_data = await axios.get(`${process.env.MF_LATEST_URL}/mf/${product.mapping_code}`, {
-                params: { startDate, endDate },
-                timeout: 15000
-            }).then(res => res.data.data);
+        logger.debug(`Total products to updates scheme code --> ${products.length}`)
 
-            logger.debug(`Fetched NAV history for scheme_id: ${product.mapping_code}, Records: ${nav_history_data.length}`);
+        let matched = 0;
+        let unchanged = 0;
+        const unmatched: string[] = [];
 
-            const to_insert: MfNavHistoryCreateManyInput[] = nav_history_data.map((nav_record: any) => {
-                let parsedDate: Date;
-                if (typeof nav_record.date === 'string' && nav_record.date.includes('-')) {
-                    const parts = nav_record.date.split('-');
-                    if (parts.length === 3 && parts[0].length === 2) {
-                        parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                    } else {
-                        parsedDate = new Date(nav_record.date);
-                    }
-                } else {
-                    parsedDate = new Date(nav_record.date);
-                }
+        for (const product of products) {
+            const code = isin_to_code.get(product.isin.trim().toUpperCase());
 
-                if (isNaN(parsedDate.getTime())) {
-                    logger.error(`Skipping ${product.mapping_code}: Invalid date format "${nav_record.date}"`);
-                }
-
-                return {
-                    mf_product_id: product.id,
-                    scheme_id: product.mapping_code,
-                    nav_date: parsedDate,
-                    nav: nav_record.nav,
-                } satisfies MfNavHistoryCreateManyInput;
-            });
-
-            if (to_insert.length > 0) {
-                const BATCH_SIZE = 1000;
-                for (let i = 0; i < to_insert.length; i += BATCH_SIZE) {
-                    await db.mfNavHistory.createMany({
-                        data: to_insert.slice(i, i + BATCH_SIZE),
-                        skipDuplicates: true
-                    });
-                }
+            if (!code) {
+                unmatched.push(product.isin);
+                continue;
+            }
+            if (product.scheme_code === code) {
+                unchanged++;
+                continue;
             }
 
-            logger.info(`NAV History Job: Inserted ${to_insert.length} records for scheme_id: ${product.mapping_code}`);
-        } catch (error) {
-            logger.error(`Error fetching/storing NAV history for scheme_id: ${product.mapping_code}`, error);
+            await db.mfProduct.update({ where: { id: product.id }, data: { scheme_code: code } });
+            matched++;
         }
+
+        logger.info(`Scheme code sync done - updated: ${matched}, already correct: ${unchanged}, unmatched: ${unmatched.length}`);
+        if (unmatched.length > 0) {
+            logger.warn(`ISINs with no mfapi match: ${unmatched.join(", ")}`);
+        }
+
+        return { total: products.length, matched, unchanged, unmatched_count: unmatched.length, unmatched };
     }
 
-
-
-
-
-
-    single_nav_history_job = async (scheme_code: string) => {
-
-        // const scheme_id: any = await this.get_only_mf_product(scheme_code).then(product => product?.mapping_code);
-
-        const endDate = (new Date()).toISOString().split('T')[0];
-        const startDate = (new Date(new Date().setFullYear(new Date().getFullYear() - 5))).toISOString().split('T')[0];
-
-        logger.debug(`Single NAV History Job: startDate=${startDate} endDate=${endDate}`);
-
-        const mf_product = await db.mfProduct.findFirst({
-            where: { id: scheme_code },
-            select: { id: true, scheme_id: true, mapping_code: true }
+    /**
+     * Stage 3: pull the latest NAV for every fund that has a scheme_code.
+     *
+     * Writes both MfProduct.latest_nav/latest_nav_date (what mf-metrics-calc anchors on) and an
+     * MfNavHistory row. The history insert relies on @@unique([mf_product_id, nav_date]) to make a
+     * same-day re-run a no-op rather than a duplicate.
+     *
+     * One HTTP call per fund - mfapi has no bulk latest-NAV endpoint - so concurrency is capped.
+     * A fund that fails is collected and reported, never aborts the batch.
+     */
+    mf_nav_daily_job = async () => {
+        const products = await db.mfProduct.findMany({
+            where: { scheme_code: { not: null } },
+            select: { id: true, isin: true, scheme_code: true },
         });
 
-        if (!mf_product) {
-            logger.warn(`Single NAV History Job: No product found for id: ${scheme_code}`);
-            return;
+        logger.info(`Starting NAV refresh for ${products.length} funds with a scheme_code`);
+
+        const limit = pLimit(5);
+        let updated = 0;
+        let history_inserted = 0;
+        const failed: { isin: string; reason: string }[] = [];
+
+        const tasks = products.map(product => limit(async () => {
+            const response = await mfapi_service.get_latest_nav(product.scheme_code!);
+
+            const point = response?.data?.[0];
+            if (!point?.nav || !point?.date) {
+                failed.push({ isin: product.isin, reason: "no NAV data in response" });
+                return;
+            }
+
+            const nav_date = this.parse_mfapi_date(point.date);
+            if (!nav_date) {
+                failed.push({ isin: product.isin, reason: `unparseable date "${point.date}"` });
+                return;
+            }
+
+            const nav = parseFloat(point.nav);
+            if (isNaN(nav)) {
+                failed.push({ isin: product.isin, reason: `unparseable nav "${point.nav}"` });
+                return;
+            }
+
+            await db.mfProduct.update({
+                where: { id: product.id },
+                data: { latest_nav: nav, latest_nav_date: nav_date },
+            });
+            updated++;
+
+            // createMany + skipDuplicates so re-running the same day is a no-op on the unique
+            // (mf_product_id, nav_date) pair instead of throwing.
+            const inserted = await db.mfNavHistory.createMany({
+                data: [{ mf_product_id: product.id, nav, nav_date }],
+                skipDuplicates: true,
+            });
+            history_inserted += inserted.count;
+        }));
+
+        await Promise.allSettled(tasks);
+
+        logger.info(`NAV refresh done - updated: ${updated}, history rows added: ${history_inserted}, failed: ${failed.length}`);
+        if (failed.length > 0) {
+            logger.warn(`NAV fetch failures: ${failed.slice(0, 10).map(f => `${f.isin} (${f.reason})`).join(", ")}`);
         }
 
-        await this.process_nav_history(mf_product, startDate, endDate);
+        return { total: products.length, updated, history_inserted, failed_count: failed.length, failed };
     }
-    */
 
     calculate_all_mf_metrics = async () => {
         logger.info("Starting MF Metrics calculation job...");

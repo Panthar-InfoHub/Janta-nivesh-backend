@@ -13,25 +13,32 @@ model MfProduct {
   name            String
   isin            String    @unique
   img_url         String?
+  // mfapi.in scheme code, resolved by matching our isin against their master list's
+  // isinGrowth/isinDivReinvestment (mf-scheme-code-sync job). Null until that job matches it -
+  // a fund with no code never gets a NAV. Indexed, not unique: if two curated ISINs ever
+  // resolve to the same code the sync should still write and let the response flag it.
+  scheme_code     Int?
   latest_nav      Decimal?  @db.Decimal(12, 4)
   latest_nav_date DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
 
-  nav_history MfNavHistory[]
-  metrics     MfMetrics?
-  scheme_plan MfSchemePlan?
+  nav_history     MfNavHistory[]
+  metrics         MfMetrics?
+  scheme_plan     MfSchemePlan?
+  mf_transactions MfTransactionPlan[] // Restrict on the other side - a fund with orders can't be deleted
 
   @@index([latest_nav_date])
+  @@index([scheme_code])
 }
 
-// Left untouched by the Cybrilla migration, including the already-dead scheme_id column (nothing
-// ever reads it - mf_product_id is the only FK anything queries by). NAV history mechanism/source
-// going forward is a separate, explicitly deferred decision.
+// NAV points, one row per (fund, date). Written by the mf-nav-daily job, which appends the single
+// latest point per run - @@unique([mf_product_id, nav_date]) makes a same-day re-run a no-op.
+// The old Finnsys scheme_id column (which held mapping_code) was dropped - nothing ever read it,
+// mf_product_id is the only FK anything queries by.
 model MfNavHistory {
   id            String    @id @default(cuid())
   mf_product_id String
-  scheme_id     String
   nav           Decimal   @db.Decimal(12, 4)
   nav_date      DateTime
   daily_change  Float?

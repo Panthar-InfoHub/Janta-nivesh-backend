@@ -127,6 +127,71 @@ class JobControllerClass {
     //     }
     // }
 
+    /**
+     * Stage 2 of the NAV pipeline - resolve each curated fund's mfapi scheme_code by matching our
+     * ISIN against their master list. Occasional, not daily: the master list only changes when
+     * schemes are added/retired. Returns the unmatched ISINs so gaps are visible.
+     */
+    mf_scheme_code_sync_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            // const scheduler_token = req.headers["x-scheduler-token"];
+            // const secret = process.env.SCHEDULER_SECRET || "default_secret";
+
+            // if (scheduler_token !== secret) {
+            //     console.warn(`[SECURITY] Unauthorized attempt to access mf scheme code sync job with token: ${scheduler_token}`);
+            //     throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            // }
+
+            logger.info("Running MF scheme code sync job...");
+
+            const data = await job_service.mf_scheme_code_sync_job();
+
+            res.status(200).json({
+                success: true,
+                message: "MF scheme code sync completed successfully",
+                data
+            });
+            return;
+        } catch (error: any) {
+            console.error("Error while running mf scheme code sync job ==> ", error.message);
+            next(error);
+            return;
+        }
+    }
+
+    /**
+     * Stage 3 - daily latest-NAV refresh for every fund that has a scheme_code. Writes both
+     * MfProduct.latest_nav/latest_nav_date and an MfNavHistory point.
+     */
+    mf_nav_daily_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            // const scheduler_token = req.headers["x-scheduler-token"];
+            // const secret = process.env.SCHEDULER_SECRET || "default_secret";
+
+            // if (scheduler_token !== secret) {
+            //     console.warn(`[SECURITY] Unauthorized attempt to access mf nav daily job with token: ${scheduler_token}`);
+            //     throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            // }
+
+            logger.info("Running MF daily NAV job...");
+
+            const data = await job_service.mf_nav_daily_job();
+
+            logger.info(`MF daily NAV job completed. Results --> `, data)
+
+            res.status(200).json({
+                success: true,
+                message: "MF daily NAV job completed successfully",
+                data
+            });
+            return;
+        } catch (error: any) {
+            console.error("Error while running mf nav daily job ==> ", error.message);
+            next(error);
+            return;
+        }
+    }
+
     mf_metrics_calc_job = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const scheduler_token = req.headers["x-scheduler-token"];
