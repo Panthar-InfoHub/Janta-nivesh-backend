@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { isIPv4 } from "net";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
-import { create_mf_purchase_plan_schema, verify_purchase_plan_confirmation_otp_schema, type ResolvedMfPurchasePlanInput } from "../lib/zod-schemas/mf-purchase-plan.schema.js";
+import { create_mf_purchase_plan_schema, verify_purchase_plan_confirmation_otp_schema, cancel_mf_purchase_plan_schema, type ResolvedMfPurchasePlanInput } from "../lib/zod-schemas/mf-purchase-plan.schema.js";
 import { fintech_primitive_mf_purchase_plan_service } from "../services/fintech-primitive/mf_purchase_plan.service.js";
 import { mf_transaction_plan_service } from "../services/mf-transaction-plan.service.js";
 import { mf_threshold_validation_service } from "../services/mutual-funds/mf-threshold-validation.service.js";
@@ -214,6 +214,73 @@ class MfPurchasePlanControllerClass {
             return;
         }
     }
+    cancel_purchase_plan = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id!;
+            const fp_purchase_plan_id = req.params.id as string;
+
+            const { cancellation_code } = cancel_mf_purchase_plan_schema.parse(req.body);
+
+            const plan = await mf_transaction_plan_service.get_by_fp_id(
+                user_id,
+                fp_purchase_plan_id
+            );
+
+            if (!plan) {
+                throw new AppError(
+                    "Purchase plan not found",
+                    404,
+                    "MF_PURCHASE_PLAN_NOT_FOUND"
+                );
+            }
+
+            if (plan.plan_type !== "PURCHASE" || !plan.systematic) {
+                throw new AppError(
+                    "Only SIP purchase plans can be cancelled through this endpoint",
+                    400,
+                    "MF_PURCHASE_PLAN_CANCEL_NOT_ALLOWED"
+                );
+            }
+
+            logger.info("Cancelling MF purchase plan", {
+                user_id,
+                fp_purchase_plan_id,
+                cancellation_code
+            });
+
+            const cancelled_plan =
+                await fintech_primitive_mf_purchase_plan_service.cancel_purchase_plan(
+                    fp_purchase_plan_id,
+                    cancellation_code
+                );
+
+            if (!cancelled_plan?.id) {
+                throw new AppError(
+                    "Invalid response from FP while cancelling purchase plan",
+                    502,
+                    "MF_PURCHASE_PLAN_CANCEL_RESPONSE_INVALID"
+                );
+            }
+
+            const updated = await mf_transaction_plan_service.upsert_from_fp(
+                user_id,
+                "PURCHASE",
+                cancelled_plan,
+                true
+            );
+
+            res.status(200).json({
+                success: true,
+                message: "MF purchase plan cancelled",
+                data: updated
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in cancel_purchase_plan controller:", error);
+            next(error);
+            return;
+        }
+    };
 }
 
 export const mf_purchase_plan_controller = new MfPurchasePlanControllerClass();
