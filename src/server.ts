@@ -21,9 +21,7 @@ import { investor_profile_router } from "./routes/onboarding_routers/investor_pr
 import { nominee_router } from "./routes/onboarding_routers/nominee.router.js"
 import { mandate_router } from "./routes/mandate.router.js"
 import { mandate_webhook_router } from "./routes/webhooks/mandate.webhook.router.js"
-import { mf_purchase_plan_router } from "./routes/mf-purchase-plan.router.js"
-import { mf_redemption_plan_router } from "./routes/mf-redemption-plan.router.js"
-import { mf_purchase_router } from "./routes/mf-purchase.router.js"
+import { mf_router } from "./routes/mf.router.js"
 import { mf_scheme_router } from "./routes/mf-scheme.router.js"
 // mutual_fund_router (v1 Finnsys catalogue) retired as part of the Cybrilla/FP migration - the
 // controller/router and their dedicated services are excluded from the build (tsconfig.json).
@@ -82,9 +80,7 @@ app.use("/api/v2/webhook/mandate", mandate_webhook_router)
 app.use("/api/v2/mf-scheme", mf_scheme_router)
 
 
-app.use("/api/v2/mf-purchase", mf_purchase_router)
-app.use("/api/v2/mf-purchase-plan", mf_purchase_plan_router)
-app.use("/api/v2/mf-redemption-plan", mf_redemption_plan_router)
+app.use("/api/v2/mf", mf_router)
 
 // Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
 // level via middleware (see admin.middleware.ts): /login additionally requires dev_only_require
