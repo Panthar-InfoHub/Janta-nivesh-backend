@@ -81,6 +81,7 @@ class MfTransactionPlanServiceClass {
             mf_product_id: product?.id ?? null,
             mf_investment_account: plan.mf_investment_account,
             scheme: plan.scheme,
+            switch_to_scheme: plan.switch_in_scheme ?? plan.switch_to_scheme ?? null,
             folio_number: plan.folio_number ?? null,
             amount: plan.amount ?? null,
             units: plan.units ?? null,
