@@ -242,6 +242,14 @@ class MfPurchasePlanControllerClass {
                 );
             }
 
+            if (plan.state !== "ACTIVE") {
+                throw new AppError(
+                    "Only active purchase plans can be cancelled",
+                    400,
+                    "MF_PURCHASE_PLAN_CANCEL_NOT_ALLOWED"
+                );
+            }
+
             logger.info("Cancelling MF purchase plan", {
                 user_id,
                 fp_purchase_plan_id,
@@ -266,7 +274,8 @@ class MfPurchasePlanControllerClass {
                 user_id,
                 "PURCHASE",
                 cancelled_plan,
-                true
+                true,
+                cancellation_code
             );
 
             res.status(200).json({
