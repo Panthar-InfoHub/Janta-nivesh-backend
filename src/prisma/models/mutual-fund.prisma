@@ -27,6 +27,7 @@ model MfProduct {
   metrics         MfMetrics?
   scheme_plan     MfSchemePlan?
   mf_transactions MfTransactionPlan[] // Restrict on the other side - a fund with orders can't be deleted
+  mf_holdings     MfHolding[] // SetNull on the other side - delisting a fund shouldn't drop the holding
 
   @@index([latest_nav_date])
   @@index([scheme_code])
