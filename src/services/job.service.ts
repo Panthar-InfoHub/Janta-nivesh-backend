@@ -9,6 +9,7 @@ import pLimit from "p-limit";
 import { mfapi_service } from "./mutual-funds/mfapi.service.js";
 import { user_snapshot_service } from "./user/user.snapshot.service.js";
 import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.service.js";
+import { mf_holding_sync_service } from "./mutual-funds/mf-holding-sync.service.js";
 
 class JobServiceClass {
 
@@ -78,6 +79,49 @@ class JobServiceClass {
         logger.info(
             "[MF SCHEME SYNC] Scheme-plan sync job completed",
             result);
+        return result;
+    };
+
+    /**
+     * Nightly refresh of MfHolding for every account. Same call any of our own controllers should
+     * make right after a transaction succeeds (mf-holding-sync.service.ts) - this is the backstop
+     * for settlement that happens without the user opening the app (an installment going through,
+     * NAV moving). One account with no holdings is a no-op at FP's end, not an error, so this is
+     * safe to run against every user with an investment account rather than a filtered subset.
+     */
+    mf_holding_sync_job = async () => {
+        logger.info("Starting MF holdings sync job...");
+
+        const users = await db.user.findMany({
+            where: { investment_account: { not: null } },
+            select: { id: true, investment_account: true },
+        });
+
+        logger.info(`[MF HOLDINGS SYNC] Found ${users.length} users with an investment account`);
+
+        // One user's sync = 2 FP calls (holdings + scheme-wise-returns), not per-fund/per-folio,
+        // so this stays cheap even at scale. Same conservative concurrency as the scheme-plan job.
+        const limit = pLimit(2);
+        let successful = 0;
+        let failed = 0;
+        const tasks = users.map((user) =>
+            limit(async () => {
+                try {
+                    await mf_holding_sync_service.sync_account(user.id, user.investment_account!);
+                    successful++;
+                } catch (error: any) {
+                    failed++;
+                    logger.error(`[MF HOLDINGS SYNC] Failed to sync user ${user.id}`, {
+                        user_id: user.id,
+                        error: error?.message,
+                    });
+                }
+            })
+        );
+        await Promise.allSettled(tasks);
+
+        const result = { total: users.length, successful, failed };
+        logger.info("[MF HOLDINGS SYNC] Holdings sync job completed", result);
         return result;
     };
 
@@ -535,6 +579,118 @@ class JobServiceClass {
         } catch (error) {
             logger.error("Error in calculate_all_mf_metrics:", error);
             throw error;
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * One-time-ish historical NAV backfill: pulls each fund's WHOLE NAV history from mfapi into
+     * MfNavHistory. mf_nav_daily_job only appends one point per day going forward, so without this
+     * seed the metrics job has nothing to look back at and every return_* stays null.
+     *
+     * Keyed off MfProduct.scheme_code (resolved by mf_scheme_code_sync_job) - funds without one
+     * are skipped, since there's nothing to call mfapi with.
+     *
+     * NOTE: this currently re-downloads history for every fund on each run. Fine while it's a
+     * pre-go-live seed; add a "skip funds that already have history" guard before making it
+     * routine, otherwise re-running to pick up newly-imported funds refetches the whole catalogue.
+     */
+    nav_history_job = async () => {
+        let cursor: string | null = null;
+        const BATCH_SIZE = 100;
+        const limit = pLimit(2); // whole-history payloads are heavy and mfapi is a free public API
+
+        let processed = 0;
+        let inserted_total = 0;
+
+        while (true) {
+            // Cursor pagination so the whole catalogue never sits in memory at once.
+            const products = await db.mfProduct.findMany({
+                take: BATCH_SIZE,
+                skip: cursor ? 1 : 0,
+                cursor: cursor ? { id: cursor } : undefined,
+                where: { scheme_code: { not: null } },
+                select: { id: true, isin: true, scheme_code: true },
+                orderBy: { id: "asc" },
+            });
+
+            if (products.length === 0) break;
+
+            const results = await Promise.allSettled(
+                products.map(product => limit(() => this.process_nav_history(product)))
+            );
+
+            for (const result of results) {
+                if (result.status === "fulfilled") inserted_total += result.value;
+            }
+            processed += products.length;
+            logger.info(`[NAV HISTORY] Processed ${processed} funds, ${inserted_total} points inserted so far`);
+
+            cursor = products[products.length - 1].id;
+        }
+
+        const result = { total: processed, points_inserted: inserted_total };
+        logger.info("[NAV HISTORY] Backfill completed", result);
+        return result;
+    }
+
+    /**
+     * Fetches and stores one fund's full NAV history. Returns how many rows were actually written -
+     * skipDuplicates means a re-run inserts 0 rather than throwing on the
+     * @@unique([mf_product_id, nav_date]) pair.
+     *
+     * Never throws: a fund that fails is logged and reported as 0 so it can't abort the batch.
+     */
+    process_nav_history = async (product: { id: string; isin: string; scheme_code: number | null }): Promise<number> => {
+        if (!product.scheme_code) return 0;
+
+        try {
+            const response = await mfapi_service.get_full_history(product.scheme_code);
+            const points = response?.data ?? [];
+
+            if (points.length === 0) {
+                logger.warn(`[NAV HISTORY] No history returned for ${product.isin} (scheme_code ${product.scheme_code})`);
+                return 0;
+            }
+
+            const to_insert = points.flatMap(point => {
+                const nav_date = this.parse_mfapi_date(point.date);
+                const nav = parseFloat(point.nav);
+
+                // Drop unparseable points rather than writing a bad row - mfapi occasionally
+                // carries blank NAVs on non-trading days.
+                if (!nav_date || isNaN(nav)) return [];
+                return [{ mf_product_id: product.id, nav, nav_date }];
+            });
+
+            let inserted = 0;
+            const CHUNK = 1000;
+            for (let i = 0; i < to_insert.length; i += CHUNK) {
+                const chunk = await db.mfNavHistory.createMany({
+                    data: to_insert.slice(i, i + CHUNK),
+                    skipDuplicates: true,
+                });
+                inserted += chunk.count;
+            }
+
+            logger.info(`[NAV HISTORY] ${product.isin}: ${inserted} new points (of ${to_insert.length} fetched)`);
+            return inserted;
+        } catch (error) {
+            logger.error(`[NAV HISTORY] Failed for ${product.isin} (scheme_code ${product.scheme_code})`, error);
+            return 0;
         }
     }
 

@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import { bundle_service } from "../services/bundle.services.js";
+import { mf_catalogue_service } from "../services/mutual-funds/mf-catalogue.service.js";
 import { redis_buffer_client } from "../lib/redis.js";
 import { compress_json, decompress_json } from "../lib/utils.js";
 import AppError from "../middleware/error.middleware.js";
@@ -27,48 +28,26 @@ class FrontendControllerClass {
                 return;
             }
 
-            // Category browse (flexi/large-mid/large/mid/small cap, index, global) used the v1
-            // Finnsys-backed catalogue query, which is retired as part of the Cybrilla/FP
-            // catalogue migration (MfQueryService.ts is excluded from the build - see
-            // tsconfig.json). Degrading each section to an empty list rather than crashing the
-            // whole homepage payload; a v2-catalogue equivalent isn't built yet.
-            const empty_category = { mutual_funds: [] as unknown[] };
-            const [bundle, flexi_cap, large_mid_cap, large_cap, mid_cap, small_cap, index, global_others] = await Promise.all([
+            // Every section is keyed by its tag, which is also what GET /api/v2/mf/funds?tag=
+            // takes for the "see all" screen behind each carousel's arrow.
+            //
+            // Only `popular` resolves to real funds today. The category sections are declared and
+            // returned empty on purpose - MfProduct has no category field yet (DISC-0 in Todo.md),
+            // and an empty section is honest where a wrongly-populated one wouldn't be. They fill
+            // themselves in once that column lands; no change needed here.
+            const [bundle, mf_sections] = await Promise.all([
                 bundle_service.get_bundles({ page: 1, limit: 4 }),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
-                Promise.resolve(empty_category),
+                mf_catalogue_service.get_sections(5),
             ]);
 
-            // bundle.bundles = bundle.bundles.map(bundle => {
-            //     const total_min_amount = bundle.categories.
-            //     return {
-            //         ...bundle,
-            //         // accumulated_min_amount: total_min_amount ?? ""
-            //     };
-            // });
-
             const response_data = {
-                bundle_funds: {
-                    title: "Curated Bundles",
-                    items: bundle.bundles,
-                    key: "bundle_funds"
-                },
-                normal_funds: {
-                    title: "Normal Bundles", key: "normal_funds", items: [
-                        { title: "Flexi Cap", items: flexi_cap.mutual_funds, key: "flexi_cap" },
-                        { title: "Large & Mid Cap", items: large_mid_cap.mutual_funds, key: "large_Mid_cap" },
-                        { title: "Large Cap", items: large_cap.mutual_funds, key: "large_cap" },
-                        { title: "Mid Cap", items: mid_cap.mutual_funds, key: "mid_cap" },
-                        { title: "Small Cap", items: small_cap.mutual_funds, key: "small_cap" },
-                        { title: "Index", items: index.mutual_funds, key: "index" },
-                        { title: "Global / Others", items: global_others.mutual_funds, key: "global_others" }
-                    ]
-                }
+                // bundle_funds: {
+                //     title: "Curated Bundles",
+                //     items: bundle.bundles,
+                //     tag: "bundle_funds",
+                //     key: "bundle_funds", // deprecated alias of `tag` - kept so the current app build keeps working
+                // },
+                ...mf_sections,
             }
 
             const compressed = await compress_json(response_data);

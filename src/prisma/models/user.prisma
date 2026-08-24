@@ -19,6 +19,12 @@ model User {
   updatedAt            DateTime               @default(now()) @updatedAt
   investor_profile     String?                @unique
   investment_account   String?                @unique
+  // Numeric twin of investment_account (FP's `old_id` on the same create/update response) - what
+  // the older /api/oms/* surface (Investor Reports: Holdings Report etc.) wants instead of the
+  // mfia_... string, same split already captured for bank accounts (fp_bank_account_old_id) and
+  // transaction plans (fp_old_id). Nullable: not retroactively known for accounts created before
+  // this column existed until sync_investment_account's update path runs for them once more.
+  investment_account_old_id Int?
   refresh_token        String?
   mpin                 String?
   fds                  FdTransaction[]
@@ -35,6 +41,7 @@ model User {
   net_worth_history    UserNetWorthSnapshot[]
   mandates             Mandate[]
   notifications        Notification[]
+  mf_holdings          MfHolding[]
 }
 
 model UserNetWorthSnapshot {

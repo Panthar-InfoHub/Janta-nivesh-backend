@@ -81,6 +81,9 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 
 
 app.use("/api/v2/mf", mf_router)
+app.use("/api/v2/frontend", frontend_router)
+app.use("/api/v2/user", user_router)
+
 
 // Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
 // level via middleware (see admin.middleware.ts): /login additionally requires dev_only_require
@@ -92,7 +95,7 @@ app.use("/api/v2/jobs", job_router)
 
 app.use("/api/v1/migration", migration_router)
 app.use("/api/v1/user", user_router)
-app.use("/api/v1/frontend", frontend_router)
+// app.use("/api/v1/frontend", frontend_router)
 
 app.use("/api/v1/fd", fd_router)
 app.use("/api/v1/test", test_router)
