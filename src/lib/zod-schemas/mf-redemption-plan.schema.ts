@@ -32,5 +32,5 @@ export type ResolvedMfRedemptionPlanInput = {
 };
 
 export const verify_redemption_plan_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
 });
