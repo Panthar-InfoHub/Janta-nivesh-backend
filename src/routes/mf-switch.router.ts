@@ -11,6 +11,12 @@ mf_switch_router.post(
 );
 
 mf_switch_router.get(
+    "/",
+    login_require,
+    mf_switch_controller.get_switches,
+);
+
+mf_switch_router.get(
     "/:id",
     login_require,
     mf_switch_controller.fetch_switch,

@@ -89,6 +89,11 @@ class MfSwitchControllerClass {
                     source_product.isin,
                     input.amount,
                 );
+
+                await mf_threshold_validation_service.validate_lumpsum(
+                    destination_product.isin,
+                    input.amount,
+                );
             }
 
             const resolved_input: ResolvedMfSwitchInput = {
@@ -157,7 +162,38 @@ class MfSwitchControllerClass {
             return;
         }
     };
+    get_switches = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const user_id = req.user?.id!;
 
+            const switches =
+                await mf_transaction_plan_service.get_all(
+                    user_id,
+                    "SWITCH",
+                    false,
+                );
+
+            res.status(200).json({
+                success: true,
+                message: "MF switches fetched",
+                data: switches,
+            });
+
+            return;
+        } catch (error) {
+            logger.error(
+                "Error in get_switches controller:",
+                error,
+            );
+
+            next(error);
+            return;
+        }
+    };
     fetch_switch = async (
         req: Request,
         res: Response,
@@ -185,6 +221,13 @@ class MfSwitchControllerClass {
                 await fintech_primitive_mf_switch_service.get_switch(
                     fp_switch_id,
                 );
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
+                );
+            }
 
             const updated =
                 await mf_transaction_plan_service.upsert_from_fp(
@@ -247,6 +290,13 @@ class MfSwitchControllerClass {
                     "MF_SWITCH_NOT_PENDING",
                 );
             }
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
+                );
+            }
 
             const user = await user_service.get_user_by_id(user_id);
 
@@ -301,7 +351,6 @@ class MfSwitchControllerClass {
                     user_id,
                     fp_switch_id,
                 );
-
             if (!switch_order) {
                 throw new AppError(
                     "MF switch not found",
@@ -309,6 +358,14 @@ class MfSwitchControllerClass {
                     "MF_SWITCH_NOT_FOUND",
                 );
             }
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
+                );
+            }
+
 
             if (switch_order.state !== "PENDING") {
                 throw new AppError(

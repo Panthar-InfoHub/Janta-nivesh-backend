@@ -5,7 +5,7 @@ export const create_mf_switch_schema = z.object({
     destination_mf_product_id: z.string().min(1),
     folio_number: z.string().min(1),
 
-    amount: z.number().positive().optional(),
+    amount: z.number().int().positive().optional(),
     units: z.number().positive().optional(),
 }).refine(
     (value) => !(value.amount !== undefined && value.units !== undefined),
