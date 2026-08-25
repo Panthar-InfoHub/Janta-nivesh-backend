@@ -11,14 +11,14 @@ const OTP_EXPIRY_SECONDS = 5 * 60;
 // (mfpp_/mfrp_/mfsp_) already distinguishes purchase from redemption from switch.
 class PlanConfirmationOtpServiceClass {
 
-    private generate_4Digit_otp = (): string => {
-        return Math.floor(1000 + Math.random() * 9000).toString();
+    private generate_6Digit_otp = (): string => {
+        return Math.floor(100000 + Math.random() * 900000).toString();
     };
 
     private redis_key = (user_id: string, fp_plan_id: string) => `plan_confirm_otp:${user_id}:${fp_plan_id}`;
 
     request_otp = async (user_id: string, fp_plan_id: string, phone_no: string): Promise<boolean> => {
-        const otp = this.generate_4Digit_otp();
+        const otp = this.generate_6Digit_otp();
         const formatted_phone = sms_service.format_phone_no(phone_no);
 
         logger.debug("Requesting plan confirmation OTP", { user_id, fp_plan_id });

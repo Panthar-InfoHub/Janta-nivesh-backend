@@ -13,11 +13,11 @@ import { fintech_primitive_mf_reports_service } from "../fintech-primitive/mf_re
 // touching the app.
 class MfHoldingSyncServiceClass {
 
-    sync_account = async (user_id: string, mf_investment_account: string) => {
+    sync_account = async (user_id: string, mf_investment_account: string, investment_account_old_id: number) => {
         logger.info("Syncing MF holdings", { user_id, mf_investment_account });
 
         const [folios, scheme_returns] = await Promise.all([
-            fintech_primitive_mf_reports_service.get_holdings(mf_investment_account),
+            fintech_primitive_mf_reports_service.get_holdings(investment_account_old_id),
             // Best-effort - a failure here shouldn't block the per-folio numbers below, it just
             // means xirr stays whatever it was (or null on first sync).
             fintech_primitive_mf_reports_service.get_scheme_wise_returns(mf_investment_account)
