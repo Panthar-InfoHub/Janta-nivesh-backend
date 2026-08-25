@@ -34,7 +34,7 @@ export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_pr
 };
 
 export const verify_purchase_plan_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
 });
 
 export type VerifyPurchasePlanConfirmationOtpInput = z.infer<typeof verify_purchase_plan_confirmation_otp_schema>;

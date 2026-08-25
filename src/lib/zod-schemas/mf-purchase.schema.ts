@@ -29,7 +29,7 @@ export type ResolvedMfPurchaseInput = Omit<CreateMfPurchaseInput, "mf_product_id
 // Confirm step. `method` is NOT here - always UPI, hardcoded in payment.service.ts alongside
 // provider_name, same treatment as gateway. amc_order_ids/bank_account_id are server-resolved.
 export const verify_purchase_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
     payment_postback_url: z.string().url().optional(), // where FP redirects the investor after payment
 });
 

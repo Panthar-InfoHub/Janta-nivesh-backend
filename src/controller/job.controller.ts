@@ -267,6 +267,41 @@ class JobControllerClass {
             return;
         }
     };
+    mf_scheme_v1_sync_job = async (
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+            if (scheduler_token !== secret) {
+                console.warn(
+                    `[SECURITY] Unauthorized attempt to access MF v1 scheme sync job with token: ${scheduler_token}`
+                );
+                throw new AppError(
+                    "Unauthorized: Invalid or missing scheduler token",
+                    401,
+                    "Unauthorized"
+                );
+            }
+            logger.info("Running MF v1 fund-scheme sync job...");
+            const data = await job_service.mf_scheme_v1_sync_job();
+            res.status(200).json({
+                success: true,
+                message: "MF v1 fund-scheme sync job completed successfully",
+                data,
+            });
+            return;
+        } catch (error: any) {
+            logger.error(
+                "Error while running MF v1 fund-scheme sync job ==> ",
+                error.message
+            );
+            next(error);
+            return;
+        }
+    };
     mf_holding_sync_job = async (
         req: Request,
         res: Response,

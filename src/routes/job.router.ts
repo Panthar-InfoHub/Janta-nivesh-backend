@@ -36,6 +36,17 @@ job_router.post("/user-snapshot", job_controller.monthly_user_snapshot_job);
 // Newly JSON-imported products have no MfSchemePlan row until this runs once.
 job_router.post("/mf-scheme-plan-sync", job_controller.mf_scheme_plan_sync_job);
 
+// Enrichment pass over the rows the job above creates, from FP's OLDER /api/oms/fund_schemes
+// endpoint. Both are needed - neither response is a superset of the other:
+//   v2 (above) -> daily-SIP and SWP thresholds, which v1 doesn't return
+//   v1 (here)  -> fund_category / sub_category, the real switch_in/switch_out limits, STP data,
+//                 and the quarterly/half-yearly/yearly SIP frequencies v2 never sends
+// The two jobs write disjoint columns (see mutual-fund.prisma), so order between them only
+// matters in that this one skips any ISIN the v2 job hasn't created a row for yet.
+// Note: fund_category/sub_category give the group (Equity/Debt/Liquid) and coarse labels
+// (ELSS/FMP/FOF) - NOT the large/mid/flexi cap classification, which still has no source.
+job_router.post("/mf-scheme-v1-sync", job_controller.mf_scheme_v1_sync_job);
+
 // Portfolio numbers (units, current value, XIRR) - synced from FP's Investor Reports into
 // MfHolding, not computed from MfTransactionPlan (see mf-holding.prisma for why: a fund can have
 // several MfTransactionPlan rows - a SIP and a later lumpsum on the same folio - but only one real

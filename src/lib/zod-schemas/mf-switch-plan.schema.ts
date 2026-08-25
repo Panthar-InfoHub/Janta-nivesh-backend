@@ -23,7 +23,7 @@ export type ResolvedMfSwitchPlanInput = {
 };
 
 export const verify_switch_plan_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
 });
 
 export type VerifySwitchPlanConfirmationOtpInput = z.infer<
