@@ -93,8 +93,8 @@ class JobServiceClass {
         logger.info("Starting MF holdings sync job...");
 
         const users = await db.user.findMany({
-            where: { investment_account: { not: null } },
-            select: { id: true, investment_account: true },
+            where: { AND: [{ investment_account: { not: null } }, { investment_account_old_id: { not: null } }] },
+            select: { id: true, investment_account: true, investment_account_old_id: true },
         });
 
         logger.info(`[MF HOLDINGS SYNC] Found ${users.length} users with an investment account`);
@@ -107,7 +107,7 @@ class JobServiceClass {
         const tasks = users.map((user) =>
             limit(async () => {
                 try {
-                    await mf_holding_sync_service.sync_account(user.id, user.investment_account!);
+                    await mf_holding_sync_service.sync_account(user.id, user.investment_account!, user.investment_account_old_id);
                     successful++;
                 } catch (error: any) {
                     failed++;

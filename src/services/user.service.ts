@@ -32,6 +32,7 @@ type GetAllUserDataOptions = {
     user_bank_details?: boolean;
     kyc_types?: boolean;
     mfKycIdentities?: boolean;
+    onboarding?: boolean;
 }
 
 
@@ -212,6 +213,7 @@ class UserServiceClass {
                 user_loan: options?.user_loan ?? false,
                 user_goals: options?.user_goals ?? false,
                 user_bank_details: options?.user_bank_details ?? false,
+                onboarding: options?.onboarding ?? false,
                 // kyc_types: options?.kyc_types ? {
                 //     select: {
                 //         kyc_type: true,
