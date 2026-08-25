@@ -113,6 +113,47 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
             throw new AppError("Failed to fetch MF purchase plan", 502, "MF_PURCHASE_PLAN_FETCH_FAILED");
         }
     }
+    cancel_purchase_plan = async (
+        fp_purchase_plan_id: string,
+        cancellation_code: string
+    ) => {
+        const payload = {
+            id: fp_purchase_plan_id,
+            cancellation_code,
+        };
+
+        logger.debug("Cancelling FP mf_purchase_plan", {
+            fp_purchase_plan_id,
+            cancellation_code,
+        });
+
+        try {
+            const response = await axios.post(
+                `${this.base_url}/v2/mf_purchase_plans/cancel`,
+                payload,
+                {
+                    headers: await this.auth_headers({
+                        "Content-Type": "application/json",
+                    }),
+                }
+            );
+
+            logger.debug("FP mf_purchase_plan cancel response ==> ", response.data);
+
+            return response.data;
+        } catch (error: any) {
+            logger.error(
+                "Error cancelling FP mf_purchase_plan ==> ",
+                error?.response?.data || error.message
+            );
+
+            throw new AppError(
+                "Failed to cancel MF purchase plan",
+                502,
+                "MF_PURCHASE_PLAN_CANCEL_FAILED"
+            );
+        }
+    };
 }
 
 export const fintech_primitive_mf_purchase_plan_service = new FintechPrimitiveMfPurchasePlanServiceClass();
