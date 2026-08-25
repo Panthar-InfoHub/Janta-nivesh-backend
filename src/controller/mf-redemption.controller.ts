@@ -13,7 +13,8 @@ import {
 import { fintech_primitive_mf_redemption_service } from "../services/fintech-primitive/mf_redemption.service.js";
 import { mf_transaction_plan_service } from "../services/mf-transaction-plan.service.js";
 import { mf_threshold_validation_service } from "../services/mutual-funds/mf-threshold-validation.service.js";
-import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
+// import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
+import { db } from "../server.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
 import { user_service } from "../services/user.service.js";
 
@@ -56,47 +57,64 @@ class MfRedemptionControllerClass {
                 );
             }
 
-            const product = await mf_product_service.get_by_id(
-                input.mf_product_id,
-            );
+            const holding = await db.mfHolding.findFirst({
+                where: {
+                    id: input.mf_holding_id,
+                    user_id,
+                },
+            });
 
-            if (!product) {
+            if (!holding) {
                 throw new AppError(
-                    "Fund not found in the catalogue",
+                    "Holding not found",
                     404,
-                    "MF_PRODUCT_NOT_FOUND",
+                    "MF_HOLDING_NOT_FOUND",
                 );
             }
-
-            if (!input.folio_number) {
-                throw new AppError(
-                    "Folio number is required for redemption",
-                    400,
-                    "FOLIO_NUMBER_REQUIRED",
-                );
-            }
-
-            const { mf_product_id, ...rest } = input;
 
             const resolved_input: ResolvedMfRedemptionInput = {
-                ...rest,
-                scheme: product.isin,
+                scheme: holding.isin,
+                folio_number: holding.folio_number,
+                amount: input.amount,
+                units: input.units,
             };
-
-            if (resolved_input.amount !== undefined) {
-                await mf_threshold_validation_service.validate_redemption(
-                    product.isin,
-                    resolved_input.amount,
-                );
-            }
 
             logger.info("Creating MF redemption", {
                 user_id,
-                scheme: product.isin,
+                scheme: resolved_input.scheme,
                 folio_number: resolved_input.folio_number,
                 amount: resolved_input.amount,
                 units: resolved_input.units,
             });
+
+            const available_units = Number(
+                holding.redeemable_units ?? holding.units
+            );
+
+            if (
+                resolved_input.units !== undefined &&
+                resolved_input.units > available_units
+            ) {
+                throw new AppError(
+                    `Insufficient redeemable units. Available units: ${available_units}`,
+                    400,
+                    "INSUFFICIENT_REDEEMABLE_UNITS",
+                );
+            }
+
+            if (resolved_input.amount !== undefined) {
+                await mf_threshold_validation_service.validate_redemption(
+                    holding.isin,
+                    resolved_input.amount,
+                );
+            }
+
+            if (resolved_input.units !== undefined) {
+                await mf_threshold_validation_service.validate_redemption_units(
+                    holding.isin,
+                    resolved_input.units,
+                );
+            }
 
             const redemption =
                 await fintech_primitive_mf_redemption_service.create_redemption(
@@ -156,7 +174,38 @@ class MfRedemptionControllerClass {
             return;
         }
     };
+    get_redemptions = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const user_id = req.user?.id!;
 
+            const redemptions =
+                await mf_transaction_plan_service.get_all(
+                    user_id,
+                    "REDEMPTION",
+                    false,
+                );
+
+            res.status(200).json({
+                success: true,
+                message: "MF redemptions fetched",
+                data: redemptions,
+            });
+
+            return;
+        } catch (error) {
+            logger.error(
+                "Error in get_redemptions controller:",
+                error,
+            );
+
+            next(error);
+            return;
+        }
+    };
     fetch_redemption = async (
         req: Request,
         res: Response,

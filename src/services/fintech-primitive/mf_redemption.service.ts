@@ -35,7 +35,6 @@ class FintechPrimitiveMfRedemptionServiceClass {
             amount: input.amount ?? null,
             units: input.units ?? null,
             user_ip,
-            partner: input.partner,
             gateway: "ondc",
             initiated_by: "investor",
             initiated_via: "mobile_app",

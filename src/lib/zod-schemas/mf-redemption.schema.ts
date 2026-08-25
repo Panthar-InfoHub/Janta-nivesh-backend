@@ -1,11 +1,9 @@
 import { z } from "zod";
 
 export const create_mf_redemption_schema = z.object({
-    mf_product_id: z.string().min(1),
-    folio_number: z.string().min(1),
+    mf_holding_id: z.string().min(1),
     amount: z.number().int().positive().optional(),
     units: z.number().positive().optional(),
-    partner: z.string().optional(),
 }).refine(
     (data) => !(data.amount !== undefined && data.units !== undefined),
     {
@@ -18,11 +16,11 @@ export type CreateMfRedemptionInput = z.infer<
     typeof create_mf_redemption_schema
 >;
 
-export type ResolvedMfRedemptionInput = Omit<
-    CreateMfRedemptionInput,
-    "mf_product_id"
-> & {
+export type ResolvedMfRedemptionInput = {
     scheme: string;
+    folio_number: string;
+    amount?: number;
+    units?: number;
 };
 
 export const verify_redemption_confirmation_otp_schema = z.object({

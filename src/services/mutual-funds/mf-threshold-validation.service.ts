@@ -135,6 +135,40 @@ class MfThresholdValidationServiceClass {
 
         this.check_amount(amount, plan.withdrawal_amount_min, plan.withdrawal_amount_max, plan.withdrawal_amount_multiples, "redemption");
     }
+    validate_redemption_units = async (
+        isin: string,
+        units: number,
+    ) => {
+        const plan = await this.get_scheme_plan(isin);
+        if (!plan) return;
+
+        if (!plan.withdrawal_allowed) {
+            throw new AppError(
+                "This fund does not accept redemptions",
+                400,
+                "TRANSACTION_MODE_NOT_ALLOWED",
+            );
+        }
+
+        const min_units = this.to_number(plan.withdrawal_units_min);
+        const multiples = this.to_number(plan.withdrawal_units_multiples);
+
+        if (min_units !== null && units < min_units) {
+            throw new AppError(
+                `Minimum redemption units for this fund is ${min_units}`,
+                400,
+                "UNITS_BELOW_MINIMUM",
+            );
+        }
+
+        if (!this.is_multiple_of(units, multiples)) {
+            throw new AppError(
+                `Redemption units must be a multiple of ${multiples}`,
+                400,
+                "UNITS_NOT_MULTIPLE",
+            );
+        }
+    }
 }
 
 export const mf_threshold_validation_service = new MfThresholdValidationServiceClass();

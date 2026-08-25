@@ -12,6 +12,12 @@ mf_redemption_router.post(
 );
 
 mf_redemption_router.get(
+    "/",
+    login_require,
+    mf_redemption_controller.get_redemptions,
+);
+
+mf_redemption_router.get(
     "/:id",
     login_require,
     mf_redemption_controller.fetch_redemption,
