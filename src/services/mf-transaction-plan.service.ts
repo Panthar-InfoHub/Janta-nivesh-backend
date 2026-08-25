@@ -58,7 +58,7 @@ class MfTransactionPlanServiceClass {
      * `systematic` is an explicit argument, NOT read off the payload: the one-shot order endpoints
      * never send that field, so inferring it would silently persist every lumpsum order as a plan.
      */
-    upsert_from_fp = async (user_id: string, plan_type: MfPlanType, plan: any, systematic: boolean) => {
+    upsert_from_fp = async (user_id: string, plan_type: MfPlanType, plan: any, systematic: boolean, cancellation_code?: string) => {
         const state = to_mf_transaction_state(plan?.state);
         logger.debug("Persisting mf transaction plan", { user_id, plan_type, systematic, fp_id: plan?.id, state });
 
@@ -132,7 +132,7 @@ class MfTransactionPlanServiceClass {
             activated_at: plan.activated_at ? new Date(plan.activated_at) : null,
             cancelled_at: plan.cancelled_at ? new Date(plan.cancelled_at) : null,
             cancellation_scheduled_on: plan.cancellation_scheduled_on ? new Date(plan.cancellation_scheduled_on) : null,
-            cancellation_code: plan.cancellation_code ?? null,
+            cancellation_code: cancellation_code ?? plan.cancellation_code ?? null,
             auto_cancelled: plan.auto_cancelled ?? null,
             failed_at: plan.failed_at ? new Date(plan.failed_at) : null,
             completed_at: plan.completed_at ? new Date(plan.completed_at) : null,
