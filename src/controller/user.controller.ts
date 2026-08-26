@@ -552,6 +552,7 @@ class UserFinanceControllerClass {
                 const plan = plan_by_isin.get(h.isin);
                 return {
                     id: h.mf_product_id,
+                    mf_holding_id: h.id,
                     scheme_id: h.isin,
                     title: h.mf_product?.name ?? h.fund_name ?? "Mutual Fund",
                     amount: Number(h.invested_amount),
