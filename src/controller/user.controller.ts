@@ -42,29 +42,44 @@ class UserFinanceControllerClass {
                 user_loan: true,
                 user_assets: true,
                 user_finance: true,
-                kyc_types: true
+                kyc_types: true,
+                onboarding: true
             });
 
             logger.debug(`User data fetched successfully ==> `, data);
 
             // const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
-            const user = req.user!;
-            let goalIdToCurrvalMap = new Map<string, number>();
-            try {
-                const portfolio_res = await wrapper_service.get_user_portfolio_cached(user_id, user.log, user.pwd);
-                if (portfolio_res && portfolio_res.results) {
-                    portfolio_res.results.forEach((item: any) => {
-                        if (item.gid) {
-                            const currval = this.toNumber(item.currval);
-                            const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
-                            goalIdToCurrvalMap.set(String(item.gid), existing + currval);
-                        }
-                    });
-                }
-            } catch (error) {
-                logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
-            }
+            // Home-screen summary card: portfolio value split MF / FD. MF comes from MfHolding
+            // (kept in sync by mf-holding-sync.service.ts), FD from the user's own FD transactions -
+            // no live provider call on this path. Runs through the same
+            // user_service.aggregate_portfolio_data as GET /user/portfolio so the two screens can
+            // never disagree on the same number.
+            const holdings = await db.mfHolding.findMany({
+                where: { user_id },
+                select: { isin: true, invested_amount: true, current_value: true },
+            });
+
+            const mf_current_value = holdings.reduce((sum, h) => sum + Number(h.current_value), 0);
+            const mf_invested_amount = holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0);
+
+            const mf_investment_data = {
+                current_value: Number(mf_current_value.toFixed(2)),
+                invested_amount: Number(mf_invested_amount.toFixed(2)),
+                total_returns: Number((mf_current_value - mf_invested_amount).toFixed(2)),
+                return_percent: mf_invested_amount > 0
+                    ? Number((((mf_current_value - mf_invested_amount) / mf_invested_amount) * 100).toFixed(2))
+                    : 0,
+                // One entry per distinct fund, matching how the portfolio screen groups its cards
+                // (a fund held across two folios is one holding to the user, not two).
+                items_count: new Set(holdings.map(h => h.isin)).size,
+            };
+
+            const fd_response = await user_service.get_user_fd_data({ user_id, order: { fd_issued_at: 'desc' } });
+            const portfolio_aggregates = user_service.aggregate_portfolio_data(
+                mf_investment_data,
+                fd_response.fd_transactions || []
+            );
 
             // const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
 
@@ -99,6 +114,25 @@ class UserFinanceControllerClass {
                 message: "User data fetched successfully",
                 data: {
                     ...data,
+                    // `onboarding` is the full UserOnboarding row (included above). is_skip is
+                    // lifted out of it as a convenience flag: basic_details_status is SKIPPED only
+                    // when the user skipped the onboarding flow outright (see the column comment on
+                    // UserOnboarding) - a per-stage skip like nominee_status does not set it.
+                    is_skip: data?.onboarding?.basic_details_status === "SKIPPED",
+                    dashboard: {
+                        portfolio_value: portfolio_aggregates.total_investments.current_value,
+                        mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,
+                        fixed_deposits: portfolio_aggregates.total_investments.allocation.fixed_deposits.value,
+                        total_returns: portfolio_aggregates.total_investments.total_returns,
+                        return_percent: portfolio_aggregates.total_investments.return_percent,
+                        // "+5.3% this month" on the design. Deliberately null, not 0 or a guess -
+                        // there is no month-ago baseline to compute it from. UserNetWorthSnapshot is
+                        // the only monthly series we keep and it can't answer this: it stores net
+                        // worth (assets minus liabilities, including stocks/gold/cash/real estate),
+                        // not the MF+FD portfolio value shown here, and its MF figure still comes
+                        // from the retired Finnsys feed. Needs its own decision - see the PR notes.
+                        month_change_percent: null,
+                    },
                     // user_goals: wrapper_user_goal,
                     // kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
                     //     acc[kyc.kyc_type] = {

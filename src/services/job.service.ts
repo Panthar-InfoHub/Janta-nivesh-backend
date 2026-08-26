@@ -9,6 +9,7 @@ import pLimit from "p-limit";
 import { mfapi_service } from "./mutual-funds/mfapi.service.js";
 import { user_snapshot_service } from "./user/user.snapshot.service.js";
 import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.service.js";
+import { mf_scheme_v1_sync_service } from "./mutual-funds/mf-scheme-v1-sync.service.js";
 import { mf_holding_sync_service } from "./mutual-funds/mf-holding-sync.service.js";
 
 class JobServiceClass {
@@ -83,6 +84,50 @@ class JobServiceClass {
     };
 
     /**
+     * Fills the v1-owned half of MfSchemePlan (category, switch/STP limits, capability flags) from
+     * FP's older /api/oms/fund_schemes endpoint. Runs AFTER mf_scheme_plan_sync_job, which creates
+     * the rows this one updates - a fund with no row yet is counted as skipped, not failed, since
+     * the next run picks it up once the v2 job has been through.
+     */
+    mf_scheme_v1_sync_job = async () => {
+        logger.info("Starting MF v1 fund-scheme sync job...");
+
+        // Driven off MfSchemePlan, not MfProduct: this job only ever updates existing rows, so a
+        // product the v2 sync hasn't reached yet has nothing to update.
+        const scheme_plans = await db.mfSchemePlan.findMany({
+            select: { isin: true },
+            orderBy: { isin: "asc" },
+        });
+
+        logger.info(`[MF SCHEME V1 SYNC] Found ${scheme_plans.length} scheme plans to enrich`);
+
+        // Same conservative concurrency as the v2 sync - one HTTP call per ISIN, no bulk endpoint.
+        const limit = pLimit(2);
+        let successful = 0;
+        let failed = 0;
+        const tasks = scheme_plans.map((plan) =>
+            limit(async () => {
+                try {
+                    await mf_scheme_v1_sync_service.sync_by_isin(plan.isin);
+                    successful++;
+                    logger.info(`[MF SCHEME V1 SYNC] Successfully synced ISIN ${plan.isin}`);
+                } catch (error: any) {
+                    failed++;
+                    logger.error(`[MF SCHEME V1 SYNC] Failed to sync ISIN ${plan.isin}`, {
+                        isin: plan.isin,
+                        error: error?.message,
+                    });
+                }
+            })
+        );
+        await Promise.allSettled(tasks);
+
+        const result = { total: scheme_plans.length, successful, failed };
+        logger.info("[MF SCHEME V1 SYNC] v1 fund-scheme sync job completed", result);
+        return result;
+    };
+
+    /**
      * Nightly refresh of MfHolding for every account. Same call any of our own controllers should
      * make right after a transaction succeeds (mf-holding-sync.service.ts) - this is the backstop
      * for settlement that happens without the user opening the app (an installment going through,
@@ -93,8 +138,8 @@ class JobServiceClass {
         logger.info("Starting MF holdings sync job...");
 
         const users = await db.user.findMany({
-            where: { investment_account: { not: null } },
-            select: { id: true, investment_account: true },
+            where: { AND: [{ investment_account: { not: null } }, { investment_account_old_id: { not: null } }] },
+            select: { id: true, investment_account: true, investment_account_old_id: true },
         });
 
         logger.info(`[MF HOLDINGS SYNC] Found ${users.length} users with an investment account`);
@@ -107,7 +152,7 @@ class JobServiceClass {
         const tasks = users.map((user) =>
             limit(async () => {
                 try {
-                    await mf_holding_sync_service.sync_account(user.id, user.investment_account!);
+                    await mf_holding_sync_service.sync_account(user.id, user.investment_account!, user.investment_account_old_id);
                     successful++;
                 } catch (error: any) {
                     failed++;

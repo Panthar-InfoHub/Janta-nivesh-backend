@@ -62,7 +62,7 @@ class FintechPrimitiveMfReportsServiceClass {
      * value, NAV. This is the only FP report that's actually per-folio - scheme_wise_returns below
      * merges folios of the same scheme into one row, so it can't answer "what does THIS folio hold".
      */
-    get_holdings = async (mf_investment_account: string): Promise<FpHoldingFolio[]> => {
+    get_holdings = async (mf_investment_account: number): Promise<FpHoldingFolio[]> => {
         logger.debug("Fetching FP holdings report", { mf_investment_account });
 
         try {
