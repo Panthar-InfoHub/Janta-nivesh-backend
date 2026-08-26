@@ -21,6 +21,7 @@ import { investor_profile_router } from "./routes/onboarding_routers/investor_pr
 import { nominee_router } from "./routes/onboarding_routers/nominee.router.js"
 import { mandate_router } from "./routes/mandate.router.js"
 import { mandate_webhook_router } from "./routes/webhooks/mandate.webhook.router.js"
+import { fp_webhook_router } from "./routes/webhooks/fp.webhook.router.js"
 import { mf_router } from "./routes/mf.router.js"
 import { mf_scheme_router } from "./routes/mf-scheme.router.js"
 // mutual_fund_router (v1 Finnsys catalogue) retired as part of the Cybrilla/FP migration - the
@@ -77,6 +78,7 @@ app.use("/api/v2/onboarding/investor-profile", investor_profile_router)
 app.use("/api/v2/onboarding/nominee", nominee_router)
 app.use("/api/v2/mandate", mandate_router)
 app.use("/api/v2/webhook/mandate", mandate_webhook_router)
+app.use("/api/v2/webhook/fp", fp_webhook_router)
 app.use("/api/v2/mf-scheme", mf_scheme_router)
 
 
