@@ -282,6 +282,58 @@ class MfTransactionPlanServiceClass {
         return await db.mfTransactionPlan.update({ where: { id }, data: { consent_given_at: new Date() } });
     }
 
+    sync_purchase_from_webhook = async (purchase: any) => {
+        const fp_id = purchase?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF purchase webhook is missing purchase id",
+                400,
+                "MF_PURCHASE_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn("MF purchase webhook received for unknown FP id", {
+                fp_id,
+            });
+
+            throw new AppError(
+                "MF transaction not found for webhook purchase",
+                404,
+                "MF_PURCHASE_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "PURCHASE") {
+            logger.error("MF purchase webhook matched non-purchase transaction", {
+                fp_id,
+                plan_type: existing.plan_type,
+            });
+
+            throw new AppError(
+                "Webhook purchase does not match a purchase transaction",
+                409,
+                "MF_PURCHASE_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "PURCHASE",
+            purchase,
+            existing.systematic,
+        );
+    };
     /**
      * Stores the payment created against a one-shot order. Written before the order is confirmed,
      * so a retry of the confirm sequence can tell "payment already created" from "not yet" and
@@ -290,6 +342,7 @@ class MfTransactionPlanServiceClass {
     set_payment_id = async (id: string, fp_payment_id: string) => {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
     }
+
 }
 
 export const mf_transaction_plan_service = new MfTransactionPlanServiceClass();
