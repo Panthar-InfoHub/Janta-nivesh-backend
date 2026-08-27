@@ -34,7 +34,26 @@ export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_pr
 };
 
 export const verify_purchase_plan_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
 });
 
 export type VerifyPurchasePlanConfirmationOtpInput = z.infer<typeof verify_purchase_plan_confirmation_otp_schema>;
+
+export const cancel_mf_purchase_plan_schema = z.object({
+    cancellation_code: z.enum([
+        "amount_not_available",
+        "investment_returns_not_as_expected",
+        "amc_support_not_satisfactory",
+        "exit_load_not_as_expected",
+        "switch_to_other_scheme",
+        "fund_manager_changed",
+        "investment_goal_complete",
+        "mandate_not_ready",
+        "invest_later",
+        "customer_support_not_satisfactory",
+    ]),
+});
+
+export type CancelMfPurchasePlanInput = z.infer<
+    typeof cancel_mf_purchase_plan_schema
+>;

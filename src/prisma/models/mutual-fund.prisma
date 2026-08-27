@@ -27,6 +27,7 @@ model MfProduct {
   metrics         MfMetrics?
   scheme_plan     MfSchemePlan?
   mf_transactions MfTransactionPlan[] // Restrict on the other side - a fund with orders can't be deleted
+  mf_holdings     MfHolding[] // SetNull on the other side - delisting a fund shouldn't drop the holding
 
   @@index([latest_nav_date])
   @@index([scheme_code])
@@ -102,10 +103,66 @@ model MfSchemePlan {
   raw_response   Json? // full FP payload, forward-compat escape hatch
   last_synced_at DateTime?
 
+  // ---------------------------------------------------------------------------------------
+  // Everything below comes from FP's OLDER v1 endpoint (GET /api/oms/fund_schemes/:isin),
+  // written by mf-scheme-v1-sync.service.ts - NOT by the v2 sync above. The two jobs own
+  // disjoint columns on purpose so neither can clobber the other's work; v1_synced_at tracks
+  // this half independently of last_synced_at.
+  //
+  // Both endpoints are needed because neither is a superset: v2's thresholds[] carries daily
+  // SIP and SWP entries that v1 doesn't return, while v1 carries category, the switch/STP
+  // limits, and the quarterly/half-yearly/yearly SIP frequencies that v2 never sends.
+  // ---------------------------------------------------------------------------------------
+
+  // Classification. fund_category is the group (Equity | Debt | Liquid | Others); sub_category
+  // is FP's coarser label off the client's master data (EQUITY FUND | DEBT FUND | ELSS | FMP |
+  // FOF, sometimes blank). NOTE: neither carries the cap classification (large/mid/flexi) the
+  // Figma filter needs - that still has no source. See DISC-0/DISC-2.
+  fund_category String?
+  sub_category  String?
+  amfi_code     String?
+
+  close_ended    Boolean?
+  lock_in        Boolean?
+  lock_in_period Int?
+
+  // Per-mode capability flags off v1. Distinct from the *_allowed booleans above, which are
+  // inferred from whether v2 sent a thresholds[] entry - these are stated outright by FP.
+  purchase_allowed_v1        Boolean?
+  redemption_allowed_v1      Boolean?
+  instant_redemption_allowed Boolean?
+  sip_allowed                Boolean?
+  stp_in_allowed             Boolean?
+  stp_out_allowed            Boolean?
+
+  // Switch limits - the real ones. Until this landed, switch validation approximated switch-out
+  // with withdrawal_* and switch-in with lumpsum_* (see the OPS-5 review); those happened to
+  // match on the funds checked, but FP models them separately and they can diverge.
+  switch_in_allowed          Boolean  @default(false)
+  switch_in_amount_min       Decimal? @db.Decimal(14, 2)
+  switch_in_amount_multiples Decimal? @db.Decimal(14, 2)
+
+  switch_out_allowed          Boolean  @default(false)
+  switch_out_amount_min       Decimal? @db.Decimal(14, 2)
+  switch_out_amount_multiples Decimal? @db.Decimal(14, 2)
+  switch_out_units_min        Decimal? @db.Decimal(18, 4)
+  switch_out_unit_multiples   Decimal? @db.Decimal(18, 4)
+
+  // Kept as raw JSON rather than flattened: both are frequency-keyed maps (monthly, quarterly,
+  // half_yearly, yearly) each holding dates/min+max installment amount/multiples/min installments.
+  // Flattening every frequency would add ~20 columns for frequencies nothing transacts on yet -
+  // revisit if/when a flow actually needs quarterly or yearly limits enforced.
+  sip_frequency_data Json?
+  stp_frequency_data Json?
+
+  raw_response_v1 Json?
+  v1_synced_at    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([active])
+  @@index([fund_category])
 }
 
 model MfMetrics {

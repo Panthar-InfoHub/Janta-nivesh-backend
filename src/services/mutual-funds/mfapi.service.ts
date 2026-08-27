@@ -12,7 +12,10 @@ export type MfApiMasterRow = {
     isinDivReinvestment: string | null;
 };
 
-/** GET /mf/:scheme_code/latest - meta + a single-element data array. */
+/**
+ * GET /mf/:scheme_code/latest - meta + a single-element data array.
+ * GET /mf/:scheme_code        - same shape, but data[] carries the fund's whole NAV history.
+ */
 export type MfApiLatestResponse = {
     meta?: {
         fund_house?: string;
@@ -45,6 +48,29 @@ class MfApiServiceClass {
         const rows = Array.isArray(response.data) ? response.data : [];
         logger.info(`mfapi master list fetched: ${rows.length} schemes`);
         return rows;
+    }
+
+    /**
+     * Full NAV history for one scheme - the same endpoint as get_latest_nav minus the /latest
+     * segment, so data[] carries every point the fund has rather than one.
+     *
+     * The endpoint also accepts startDate/endDate (ISO) to narrow the range; we deliberately pass
+     * neither. The metrics job only looks back 5 years, but taking everything avoids the silent
+     * null-return case where a lookback window lands right at the edge of a truncated range.
+     *
+     * Returns null on any failure - a bad fund is reported, never aborts the batch.
+     */
+    get_full_history = async (scheme_code: number): Promise<MfApiLatestResponse | null> => {
+        try {
+            const response = await axios.get<MfApiLatestResponse>(
+                `${MFAPI_BASE_URL}/mf/${scheme_code}`,
+                { timeout: 60000 } // whole-history payloads are far larger than the /latest one
+            );
+            return response.data ?? null;
+        } catch (error: any) {
+            logger.error(`mfapi NAV history fetch failed for scheme_code ${scheme_code}`, error?.message ?? error);
+            return null;
+        }
     }
 
     /** Latest NAV point for one scheme. Returns null on any failure - callers keep going. */

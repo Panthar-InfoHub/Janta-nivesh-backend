@@ -52,13 +52,25 @@ export const sync_investment_account = async (user_id: string) => {
         );
 
         if (investment_account?.id) {
-            await user_service.update_user(user_id, { investment_account: investment_account.id });
+            await user_service.update_user(user_id, {
+                investment_account: investment_account.id,
+                investment_account_old_id: investment_account.old_id ?? null,
+            });
         }
         return investment_account;
     }
 
     logger.debug("Updating investment account folio_defaults", { user_id, folio_defaults_keys: Object.keys(folio_defaults) });
-    return await fintech_primitive_investor_profile_service.update_investment_account(
+    const updated_account = await fintech_primitive_investor_profile_service.update_investment_account(
         user.investment_account, user.investor_profile, folio_defaults
     );
+
+    // Backfill path: accounts created before investment_account_old_id existed only pick it up
+    // once this PATCH runs for them again (nominee edit, etc.) - this is a normal call this
+    // function already made every time, not a new one, so nothing extra is triggered by adding it.
+    if (updated_account?.old_id && updated_account.old_id !== user.investment_account_old_id) {
+        await user_service.update_user(user_id, { investment_account_old_id: updated_account.old_id });
+    }
+
+    return updated_account;
 }

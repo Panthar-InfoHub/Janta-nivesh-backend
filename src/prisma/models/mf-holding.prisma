@@ -1,0 +1,54 @@
+// What a user currently holds, one row per (folio, fund). Built from FP's Investor Reports
+// (Holdings Report + scheme-wise returns), NOT computed from MfTransactionPlan - a fund can have
+// many MfTransactionPlan rows (a SIP and a later lumpsum both landing on the same folio, for
+// instance), and FP's numbers are already per-folio-per-scheme, not per-order. Trying to store
+// this on MfTransactionPlan instead would mean writing the same number onto multiple rows every
+// refresh with no way to tell which one is "the" holding - this table exists so there's exactly
+// one row for "how much of this fund does the user hold in this folio", enforced by the unique
+// constraint below rather than by convention.
+//
+// Refreshed two ways (see mf-holding-sync.service.ts): right after any of our own controllers
+// changes a transaction for that account, and once nightly for every account (job.service.ts's
+// mf_holding_sync_job) as the correctness backstop for things that happen without the user
+// touching the app (an installment settling, NAV moving).
+model MfHolding {
+  id                     String  @id @default(cuid())
+  user_id                String
+  user                   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  mf_investment_account  String // mfia_... - FP account this holding sits under
+
+  folio_number String
+  isin         String
+  fund_name    String? // scheme name as FP names it - display fallback when mf_product is null
+
+  // Best-effort link to the curated catalogue, same nullable convention as MfTransactionPlan -
+  // a holding must never be lost just because the fund isn't (or is no longer) in MfProduct.
+  mf_product_id String?
+  mf_product    MfProduct? @relation(fields: [mf_product_id], references: [id], onDelete: SetNull)
+
+  units            Decimal  @db.Decimal(18, 4)
+  redeemable_units Decimal? @db.Decimal(18, 4)
+  nav              Decimal? @db.Decimal(12, 4)
+  nav_as_on        DateTime?
+
+  invested_amount Decimal @db.Decimal(14, 2)
+  current_value   Decimal @db.Decimal(14, 2)
+  unrealized_gain Decimal? @db.Decimal(14, 2)
+  absolute_return Decimal? @db.Decimal(8, 4) // percent
+  avg_nav         Decimal? @db.Decimal(12, 4) // invested_amount / units, computed on our side
+
+  // From scheme_wise_returns, which FP only breaks down per-scheme, not per-folio (see the FP
+  // client's comment). If a scheme sits in two folios both rows carry the same xirr - that's a
+  // known FP limitation, not a bug here.
+  xirr Decimal? @db.Decimal(8, 4)
+
+  raw_response Json? // the FP scheme entry this row was built from, forward-compat escape hatch
+  synced_at    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([mf_investment_account, folio_number, isin])
+  @@index([user_id])
+  @@index([mf_product_id])
+}

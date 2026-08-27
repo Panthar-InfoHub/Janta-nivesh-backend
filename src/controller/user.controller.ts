@@ -11,6 +11,7 @@ import { wrapper_service } from "../services/wrapper.service.js";
 import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
 import { user_goal_controller } from "./user.goal.controller.js";
 import { redis } from "../lib/redis.js";
+import { db } from "../server.js";
 class UserFinanceControllerClass {
 
 
@@ -41,29 +42,44 @@ class UserFinanceControllerClass {
                 user_loan: true,
                 user_assets: true,
                 user_finance: true,
-                kyc_types: true
+                kyc_types: true,
+                onboarding: true
             });
 
             logger.debug(`User data fetched successfully ==> `, data);
 
             // const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
-            const user = req.user!;
-            let goalIdToCurrvalMap = new Map<string, number>();
-            try {
-                const portfolio_res = await wrapper_service.get_user_portfolio_cached(user_id, user.log, user.pwd);
-                if (portfolio_res && portfolio_res.results) {
-                    portfolio_res.results.forEach((item: any) => {
-                        if (item.gid) {
-                            const currval = this.toNumber(item.currval);
-                            const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
-                            goalIdToCurrvalMap.set(String(item.gid), existing + currval);
-                        }
-                    });
-                }
-            } catch (error) {
-                logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
-            }
+            // Home-screen summary card: portfolio value split MF / FD. MF comes from MfHolding
+            // (kept in sync by mf-holding-sync.service.ts), FD from the user's own FD transactions -
+            // no live provider call on this path. Runs through the same
+            // user_service.aggregate_portfolio_data as GET /user/portfolio so the two screens can
+            // never disagree on the same number.
+            const holdings = await db.mfHolding.findMany({
+                where: { user_id },
+                select: { isin: true, invested_amount: true, current_value: true },
+            });
+
+            const mf_current_value = holdings.reduce((sum, h) => sum + Number(h.current_value), 0);
+            const mf_invested_amount = holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0);
+
+            const mf_investment_data = {
+                current_value: Number(mf_current_value.toFixed(2)),
+                invested_amount: Number(mf_invested_amount.toFixed(2)),
+                total_returns: Number((mf_current_value - mf_invested_amount).toFixed(2)),
+                return_percent: mf_invested_amount > 0
+                    ? Number((((mf_current_value - mf_invested_amount) / mf_invested_amount) * 100).toFixed(2))
+                    : 0,
+                // One entry per distinct fund, matching how the portfolio screen groups its cards
+                // (a fund held across two folios is one holding to the user, not two).
+                items_count: new Set(holdings.map(h => h.isin)).size,
+            };
+
+            const fd_response = await user_service.get_user_fd_data({ user_id, order: { fd_issued_at: 'desc' } });
+            const portfolio_aggregates = user_service.aggregate_portfolio_data(
+                mf_investment_data,
+                fd_response.fd_transactions || []
+            );
 
             // const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
 
@@ -98,6 +114,25 @@ class UserFinanceControllerClass {
                 message: "User data fetched successfully",
                 data: {
                     ...data,
+                    // `onboarding` is the full UserOnboarding row (included above). is_skip is
+                    // lifted out of it as a convenience flag: basic_details_status is SKIPPED only
+                    // when the user skipped the onboarding flow outright (see the column comment on
+                    // UserOnboarding) - a per-stage skip like nominee_status does not set it.
+                    is_skip: data?.onboarding?.basic_details_status === "SKIPPED",
+                    dashboard: {
+                        portfolio_value: portfolio_aggregates.total_investments.current_value,
+                        mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,
+                        fixed_deposits: portfolio_aggregates.total_investments.allocation.fixed_deposits.value,
+                        total_returns: portfolio_aggregates.total_investments.total_returns,
+                        return_percent: portfolio_aggregates.total_investments.return_percent,
+                        // "+5.3% this month" on the design. Deliberately null, not 0 or a guess -
+                        // there is no month-ago baseline to compute it from. UserNetWorthSnapshot is
+                        // the only monthly series we keep and it can't answer this: it stores net
+                        // worth (assets minus liabilities, including stocks/gold/cash/real estate),
+                        // not the MF+FD portfolio value shown here, and its MF figure still comes
+                        // from the retired Finnsys feed. Needs its own decision - see the PR notes.
+                        month_change_percent: null,
+                    },
                     // user_goals: wrapper_user_goal,
                     // kyc_types: data?.kyc_types?.reduce((acc: any, kyc: any) => {
                     //     acc[kyc.kyc_type] = {
@@ -321,101 +356,71 @@ class UserFinanceControllerClass {
         try {
 
             const user = req.user!;
-            logger.info(`Fetching user portfolio for User ID: ${user.id} user ${user.log} pwd ${user.pwd}`);
+            logger.info(`Fetching user portfolio for User ID: ${user.id}`);
 
-            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
+            // Reads MfHolding, not FP live - that table is kept in sync by mf-holding-sync.service.ts
+            // (on-write, once a controller calls it, plus nightly via job.service.ts's
+            // mf_holding_sync_job), so this endpoint never waits on FP.
+            const holdings = await db.mfHolding.findMany({
+                where: { user_id: user.id },
+                include: { mf_product: { select: { id: true, name: true, img_url: true } } },
+                orderBy: { current_value: "desc" },
+            });
 
-            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
-                logger.warn(`Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res?.code}`);
-                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+            // One card per fund, not per folio - a fund held across two folios is combined, matching
+            // what the portfolio screen shows (see mf-holding.prisma for why a fund can span folios).
+            const by_fund = new Map<string, any>();
+            for (const h of holdings) {
+                const invested = Number(h.invested_amount);
+                const current = Number(h.current_value);
+                const existing = by_fund.get(h.isin);
+
+                if (!existing) {
+                    by_fund.set(h.isin, {
+                        id: h.mf_product_id,
+                        isin: h.isin,
+                        title: h.mf_product?.name ?? h.fund_name ?? "Mutual Fund",
+                        img_url: h.mf_product?.img_url ?? "",
+                        amount: invested,
+                        current_value: current,
+                        bal_units: Number(h.units),
+                        folios: [h.folio_number],
+                    });
+                } else {
+                    existing.amount += invested;
+                    existing.current_value += current;
+                    existing.bal_units += Number(h.units);
+                    existing.folios.push(h.folio_number);
+                }
             }
 
-            const user_mf_data = user_portfolio_finnsys_res.results || []
+            const mf_investment_items = Array.from(by_fund.values()).map((f: any) => ({
+                id: f.id,
+                title: f.title,
+                amount: Number(f.amount.toFixed(2)),
+                current_value: Number(f.current_value.toFixed(2)),
+                return: Number((f.current_value - f.amount).toFixed(2)),
+                return_percentage: f.amount > 0
+                    ? Number((((f.current_value - f.amount) / f.amount) * 100).toFixed(2)) + "%"
+                    : "0.00%",
+                folio: f.folios[0],
+                folios: f.folios,
+                bal_units: Number(f.bal_units.toFixed(4)),
+                img_url: f.img_url,
+            }));
 
-            const investment_data = user_mf_data.length > 0 ? user_mf_data.reduce((acc: any, item: any) => {
-                const invested = this.toNumber(item.purcost);
-                const current = this.toNumber(item.currval);
-                const pl = this.toNumber(item.pl)
-
-                acc.invested_amount += invested;
-                acc.current_value += current;
-                acc.total_returns += pl;
-                return acc;
-            }, {
-                current_value: 0,
-                invested_amount: 0,
+            const investment_data = {
+                current_value: Number(holdings.reduce((sum, h) => sum + Number(h.current_value), 0).toFixed(2)),
+                invested_amount: Number(holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0).toFixed(2)),
                 total_returns: 0,
-            }) : {
-                current_value: 0,
-                invested_amount: 0,
-                total_returns: 0,
+                return_percent: 0,
+                items_count: mf_investment_items.length,
             };
-
-            investment_data.current_value = Number(investment_data.current_value.toFixed(2));
-            investment_data.invested_amount = Number(investment_data.invested_amount.toFixed(2));
-            investment_data.total_returns = Number(investment_data.total_returns.toFixed(2));
-
-            investment_data.return_percent = Number(
-                ((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2)
-            );
-            investment_data.items_count = user_mf_data.length;
+            investment_data.total_returns = Number((investment_data.current_value - investment_data.invested_amount).toFixed(2));
+            investment_data.return_percent = investment_data.invested_amount > 0
+                ? Number(((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2))
+                : 0;
             logger.debug(`Calculated user investment data ==> `, investment_data);
-
-            // Group by actualfolio
-            const foliosMap = new Map<string, any>();
-
-            logger.debug("user mf data from finnsys --> ", user_mf_data)
-            user_mf_data.forEach((item: any) => {
-                const folio = item.actualfolio;
-                const actual_folio = item.folio;
-                if (!folio) return;
-
-                if (!foliosMap.has(folio)) {
-                    foliosMap.set(folio, {
-                        folio: folio,
-                        actual_folio: actual_folio,
-                        first_scheme_id: item.schemeid,
-                        category: item.schemetype,
-                        amount: 0,
-                        current_value: 0,
-                        return: 0,
-                        bal_units: 0,
-                    });
-                }
-
-                const folioGroup = foliosMap.get(folio);
-                folioGroup.amount += this.toNumber(item.purcost);
-                folioGroup.current_value += this.toNumber(item.currval);
-                folioGroup.return += this.toNumber(item.pl);
-                folioGroup.bal_units += this.toNumber(item.balunits)
-            });
-
-            // wrapper_service.getAmcDetailsForSchemes queried MfProduct columns (scheme_id,
-            // amc_name, transaction_rules) dropped in the Cybrilla/FP catalogue migration - it's
-            // commented out there. Empty map degrades every folio to the existing "Mutual Fund"
-            // fallback below rather than crashing portfolio fetch; a v2-catalogue equivalent isn't
-            // built yet.
-            const amc_details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
-
-            const mf_investment_items = Array.from(foliosMap.values()).map((f: any) => {
-                const amc_details = amc_details_map.get(String(f.first_scheme_id)) || { amc_name: "Mutual Fund", img_url: "", product_id: "", transaction_rules: {} };
-                logger.debug("One folio ==> ", f)
-                return {
-                    id: amc_details.product_id,
-                    scheme_id: f.first_scheme_id,
-                    title: amc_details.amc_name || "Mutual Fund",
-                    category: f.category,
-                    amount: Number(f.amount.toFixed(2)),
-                    current_value: Number(f.current_value.toFixed(2)),
-                    return: Number(f.return.toFixed(2)),
-                    return_percentage: f.amount > 0 ? Number(((f.return / f.amount) * 100).toFixed(2)) + "%" : "0.00%",
-                    folio: f.folio,
-                    actual_folio: f.actual_folio,
-                    bal_units: Number(f.bal_units.toFixed(2)),
-                    img_url: amc_details.img_url,
-                    transaction_rules: this.extract_relevant_transaction_rules(amc_details.transaction_rules)
-                };
-            });
 
             logger.debug("Mapped user mutual fund folios now proceeding to user fd transactions...");
             const user_fd_response = await user_service.get_user_fd_data({ user_id: user.id, order: { fd_issued_at: 'desc' } });
@@ -519,97 +524,66 @@ class UserFinanceControllerClass {
 
             logger.info(`Fetching folio details for User ID: ${user.id}, Folio: ${folio_id}`);
 
-            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
+            const holdings = await db.mfHolding.findMany({
+                where: { user_id: user.id, folio_number: folio_id },
+                include: { mf_product: { select: { id: true, name: true, img_url: true } } },
+            });
 
-            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
-                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
+            if (holdings.length === 0) {
+                throw new AppError("Folio not found", 404, "MF_FOLIO_NOT_FOUND");
             }
 
-            const user_mf_data = user_portfolio_finnsys_res.results || [];
+            // MfTransactionPlan carries the order/SIP identity (state, next installment, SIP id) -
+            // MfHolding doesn't know about any of that, it only knows current units/value. A folio
+            // can have more than one plan against the same scheme (a SIP and a later lumpsum both
+            // landing here), so this takes the most recently created one per scheme for the
+            // identity fields shown alongside the (already-combined) holding numbers.
+            const isins = holdings.map((h) => h.isin);
+            const plans = await db.mfTransactionPlan.findMany({
+                where: { user_id: user.id, folio_number: folio_id, scheme: { in: isins } },
+                orderBy: { createdAt: "desc" },
+            });
+            const plan_by_isin = new Map<string, (typeof plans)[number]>();
+            for (const plan of plans) {
+                if (!plan_by_isin.has(plan.scheme)) plan_by_isin.set(plan.scheme, plan);
+            }
 
-            // Filter by folio
-            const folio_items = user_mf_data.filter((item: any) => item.actualfolio === folio_id);
-
-            // wrapper_service.getAmcDetailsForSchemes queried MfProduct columns (scheme_id,
-            // amc_name, transaction_rules) dropped in the Cybrilla/FP catalogue migration - it's
-            // commented out there. Empty map degrades gracefully (amc_details below is undefined,
-            // handled with optional chaining) rather than crashing folio detail; a v2-catalogue
-            // equivalent isn't built yet.
-            const amc_details_map = new Map<string, { amc_name: string, img_url: string, product_id: string, transaction_rules: any }>();
-
-            const mf_investment_items = folio_items.map((item: any) => {
-                const amc_details = amc_details_map.get(String(item.schemeid));
-
+            const mf_investment_items = holdings.map((h) => {
+                const plan = plan_by_isin.get(h.isin);
                 return {
-                    id: amc_details?.product_id,
-                    scheme_id: item.schemeid,
-                    title: item.schemename,
-                    category: item.schemetype,
-                    amount: Number(item.purcost.replace(/,/g, "")),
-                    is_sip: item.sip,
-                    start_date: item.stdt,
-                    return_percentage: item.abs,
-                    return: this.toNumber(item.pl),
-                    xirr: item.xirr,
-                    current_nav: this.toNumber(item.currnav),
-                    avg_nav: this.toNumber(item.avgcost),
-                    folio: item.actualfolio,
-                    actual_folio: item.folio,
-                    balance_units: item.balunits,
-                    img_url: amc_details?.img_url || ""
+                    id: h.mf_product_id,
+                    mf_holding_id: h.id,
+                    scheme_id: h.isin,
+                    title: h.mf_product?.name ?? h.fund_name ?? "Mutual Fund",
+                    amount: Number(h.invested_amount),
+                    current_value: Number(h.current_value),
+                    is_sip: plan?.systematic ?? false,
+                    start_date: plan?.start_date ?? null,
+                    return_percentage: h.absolute_return ? Number(h.absolute_return) : null,
+                    return: h.unrealized_gain ? Number(h.unrealized_gain) : null,
+                    xirr: h.xirr ? Number(h.xirr) : null,
+                    current_nav: h.nav ? Number(h.nav) : null,
+                    avg_nav: h.avg_nav ? Number(h.avg_nav) : null,
+                    folio: h.folio_number,
+                    actual_folio: h.folio_number,
+                    balance_units: Number(h.units),
+                    img_url: h.mf_product?.img_url || "",
+                    // Plan identity - null on a holding with no matching MfTransactionPlan row
+                    // (e.g. units acquired before this app tracked the order, or IDCW reinvestment).
+                    fp_id: plan?.fp_id ?? null,
+                    state: plan?.state ?? null,
+                    frequency: plan?.frequency ?? null,
+                    next_installment_date: plan?.next_installment_date ?? null,
+                    synced_at: h.synced_at,
                 };
             });
 
             logger.debug("Mf investment items ==> ", mf_investment_items)
-            let final_investment_items = mf_investment_items;
-
-            // Merge xSIP details into the items if any item has a SIP
-            // Finnsys portfolio API flags is_sip but doesn't return SIP registration details
-            // (xsip_reg_no/order_id, sip_amount, sip_status), so we cross-reference the xSIP
-            // registration report by (actual_folio, scheme_id) to fill them in.
-            // NOTE: if this fetch/match fails, items silently stay un-enriched (no error surfaced).
-            const has_sips = mf_investment_items.some(item => item.is_sip === true);
-            if (has_sips) {
-                logger.debug(`User folio funds have sip funds... Checking xSIP report for order_id (xsip reg number)`)
-                const user_data = await user_service.get_user_by_id(user.id);
-
-                logger.debug('User data --> ', user_data)
-                if (user_data) {
-                    const xsip_report = await wrapper_service.get_xsip_registration_report_cached(user_data.investor_profile, user.log!, user.pwd!);
-
-                    logger.debug(`Xsip report ==> `, xsip_report)
-                    if (xsip_report && (xsip_report.code == 1 || xsip_report.code == 0) && xsip_report.data && xsip_report.data.report_data) {
-                        final_investment_items = mf_investment_items.map((item: any) => {
-                            if (item.is_sip === true) {
-
-                                logger.debug(`Checking ${item.folio} / ${item.scheme_id}`)
-                                const matching_sip = xsip_report.data.report_data.find((sip: any) =>
-                                    sip.folio_number === item.actual_folio
-                                    // sip.rta_scheme_code === item.scheme_id
-                                );
-
-                                logger.debug(`matching sip found.....`, matching_sip)
-
-                                if (matching_sip) {
-                                    return {
-                                        ...item,
-                                        xsip_reg_no: matching_sip.xsip_registration_no,
-                                        order_id: matching_sip.xsip_registration_no,
-                                        sip_amount: Number(String(matching_sip.installments_amount).replace(/,/g, "")),
-                                        sip_status: matching_sip.status
-                                    };
-                                }
-                            }
-                            return item;
-                        });
-                    }
-                }
-            }
 
             res.status(200).json({
                 code: 200,
                 message: "Folio details fetched successfully",
-                data: final_investment_items
+                data: mf_investment_items
             });
             return;
         } catch (error) {
