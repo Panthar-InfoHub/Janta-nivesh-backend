@@ -5,43 +5,45 @@ enum Mandate_status {
 }
 
 model User {
-  id                   String                 @id @default(uuid())
-  full_name            String?
-  email                String?                @unique
-  email_hash           String?                @unique
-  phone_no             String?                @unique
-  phone_hash           String?                @unique
-  city                 String?
-  dob                  String?
-  fcm_token            String?
-  meta_data            Json?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @default(now()) @updatedAt
-  investor_profile     String?                @unique
-  investment_account   String?                @unique
+  id                        String                 @id @default(uuid())
+  full_name                 String?
+  email                     String?                @unique
+  email_hash                String?                @unique
+  phone_no                  String?                @unique
+  phone_hash                String?                @unique
+  city                      String?
+  dob                       String?
+  fcm_token                 String?
+  meta_data                 Json?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @default(now()) @updatedAt
+  investor_profile          String?                @unique
+  investment_account        String?                @unique
   // Numeric twin of investment_account (FP's `old_id` on the same create/update response) - what
   // the older /api/oms/* surface (Investor Reports: Holdings Report etc.) wants instead of the
   // mfia_... string, same split already captured for bank accounts (fp_bank_account_old_id) and
   // transaction plans (fp_old_id). Nullable: not retroactively known for accounts created before
   // this column existed until sync_investment_account's update path runs for them once more.
   investment_account_old_id Int?
-  refresh_token        String?
-  mpin                 String?
-  fds                  FdTransaction[]
-  onboarding           UserOnboarding?
-  kyc_profile          KycProfile?
-  nominees             Nominee[]
-  mf_transaction_plans MfTransactionPlan[]
-  user_assets          UserAssets?
-  user_bank_details    UserBankDetails[]
-  user_finance         UserFinance?
-  user_goals           UserGoals[]
-  user_insurance       UserInsurance?
-  user_loan            UserLoan[]
-  net_worth_history    UserNetWorthSnapshot[]
-  mandates             Mandate[]
-  notifications        Notification[]
-  mf_holdings          MfHolding[]
+  refresh_token             String?
+  mpin                      String?
+  mpin_is_setup             Boolean                @default(false) // true once a pin has ever been created, permanent
+  mpin_enabled              Boolean                @default(false) // whether pin login is currently switched on
+  fds                       FdTransaction[]
+  onboarding                UserOnboarding?
+  kyc_profile               KycProfile?
+  nominees                  Nominee[]
+  mf_transaction_plans      MfTransactionPlan[]
+  user_assets               UserAssets?
+  user_bank_details         UserBankDetails[]
+  user_finance              UserFinance?
+  user_goals                UserGoals[]
+  user_insurance            UserInsurance?
+  user_loan                 UserLoan[]
+  net_worth_history         UserNetWorthSnapshot[]
+  mandates                  Mandate[]
+  notifications             Notification[]
+  mf_holdings               MfHolding[]
 }
 
 model UserNetWorthSnapshot {

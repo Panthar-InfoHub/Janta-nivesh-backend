@@ -14,6 +14,7 @@ import { user_loan_service } from "./onboarding/user.loan.service.js";
 import { user_goal_service } from "./onboarding/user.goal.service.js";
 import { hash_mpin, compare_mpin } from "../lib/utils.js";
 import { generate_JWT } from "../middleware/jwt.js";
+import AppError from "../middleware/error.middleware.js";
 
 
 type GetUserFdDataInput = {
@@ -76,13 +77,33 @@ class UserServiceClass {
 
     async patch_user(user_id: string, data: any) {
         if (data.mpin) {
+            // Setting a new pin always (re)activates it - covers first-time setup and changing
+            // an existing pin identically, no separate "change" path needed.
             data.mpin = await hash_mpin(data.mpin);
+            data.mpin_is_setup = true;
+            data.mpin_enabled = true;
+        } else if (typeof data.mpin_enabled === "boolean") {
+            const user = await db.user.findUnique({
+                where: { id: user_id },
+                select: { mpin_is_setup: true },
+            });
+
+            if (data.mpin_enabled && !user?.mpin_is_setup) {
+                throw new AppError(
+                    "Cannot enable pin login before a pin has been set",
+                    400,
+                    "MPIN_NOT_SETUP",
+                );
+            }
         }
+
         const updated_user = await db.user.update({
             where: { id: user_id },
             data: { ...data },
         });
         delete updated_user.mpin;
+        delete updated_user.email_hash;
+        delete updated_user.phone_hash;
         return updated_user;
     }
 
@@ -91,7 +112,9 @@ class UserServiceClass {
             where: { id: user_id },
         });
 
-        if (!user || !user.mpin) return {
+        // mpin_enabled also covers the case where a pin exists but the user switched it off -
+        // the hash would still match, but pin login shouldn't work while disabled.
+        if (!user || !user.mpin || !user.mpin_enabled) return {
             is_verified: false,
             token: "",
             refresh_token: ""
