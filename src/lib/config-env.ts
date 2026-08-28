@@ -60,7 +60,6 @@ export const env = {
 
 
 
-
     finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,
