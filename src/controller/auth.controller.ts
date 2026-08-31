@@ -133,6 +133,8 @@ class AuthControllerClass {
                     user: {
                         user_id: updated_user.id,
                         phone_no: updated_user.phone_no,
+                        mpin_enabled: updated_user.mpin_enabled,
+                        mpin_is_setup: updated_user.mpin_is_setup
                     },
                     onboarding,
                     token: token,

@@ -42,7 +42,7 @@ class MfApiServiceClass {
         logger.debug("Fetching mfapi master scheme list");
 
         const response = await axios.get<MfApiMasterRow[]>(`${MFAPI_BASE_URL}/mf`, {
-            timeout: 60000, // large payload, needs more room than the per-fund calls
+            timeout: 120000, // large payload, needs more room than the per-fund calls
         });
 
         const rows = Array.isArray(response.data) ? response.data : [];

@@ -6,6 +6,9 @@ export const user_patch_schema = z.object({
     city: z.string().min(1).optional(),
     dob: z.coerce.date().optional(),
     mpin: z.string().length(4).regex(/^\d+$/, "MPIN must be 4 digits").optional(),
+    // Toggle only - setting a new `mpin` above always turns this on, see patch_user. This field
+    // lets a user switch pin-login off without discarding the pin itself, or back on again.
+    mpin_enabled: z.boolean().optional(),
     fcm_token: z.string().optional(),
 });
 
