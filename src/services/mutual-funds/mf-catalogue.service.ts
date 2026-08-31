@@ -45,6 +45,12 @@ const COMPLETE_METRICS = {
             return_5y: { not: null },
         },
     },
+    scheme_plan: {
+        is: {
+            plan_type: 'regular',
+            option: 'growth'
+        }
+    }
 };
 
 const FUND_CARD_SELECT = {
