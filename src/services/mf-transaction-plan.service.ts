@@ -485,6 +485,78 @@ class MfTransactionPlanServiceClass {
             false,
         );
     };
+
+    sync_redemption_plan_from_webhook = async (redemption_plan: any) => {
+        const fp_id = redemption_plan?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF redemption plan webhook is missing redemption plan id",
+                400,
+                "MF_REDEMPTION_PLAN_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn(
+                "MF redemption plan webhook received for unknown FP id",
+                { fp_id },
+            );
+
+            throw new AppError(
+                "MF transaction not found for webhook redemption plan",
+                404,
+                "MF_REDEMPTION_PLAN_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "REDEMPTION") {
+            logger.error(
+                "MF redemption plan webhook matched non-redemption transaction",
+                {
+                    fp_id,
+                    plan_type: existing.plan_type,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption plan does not match a redemption transaction",
+                409,
+                "MF_REDEMPTION_PLAN_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        if (!existing.systematic) {
+            logger.error(
+                "MF redemption plan webhook matched non-systematic transaction",
+                {
+                    fp_id,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption plan does not match a systematic redemption plan",
+                409,
+                "MF_REDEMPTION_PLAN_WEBHOOK_SYSTEMATIC_MISMATCH",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "REDEMPTION",
+            redemption_plan,
+            true,
+        );
+    };
 }
 
 export const mf_transaction_plan_service = new MfTransactionPlanServiceClass();

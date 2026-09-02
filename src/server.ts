@@ -43,7 +43,6 @@ import { report_router } from "./routes/report.router.js"
 import { extendPrismaClient } from "./lib/extended-db.js"
 import { test_router } from "./routes/test.router.js"
 
-
 //Configurations
 dotenv.config()
 const pool = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
