@@ -6,7 +6,7 @@ import AppError from "../../middleware/error.middleware.js";
 
 // Both Cybrilla and Fintech Primitives issue client_credentials tokens valid for 30 min.
 // Cache slightly under that so we never hand out a token that's about to expire mid-request.
-const TOKEN_CACHE_TTL_SECONDS = 25 * 60;
+const TOKEN_CACHE_TTL_SECONDS = 10 * 60;
 
 type Provider = "cybrilla" | "fintech_primitive";
 

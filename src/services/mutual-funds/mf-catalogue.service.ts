@@ -12,26 +12,26 @@ import type { pagination } from "../../lib/types.js";
  */
 export const MF_SECTION_TAGS = [
     "popular",
-    // "large_cap",
-    // "mid_cap",
-    // "small_cap",
-    // "flexi_cap",
-    // "large_mid_cap",
-    // "index",
-    // "global_others",
+    "large_cap",
+    "mid_cap",
+    "small_cap",
+    "flexi_cap",
+    "multi_cap",
+    "others",
+    "debt", //index
 ] as const;
 
 export type MfSectionTag = (typeof MF_SECTION_TAGS)[number];
 
 export const MF_SECTION_TITLES: Record<MfSectionTag, string> = {
     popular: "Popular Funds",
-    // large_cap: "Large Cap",
-    // mid_cap: "Mid Cap",
-    // small_cap: "Small Cap",
-    // flexi_cap: "Flexi Cap",
-    // large_mid_cap: "Large & Mid Cap",
-    // index: "Index",
-    // global_others: "Global / Others",
+    large_cap: "Large Cap",
+    mid_cap: "Mid Cap",
+    small_cap: "Small Cap",
+    flexi_cap: "Flexi Cap",
+    multi_cap: "Multi Cap",
+    others: "Other",
+    debt: "Debt",
 };
 
 // Funds with a complete return history. A fund under five years old legitimately has a null
@@ -85,9 +85,17 @@ class MfCatalogueServiceClass {
     private where_for_tag = (tag: MfSectionTag) => {
         if (tag === "popular") return COMPLETE_METRICS;
 
-        // TODO (DISC-0): once MfProduct carries a category, swap this for the real filter,
-        // e.g. { category: "large_cap", ...COMPLETE_METRICS }
-        return { id: "" };
+        const sub_category = MF_SECTION_TITLES[tag];
+        // 3. Return COMPLETE_METRICS with the extra sub_category filter inside scheme_plan
+        return {
+            ...COMPLETE_METRICS,
+            scheme_plan: {
+                is: {
+                    ...COMPLETE_METRICS.scheme_plan.is,
+                    sub_category: sub_category,
+                },
+            },
+        };
     }
 
     /** One tag's funds, paginated. Backs GET /api/v2/mf/funds?tag=... (the "see all" screen). */
@@ -109,6 +117,34 @@ class MfCatalogueServiceClass {
         return {
             tag,
             title: MF_SECTION_TITLES[tag],
+            funds,
+            pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+        };
+    }
+
+    /** Search funds by name or ISIN, paginated. */
+    search_funds = async (query: string, { page, limit }: pagination) => {
+        const trimmed = query.trim();
+        const where = {
+            OR: [
+                { name: { contains: trimmed, mode: "insensitive" as const } },
+                { isin: { contains: trimmed, mode: "insensitive" as const } },
+            ],
+        };
+
+        const [total, funds] = await Promise.all([
+            db.mfProduct.count({ where }),
+            db.mfProduct.findMany({
+                where,
+                select: FUND_CARD_SELECT,
+                orderBy: { name: "asc" as const },
+                skip: (page - 1) * limit,
+                take: limit,
+            }),
+        ]);
+
+        return {
+            search: trimmed,
             funds,
             pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
         };
