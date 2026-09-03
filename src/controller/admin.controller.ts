@@ -148,6 +148,65 @@ class AdminControllerClass {
             return;
         }
     }
+
+    import_mf_sub_category = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const filePath = path.join(process.cwd(), 'extras/cat_output.json');
+            logger.debug(`Starting mf product migration from file: ${filePath}`);
+
+            const fileContent = fs.readFileSync(filePath, 'utf-8');
+            const data = JSON.parse(fileContent);
+
+            logger.info(`Total records to insert in mf scheme plan sub category: ${data.length}`);
+
+            let successCount = 0;
+            let skipCount = 0;
+            const failedIds: string[] = [];
+
+            // Process EVERYTHING now, no slicing.
+            for (const row of data) {
+                logger.debug(`Total success count - ${successCount} where row is --> `, row)
+                try {
+                    await db.mfSchemePlan.updateMany({
+                        where: { isin: row.isin },
+                        data: {
+                            sub_category: row.display_category
+                        },
+                    });
+                    successCount++;
+
+                    if (successCount % 500 === 0) {
+                        logger.info(`✔ Progress: ${successCount} records upserted...`);
+                    }
+                } catch (err: any) {
+                    // We catch the error but DON'T 'throw' it.
+                    // This allows the loop to move to the next record.
+                    logger.error(`Error updating sub categories ${row.isin}:`, err);
+                    skipCount++;
+                    failedIds.push(row.isin);
+                }
+            }
+
+            logger.info(`\n Data updated finished! 🎉`);
+            logger.info(`✅ Successfully updated: ${successCount}`);
+            logger.info(`!!!!! Failed to updated: ${skipCount}`);
+
+            if (failedIds.length > 0) {
+                logger.warn(`Failed IDs: ${failedIds.slice(0, 5).join(', ')}`);
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "MF scheme plan sub category updated",
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in import_mf_products:", error);
+            next(error);
+            return;
+        }
+    }
 }
 
 export const admin_controller = new AdminControllerClass();

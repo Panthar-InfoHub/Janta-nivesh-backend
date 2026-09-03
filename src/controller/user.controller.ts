@@ -159,6 +159,32 @@ class UserFinanceControllerClass {
     }
 
 
+    get_all_user = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+
+            const users = await db.user.findMany({
+                select: {
+                    id: true,
+                    phone_no: true,
+                    full_name: true,
+                    email: true,
+                }
+            });
+            res.status(200).json({
+                code: 200,
+                message: "User data fetched successfully",
+                data: users
+            });
+            return;
+
+        } catch (error) {
+            logger.error(`Error in get_user: ${error}`);
+            next(error);
+            return;
+        }
+    }
+
+
     async discard_onboard(req: Request, res: Response, next: NextFunction) {
         try {
 

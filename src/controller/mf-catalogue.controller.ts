@@ -14,15 +14,22 @@ class MfCatalogueControllerClass {
      */
     get_funds_by_tag = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { tag, page, limit } = funds_by_tag_query_schema.parse(req.query);
+            const { tag, search, page, limit } = funds_by_tag_query_schema.parse(req.query);
 
-            logger.info("Fetching funds by tag", { tag, page, limit });
+            logger.debug(`tag ${tag} search ${search} page ${page} limit ${limit}`)
 
-            const data = await mf_catalogue_service.get_funds_by_tag(tag, { page, limit });
+            let data;
+            if (search && search.length > 0) {
+                logger.info("Searching funds", { search, page, limit });
+                data = await mf_catalogue_service.search_funds(search, { page, limit });
+            } else {
+                logger.info("Fetching funds by tag", { tag, page, limit });
+                data = await mf_catalogue_service.get_funds_by_tag(tag, { page, limit });
+            }
 
             res.status(200).json({
                 success: true,
-                message: "Funds fetched",
+                message: search && search.length > 0 ? "Funds searched successfully" : "Funds fetched",
                 data
             });
             return;

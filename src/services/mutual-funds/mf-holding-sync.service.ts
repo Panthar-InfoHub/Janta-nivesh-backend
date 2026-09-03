@@ -14,7 +14,7 @@ import { fintech_primitive_mf_reports_service } from "../fintech-primitive/mf_re
 class MfHoldingSyncServiceClass {
 
     sync_account = async (user_id: string, mf_investment_account: string, investment_account_old_id: number) => {
-        logger.info("Syncing MF holdings", { user_id, mf_investment_account });
+        logger.info("Syncing MF holdings", { user_id, mf_investment_account, investment_account_old_id });
 
         const [folios, scheme_returns] = await Promise.all([
             fintech_primitive_mf_reports_service.get_holdings(investment_account_old_id),
