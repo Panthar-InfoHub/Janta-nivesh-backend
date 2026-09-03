@@ -389,7 +389,26 @@ class UserFinanceControllerClass {
             // mf_holding_sync_job), so this endpoint never waits on FP.
             const holdings = await db.mfHolding.findMany({
                 where: { user_id: user.id },
-                include: { mf_product: { select: { id: true, name: true, img_url: true } } },
+                include: {
+                    mf_product: {
+                        select: {
+                            id: true,
+                            name: true,
+                            img_url: true,
+                            metrics: {
+                                select: {
+                                    nav_change_pct: true,
+                                },
+                            },
+                            scheme_plan: {
+                                select: {
+                                    sub_category: true,
+                                    fund_category: true,
+                                },
+                            },
+                        },
+                    },
+                },
                 orderBy: { current_value: "desc" },
             });
 
@@ -403,11 +422,16 @@ class UserFinanceControllerClass {
 
                 if (!existing) {
                     by_fund.set(h.isin, {
-                        id: h.mf_product_id,
+                        id: h.id,
                         isin: h.isin,
                         title: h.mf_product?.name ?? h.fund_name ?? "Mutual Fund",
                         img_url: h.mf_product?.img_url ?? "",
                         amount: invested,
+                        category: h.mf_product?.scheme_plan?.fund_category ?? "Other",
+                        sub_category: h.mf_product?.scheme_plan?.sub_category ?? "Other",
+                        nav_as_on: h.nav_as_on,
+                        xirr: h.xirr ? Number(h.xirr) : null,
+                        return_percentage: h.absolute_return,
                         current_value: current,
                         bal_units: Number(h.units),
                         folios: [h.folio_number],
@@ -423,29 +447,71 @@ class UserFinanceControllerClass {
             const mf_investment_items = Array.from(by_fund.values()).map((f: any) => ({
                 id: f.id,
                 title: f.title,
+                category: f.category,
+                sub_category: f.sub_category,
+                nav_as_on: f.nav_as_on,
+                xirr: f.xirr,
+                return_percentage: f.return_percentage,
                 amount: Number(f.amount.toFixed(2)),
                 current_value: Number(f.current_value.toFixed(2)),
                 return: Number((f.current_value - f.amount).toFixed(2)),
-                return_percentage: f.amount > 0
-                    ? Number((((f.current_value - f.amount) / f.amount) * 100).toFixed(2)) + "%"
-                    : "0.00%",
                 folio: f.folios[0],
                 folios: f.folios,
                 bal_units: Number(f.bal_units.toFixed(4)),
                 img_url: f.img_url,
             }));
 
+            // Calculate 1-Day Return & Portfolio XIRR
+            let total_mf_1d_return = 0;
+            let total_weighted_xirr = 0;
+            let total_xirr_weight = 0;
+
+            for (const h of holdings) {
+                const current = Number(h.current_value);
+                const nav_change_pct = h.mf_product?.metrics?.nav_change_pct != null
+                    ? Number(h.mf_product.metrics.nav_change_pct)
+                    : 0;
+
+                if (nav_change_pct !== 0 && current > 0) {
+                    total_mf_1d_return += (current * nav_change_pct) / 100;
+                }
+
+                if (h.xirr != null && current > 0) {
+                    total_weighted_xirr += current * Number(h.xirr);
+                    total_xirr_weight += current;
+                }
+            }
+
+            const total_mf_current_value = Number(holdings.reduce((sum, h) => sum + Number(h.current_value), 0).toFixed(2));
+            const total_mf_invested_amount = Number(holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0).toFixed(2));
+            const total_mf_returns = Number((total_mf_current_value - total_mf_invested_amount).toFixed(2));
+            const total_mf_return_percent = total_mf_invested_amount > 0
+                ? Number(((total_mf_returns / total_mf_invested_amount) * 100).toFixed(2))
+                : 0;
+
+            const prev_day_val = total_mf_current_value - total_mf_1d_return;
+            const total_mf_1d_return_percent = prev_day_val > 0
+                ? Number(((total_mf_1d_return / prev_day_val) * 100).toFixed(2))
+                : 0;
+
+            const total_mf_xirr = total_xirr_weight > 0
+                ? Number((total_weighted_xirr / total_xirr_weight).toFixed(2))
+                : null;
+
+            const mf_summary = {
+                current_value: total_mf_current_value,
+                invested_amount: total_mf_invested_amount,
+                total_returns: total_mf_returns,
+                return_percent: total_mf_return_percent,
+                one_day_return: Number(total_mf_1d_return.toFixed(2)),
+                one_day_return_percent: total_mf_1d_return_percent,
+                xirr: total_mf_xirr,
+            };
+
             const investment_data = {
-                current_value: Number(holdings.reduce((sum, h) => sum + Number(h.current_value), 0).toFixed(2)),
-                invested_amount: Number(holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0).toFixed(2)),
-                total_returns: 0,
-                return_percent: 0,
+                ...mf_summary,
                 items_count: mf_investment_items.length,
             };
-            investment_data.total_returns = Number((investment_data.current_value - investment_data.invested_amount).toFixed(2));
-            investment_data.return_percent = investment_data.invested_amount > 0
-                ? Number(((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2))
-                : 0;
             logger.debug(`Calculated user investment data ==> `, investment_data);
 
             logger.debug("Mapped user mutual fund folios now proceeding to user fd transactions...");
@@ -480,6 +546,7 @@ class UserFinanceControllerClass {
                 message: "User portfolio fetched successfully",
                 data: {
                     ...portfolio_aggregates,
+                    mf_summary,
                     mutual_funds: mf_investment_items,
                     fixed_deposits: fd_investment_items
                 }

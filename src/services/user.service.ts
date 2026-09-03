@@ -452,6 +452,10 @@ class UserServiceClass {
                 ? Number(((total_returns / total_invested) * 100).toFixed(2))
                 : 0;
 
+        const mf_one_day_return = mf_investment_data?.one_day_return || 0;
+        const mf_one_day_return_percent = mf_investment_data?.one_day_return_percent || 0;
+        const mf_xirr = mf_investment_data?.xirr ?? null;
+
         return {
             total_investments: {
                 current_value: Number(total_current_value.toFixed(2)),
@@ -461,6 +465,12 @@ class UserServiceClass {
                     mutual_funds: {
                         value: Number(mf_current_value.toFixed(2)),
                         percent: mf_allocation_percent,
+                        invested_amount: Number(mf_invested_amount.toFixed(2)),
+                        total_returns: Number(mf_total_returns.toFixed(2)),
+                        return_percent: mf_return_percent,
+                        one_day_return: Number(mf_one_day_return.toFixed(2)),
+                        one_day_return_percent: Number(mf_one_day_return_percent.toFixed(2)),
+                        xirr: mf_xirr,
                     },
                     fixed_deposits: {
                         value: Number(fd_aggregates.current_value.toFixed(2)),
