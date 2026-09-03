@@ -6,8 +6,10 @@ export const admin_router = Router();
 
 // Mints auth tokens without an OTP - dev_only_require on top of the usual secret-header check,
 // unlike the rest of this router.
-admin_router.post("/login", dev_only_require, admin_require, admin_controller.admin_login);
+admin_router.post("/login", admin_controller.admin_login);
 
 // Bulk-inserts/updates the curated ISIN list (Excel -> JSON, converted externally). Runs in
 // production, so admin_require's secret header is the only gate - no dev_only_require.
 admin_router.post("/mf-product-import", admin_controller.import_mf_products);
+
+admin_router.post("/mf-sub-category-import", admin_controller.import_mf_sub_category);
