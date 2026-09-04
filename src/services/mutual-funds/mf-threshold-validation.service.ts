@@ -22,12 +22,16 @@ class MfThresholdValidationServiceClass {
     }
 
     /**
-     * Multiples in integer paise, never floating-point `%`: 1000.05 % 0.05 does not reliably
-     * equal 0 in JS, which would reject perfectly valid amounts.
+     * Multiples check scaled to micro-units (1e6), avoiding JS floating-point `%` errors
+     * (e.g. 1000.05 % 0.05 !== 0) while supporting both rupee amounts (multiples like 0.01 or 100)
+     * and mutual fund units (multiples like 0.001 or 0.0001).
      */
     private is_multiple_of = (amount: number, multiple: number | null): boolean => {
         if (!multiple || multiple <= 0) return true;
-        return Math.round(amount * 100) % Math.round(multiple * 100) === 0;
+        const scale = 1_000_000;
+        const scaled_mult = Math.round(multiple * scale);
+        if (scaled_mult === 0) return true;
+        return Math.round(amount * scale) % scaled_mult === 0;
     }
 
     private check_amount = (
