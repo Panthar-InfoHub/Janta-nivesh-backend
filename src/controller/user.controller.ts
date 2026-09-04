@@ -411,6 +411,24 @@ class UserFinanceControllerClass {
                 },
                 orderBy: { current_value: "desc" },
             });
+            const isins = holdings.map((h) => h.isin);
+            const purchase_plans = await db.mfTransactionPlan.findMany({
+                where: {
+                    user_id: user.id,
+                    plan_type: "PURCHASE",
+                    scheme: { in: isins },
+                },
+                orderBy: { createdAt: "desc" },
+            });
+            // Group plans by scheme ISIN
+            const plans_by_isin = new Map<string, typeof purchase_plans>();
+            for (const plan of purchase_plans) {
+                const list = plans_by_isin.get(plan.scheme) || [];
+                list.push(plan);
+                plans_by_isin.set(plan.scheme, list);
+            }
+
+
 
             // One card per fund, not per folio - a fund held across two folios is combined, matching
             // what the portfolio screen shows (see mf-holding.prisma for why a fund can span folios).
@@ -444,22 +462,32 @@ class UserFinanceControllerClass {
                 }
             }
 
-            const mf_investment_items = Array.from(by_fund.values()).map((f: any) => ({
-                id: f.id,
-                title: f.title,
-                category: f.category,
-                sub_category: f.sub_category,
-                nav_as_on: f.nav_as_on,
-                xirr: f.xirr,
-                return_percentage: f.return_percentage,
-                amount: Number(f.amount.toFixed(2)),
-                current_value: Number(f.current_value.toFixed(2)),
-                return: Number((f.current_value - f.amount).toFixed(2)),
-                folio: f.folios[0],
-                folios: f.folios,
-                bal_units: Number(f.bal_units.toFixed(4)),
-                img_url: f.img_url,
-            }));
+            const mf_investment_items = Array.from(by_fund.values()).map((f: any) => {
+
+                const fund_plans = plans_by_isin.get(f.isin) || [];
+                // Find if user has an active SIP for this fund
+                const active_sip = fund_plans.find(
+                    (p) => p.systematic === true && p.state === "ACTIVE"
+                );
+
+                return {
+                    id: f.id,
+                    title: f.title,
+                    is_sip: Boolean(active_sip),
+                    category: f.category,
+                    sub_category: f.sub_category,
+                    nav_as_on: f.nav_as_on,
+                    xirr: f.xirr,
+                    return_percentage: f.return_percentage,
+                    amount: Number(f.amount.toFixed(2)),
+                    current_value: Number(f.current_value.toFixed(2)),
+                    return: Number((f.current_value - f.amount).toFixed(2)),
+                    folio: f.folios[0],
+                    folios: f.folios,
+                    bal_units: Number(f.bal_units.toFixed(4)),
+                    img_url: f.img_url,
+                }
+            });
 
             // Calculate 1-Day Return & Portfolio XIRR
             let total_mf_1d_return = 0;
