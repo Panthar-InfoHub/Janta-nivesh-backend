@@ -480,7 +480,7 @@ class UserFinanceControllerClass {
                     sub_category: f.sub_category,
                     nav_as_on: f.nav_as_on,
                     xirr: f.xirr,
-                    curr_nav: f.nav,
+                    curr_nav: f.curr_nav,
                     avg_nav: f.avg_nav,
                     return_percentage: f.return_percentage,
                     amount: Number(f.amount.toFixed(2)),
