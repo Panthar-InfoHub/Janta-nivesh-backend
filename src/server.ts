@@ -85,6 +85,8 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf", mf_router)
 app.use("/api/v2/frontend", frontend_router)
 app.use("/api/v2/user", user_router)
+app.use("/api/v2/report", report_router)
+
 
 
 // Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
@@ -110,10 +112,10 @@ app.use("/api/v1/user-loan", user_loan_router)
 app.use("/api/v1/user-insurance", user_insurance_router)
 app.use("/api/v1/user-goal", user_goal_router)
 app.use("/api/v1/fire-report", fire_report_router)
+app.use("/api/v1/report", report_router)
 
 app.use("/api/v1/kyc", kyc_router)
 app.use("/api/v1/bundles", bundle_router)
-app.use("/api/v1/report", report_router)
 //Health check
 app.get("/api/v1/ping", (_req, res) => {
     // throw new AppError("Service is running...", 501, "SERVER_RUNNING")
