@@ -34,11 +34,13 @@ export const sync_investment_account = async (user_id: string) => {
     const synced_nominees = nominees.filter((n) => n.fp_related_party_id).slice(0, 3);
     synced_nominees.forEach((n, i) => {
         folio_defaults[`nominee${i + 1}`] = n.fp_related_party_id;
-        folio_defaults[`nominee${i + 1}_allocation_percentage`] = Number(n.percentage_allocation);
-        // No separate "proof number" field - this just tells FP which field on the related_party
-        // to read as the proof (the number itself is already on that related_party record,
-        // under whichever type-specific field document_type maps to)
-        folio_defaults[`nominee${i + 1}_identity_proof_type`] = n.document_type;
+        if (n.percentage_allocation !== null && n.percentage_allocation !== undefined) {
+            folio_defaults[`nominee${i + 1}_allocation_percentage`] = Number(n.percentage_allocation);
+        }
+        // Only attach proof type if document_type was provided on the nominee
+        if (n.document_type) {
+            folio_defaults[`nominee${i + 1}_identity_proof_type`] = n.document_type;
+        }
     });
 
     // FP requires nominations_info_visibility unconditionally - no skip_nomination field
