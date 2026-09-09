@@ -6,6 +6,7 @@ import { cybrilla_pan_verification_service } from "../../services/cybrilla/pan_v
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { user_bank_details_service } from "../../services/user-bank-details.service.js";
+import { sync_investment_account } from "../../services/kyc/investment-account-sync.service.js";
 
 class PanVerificationControllerClass {
 
@@ -219,6 +220,10 @@ class PanVerificationControllerClass {
                         }
                     }
                 }
+
+                // Sync investment account if investor profile is already created, and recompute onboarding completion
+                await sync_investment_account(user_id);
+                await user_onboarding_service.recompute_completion(user_id);
             }
 
             const onboarding = await user_onboarding_service.get_status_summary(user_id);

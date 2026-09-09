@@ -5,7 +5,9 @@ import type { PennyDropInput } from "../lib/zod-schemas/penny-drop.schema.js";
 class UserBankDetailsServiceClass {
 
     get_primary = async (user_id: string) => {
-        return await db.userBankDetails.findFirst({ where: { user_id, is_primary: true } });
+        const primary = await db.userBankDetails.findFirst({ where: { user_id, is_primary: true } });
+        if (primary) return primary;
+        return await db.userBankDetails.findFirst({ where: { user_id } });
     }
 
     /**
