@@ -34,14 +34,14 @@ export const NOMINEE_DOCUMENT_TYPES = ["pan", "aadhaar", "driving_licence", "pas
 export const nominee_input_schema = z.object({
     nominee_name: z.string().min(1, "Nominee name is required"),
     relationship: z.enum(NOMINEE_RELATIONSHIP_VALUES),
-    percentage_allocation: z.number().min(0).max(100),
-    dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dob must be YYYY-MM-DD"),
+    percentage_allocation: z.number().min(0).max(100).optional(),
+    dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dob must be YYYY-MM-DD").optional(),
     // Required by FP for non-minor nominees
-    document_type: z.enum(NOMINEE_DOCUMENT_TYPES),
-    document_number: z.string().min(1),
-    email_address: z.string().email(),
-    phone_number: nominee_phone_schema,
-    address: nominee_address_schema,
+    document_type: z.enum(NOMINEE_DOCUMENT_TYPES).optional(),
+    document_number: z.string().min(1).optional(),
+    email_address: z.string().email().optional(),
+    phone_number: nominee_phone_schema.optional(),
+    address: nominee_address_schema.optional(),
 });
 
 export type NomineeInput = z.infer<typeof nominee_input_schema>;

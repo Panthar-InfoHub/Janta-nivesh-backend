@@ -55,11 +55,14 @@ class KycProfileServiceClass {
     update_pre_verification_status = async (user_id: string, pre_verification: any) => {
         logger.debug("Updating Cybrilla pre-verification status", { user_id, pre_verification_id: pre_verification?.id, status: pre_verification?.status });
 
+        const is_readiness_verified = pre_verification?.readiness?.status === "verified";
+
         return await this.upsert(user_id, {
             cybrilla_pre_verification_status: pre_verification?.status ?? null,
             readiness_checked_at: pre_verification?.completed_at
                 ? new Date(pre_verification.completed_at)
                 : null,
+            ...(is_readiness_verified ? { is_readiness_verified: true } : {}),
             pre_verification_response: pre_verification
         });
     }

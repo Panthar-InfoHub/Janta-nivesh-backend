@@ -12,20 +12,20 @@ import { sync_investment_account } from "../../services/kyc/investment-account-s
 const to_related_party_input = (nominee: any) => ({
     name: nominee.nominee_name,
     relationship: nominee.relationship,
-    date_of_birth: nominee.dob,
-    document_type: nominee.document_type,
-    document_number: nominee.document_number,
-    email_address: nominee.email_address,
-    phone_number: { isd: nominee.phone_isd, number: nominee.phone_number },
-    address: {
+    date_of_birth: nominee.dob ?? undefined,
+    document_type: nominee.document_type ?? undefined,
+    document_number: nominee.document_number ?? undefined,
+    email_address: nominee.email_address ?? undefined,
+    phone_number: nominee.phone_number ? { isd: nominee.phone_isd ?? "+91", number: nominee.phone_number } : undefined,
+    address: nominee.address_line1 ? {
         line1: nominee.address_line1,
         line2: nominee.address_line2 ?? undefined,
         line3: nominee.address_line3 ?? undefined,
         city: nominee.address_city ?? undefined,
         state: nominee.address_state ?? undefined,
-        postal_code: nominee.address_postal_code,
+        postal_code: nominee.address_postal_code ?? undefined,
         country: nominee.address_country ?? "IN",
-    },
+    } : undefined,
 });
 
 class NomineeControllerClass {

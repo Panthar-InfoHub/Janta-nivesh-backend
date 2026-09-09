@@ -74,6 +74,7 @@ class PennyDropControllerClass {
                         } else if (bank_accounts[0]?.status === "failed") {
                             await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
                         }
+                        await user_onboarding_service.recompute_completion(user_id);
                     }
                 } catch (poll_error) {
                     logger.warn("Immediate one-shot pre-verification poll failed, leaving it to frontend polling", { user_id, error: poll_error });

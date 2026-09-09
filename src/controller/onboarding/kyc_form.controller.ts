@@ -102,6 +102,8 @@ class KycFormControllerClass {
                 await user_onboarding_service.update_stage(user_id, { kyc_status: "FAILED" });
             }
 
+            await user_onboarding_service.recompute_completion(user_id);
+
             const onboarding = await user_onboarding_service.get_status_summary(user_id);
 
             res.status(200).json({
