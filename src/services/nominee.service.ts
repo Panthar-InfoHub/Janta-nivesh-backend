@@ -46,14 +46,27 @@ class NomineeServiceClass {
     /**
      * Creates a batch of nominees in one go (the "Add another nominee" screen submits the
      * whole list at once). Validates the combined total - existing nominees + this batch -
-     * sums to exactly 100.
+     * sums to exactly 100 when allocations are specified, or defaults equally if omitted.
      */
     create_many = async (user_id: string, nominees: NomineeInput[]) => {
         const existing = await this.get_all(user_id);
-        const existing_percentages = existing.map((n) => Number(n.percentage_allocation));
-        const new_percentages = nominees.map((n) => n.percentage_allocation);
 
-        this.assert_valid_total([...existing_percentages, ...new_percentages]);
+        const any_allocation_specified =
+            nominees.some((n) => n.percentage_allocation !== undefined) ||
+            existing.some((n) => n.percentage_allocation !== null);
+
+        if (any_allocation_specified) {
+            const existing_percentages = existing.map((n) => Number(n.percentage_allocation ?? 0));
+            const new_percentages = nominees.map((n) => Number(n.percentage_allocation ?? 0));
+            this.assert_valid_total([...existing_percentages, ...new_percentages]);
+        } else {
+            // If no percentage was specified, distribute 100% equally
+            const split = Math.floor(ALLOCATION_TOTAL / nominees.length);
+            const remainder = ALLOCATION_TOTAL % nominees.length;
+            nominees.forEach((n, idx) => {
+                n.percentage_allocation = idx === 0 ? split + remainder : split;
+            });
+        }
 
         logger.debug("Creating nominees", { user_id, count: nominees.length });
 
@@ -75,7 +88,7 @@ class NomineeServiceClass {
         if (patch.percentage_allocation !== undefined) {
             const all = await this.get_all(user_id);
             const percentages = all.map((n) =>
-                n.id === nominee_id ? patch.percentage_allocation! : Number(n.percentage_allocation)
+                n.id === nominee_id ? patch.percentage_allocation! : Number(n.percentage_allocation ?? 0)
             );
             this.assert_valid_total(percentages);
         }

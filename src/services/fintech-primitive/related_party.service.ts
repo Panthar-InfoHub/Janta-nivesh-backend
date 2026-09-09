@@ -19,19 +19,19 @@ const DOCUMENT_TYPE_FIELD_MAP: Record<NomineeDocumentType, string> = {
 type CreateRelatedPartyInput = {
     name: string;
     relationship: string;
-    date_of_birth: string;
-    document_type: NomineeDocumentType;
-    document_number: string;
-    email_address: string;
-    phone_number: { isd: string; number: string };
-    address: {
-        line1: string;
+    date_of_birth?: string;
+    document_type?: NomineeDocumentType;
+    document_number?: string;
+    email_address?: string;
+    phone_number?: { isd: string; number: string };
+    address?: {
+        line1?: string;
         line2?: string;
         line3?: string;
         city?: string;
         state?: string;
-        postal_code: string;
-        country: string;
+        postal_code?: string;
+        country?: string;
     };
 };
 
@@ -57,18 +57,21 @@ class FintechPrimitiveRelatedPartyServiceClass {
 
     /** POST /v2/related_parties */
     create_related_party = async (profile_id: string, input: CreateRelatedPartyInput) => {
-        const document_field = DOCUMENT_TYPE_FIELD_MAP[input.document_type];
-
-        const payload = {
+        // Only profile, name, and relationship are strictly mandatory in Fintech Primitives
+        const payload: Record<string, any> = {
             profile: profile_id,
             name: input.name,
             relationship: input.relationship,
-            date_of_birth: input.date_of_birth,
-            [document_field]: input.document_number,
-            email_address: input.email_address,
-            phone_number: input.phone_number,
-            address: input.address,
         };
+
+        if (input.date_of_birth) payload.date_of_birth = input.date_of_birth;
+        if (input.document_type && input.document_number) {
+            const document_field = DOCUMENT_TYPE_FIELD_MAP[input.document_type];
+            if (document_field) payload[document_field] = input.document_number;
+        }
+        if (input.email_address) payload.email_address = input.email_address;
+        if (input.phone_number?.number) payload.phone_number = input.phone_number;
+        if (input.address?.line1) payload.address = input.address;
 
         logger.debug("Creating FP related_party", { profile_id, relationship: input.relationship, document_type: input.document_type });
 
