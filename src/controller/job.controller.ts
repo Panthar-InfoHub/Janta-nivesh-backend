@@ -400,6 +400,54 @@ class JobControllerClass {
             return;
         }
     };
+
+    get_fd_rates_job = async (req: Request, res: Response, next: NextFunction) => {
+
+        try {
+            logger.info("FD rate sync job started...");
+
+            const { data } = await axios.post('https://prod-velvet-357888765640.asia-south1.run.app/api/v1/jobs/send-daily-fd-rates')
+
+            if (!data) {
+                logger.warn(`Velvet API failed`)
+                throw new AppError(`Velvet API failed`);
+            }
+
+            if (!data.success || !data.rates || data.rates.length === 0) {
+                logger.debug("No rates updated today. Sync complete.");
+                res.status(200).json({
+                    success: true,
+                    message: "No rates updated today"
+                })
+                return;
+            }
+
+            logger.debug(`Response recieved from velvet server, proceeding to service layer for insertion`)
+
+            const result = await job_service.process_fd_rates(data)
+
+            if (!result.success) {
+                logger.warn(`Something went wrong with process fd rate service`)
+                throw new AppError(`Something went wrong with process fd rate service`);
+            }
+
+            logger.info("FD MASTER SYNC SUCCESSFUL");
+
+            res.status(200).json({
+                success: true,
+                message: "Daily fd job completed successfully",
+                data: {
+                    success_count: result.success_count
+                }
+            })
+            return;
+        } catch (error: any) {
+            logger.error("CRITICAL: FD Sync Job Failed. Rollback executed.", error.response?.data ?? error.message);
+            next(error);
+            return;
+        }
+    };
+
 }
 
 export const job_controller = new JobControllerClass();
