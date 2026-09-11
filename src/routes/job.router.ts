@@ -55,3 +55,12 @@ job_router.post("/mf-logo-sync", job_controller.mf_logo_sync_job);
 // current balance). Nightly backstop; controllers should also call
 // mf_holding_sync_service.sync_account right after a transaction succeeds, not wired up yet.
 job_router.post("/mf-holdings-sync", job_controller.mf_holding_sync_job);
+
+
+/**
+ * Daily job to get fd updated interest rates from velvet server
+ * why velvet server not central fd ?? coz central fd server have no db access but since
+ * both central fd and velvet server are bound via from same ip therefore we are requesting 
+ * to velvet server to send janta nivesh back the updated interest rates as response
+ */
+job_router.post("/get-fd-rates", job_controller.get_fd_rates_job);
