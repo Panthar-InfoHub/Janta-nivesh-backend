@@ -80,6 +80,17 @@ export const handleFpWebhook = async (
                 trusted_object
             );
         }
+        if (object_type === "mf_purchase_plan") {
+            await mf_transaction_plan_service.sync_purchase_plan_from_webhook(
+                trusted_object
+            );
+        }
+
+        if (object_type === "mf_redemption_plan") {
+            await mf_transaction_plan_service.sync_redemption_plan_from_webhook(
+                trusted_object
+            );
+        }
         // WHK-1..WHK-6: dispatch on `object_type` and persist `trusted_object` via
         // mf_transaction_plan_service.upsert_from_fp. Intentionally a no-op in WHK-0 - this
         // ticket is the shared plumbing, the per-resource handlers are their own tickets.
@@ -87,6 +98,58 @@ export const handleFpWebhook = async (
         // NOTE for WHK-1/WHK-4: a SIP installment is its own mf_purchase whose `plan` field
         // holds the parent mfpp_ id. There is no MfTransactionPlan row per installment, so
         // persisting them needs the installments child table first - see CONTEXT.md section 9.
+
+
+        if (object_type === "mf_redemption") {
+            const allowed_events = new Set([
+                "mf_redemption.created",
+                "mf_redemption.confirmed",
+                "mf_redemption.submitted",
+                "mf_redemption.successful",
+                "mf_redemption.cancelled",
+                "mf_redemption.reversed",
+            ]);
+
+            if (!allowed_events.has(event.type)) {
+                logger.warn("Unsupported MF redemption webhook event", {
+                    event_id: event.id,
+                    event_type: event.type,
+                    fp_id,
+                });
+
+                res.status(200).json({
+                    success: true,
+                    processed: false,
+                    unsupported_event: true,
+                });
+
+                return;
+            }
+
+            const updated =
+                await mf_transaction_plan_service.sync_redemption_from_webhook(
+                    trusted_object,
+                );
+
+            logger.info("MF redemption webhook processed successfully", {
+                event_id: event.id,
+                event_type: event.type,
+                fp_id: updated.fp_id,
+                state: updated.state,
+            });
+
+            res.status(200).json({
+                success: true,
+                processed: true,
+                data: {
+                    fp_id: updated.fp_id,
+                    state: updated.state,
+                },
+            });
+
+            return;
+        }
+
 
         res.status(200).json({ success: true, processed: false });
         return;

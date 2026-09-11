@@ -334,6 +334,78 @@ class MfTransactionPlanServiceClass {
             existing.systematic,
         );
     };
+
+    sync_purchase_plan_from_webhook = async (purchase_plan: any) => {
+        const fp_id = purchase_plan?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF purchase plan webhook is missing purchase plan id",
+                400,
+                "MF_PURCHASE_PLAN_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn("MF purchase plan webhook received for unknown FP id", {
+                fp_id,
+            });
+
+            throw new AppError(
+                "MF transaction not found for webhook purchase plan",
+                404,
+                "MF_PURCHASE_PLAN_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "PURCHASE") {
+            logger.error(
+                "MF purchase plan webhook matched non-purchase transaction",
+                {
+                    fp_id,
+                    plan_type: existing.plan_type,
+                },
+            );
+
+            throw new AppError(
+                "Webhook purchase plan does not match a purchase transaction",
+                409,
+                "MF_PURCHASE_PLAN_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        if (!existing.systematic) {
+            logger.error(
+                "MF purchase plan webhook matched a non-systematic transaction",
+                {
+                    fp_id,
+                    systematic: existing.systematic,
+                },
+            );
+
+            throw new AppError(
+                "Webhook purchase plan does not match a SIP transaction",
+                409,
+                "MF_PURCHASE_PLAN_WEBHOOK_NOT_SYSTEMATIC",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "PURCHASE",
+            purchase_plan,
+            true,
+        );
+    };
     /**
      * Stores the payment created against a one-shot order. Written before the order is confirmed,
      * so a retry of the confirm sequence can tell "payment already created" from "not yet" and
@@ -343,6 +415,148 @@ class MfTransactionPlanServiceClass {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
     }
 
+    sync_redemption_from_webhook = async (redemption: any) => {
+        const fp_id = redemption?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF redemption webhook is missing redemption id",
+                400,
+                "MF_REDEMPTION_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn("MF redemption webhook received for unknown FP id", {
+                fp_id,
+            });
+
+            throw new AppError(
+                "MF transaction not found for webhook redemption",
+                404,
+                "MF_REDEMPTION_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "REDEMPTION") {
+            logger.error(
+                "MF redemption webhook matched non-redemption transaction",
+                {
+                    fp_id,
+                    plan_type: existing.plan_type,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption does not match a redemption transaction",
+                409,
+                "MF_REDEMPTION_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        if (existing.systematic) {
+            logger.error(
+                "MF redemption webhook matched systematic redemption",
+                {
+                    fp_id,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption is not a one-shot redemption",
+                409,
+                "MF_REDEMPTION_WEBHOOK_SYSTEMATIC_MISMATCH",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "REDEMPTION",
+            redemption,
+            false,
+        );
+    };
+
+    sync_redemption_plan_from_webhook = async (redemption_plan: any) => {
+        const fp_id = redemption_plan?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF redemption plan webhook is missing redemption plan id",
+                400,
+                "MF_REDEMPTION_PLAN_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn(
+                "MF redemption plan webhook received for unknown FP id",
+                { fp_id },
+            );
+
+            throw new AppError(
+                "MF transaction not found for webhook redemption plan",
+                404,
+                "MF_REDEMPTION_PLAN_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "REDEMPTION") {
+            logger.error(
+                "MF redemption plan webhook matched non-redemption transaction",
+                {
+                    fp_id,
+                    plan_type: existing.plan_type,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption plan does not match a redemption transaction",
+                409,
+                "MF_REDEMPTION_PLAN_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        if (!existing.systematic) {
+            logger.error(
+                "MF redemption plan webhook matched non-systematic transaction",
+                {
+                    fp_id,
+                },
+            );
+
+            throw new AppError(
+                "Webhook redemption plan does not match a systematic redemption plan",
+                409,
+                "MF_REDEMPTION_PLAN_WEBHOOK_SYSTEMATIC_MISMATCH",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "REDEMPTION",
+            redemption_plan,
+            true,
+        );
+    };
 }
 
 export const mf_transaction_plan_service = new MfTransactionPlanServiceClass();

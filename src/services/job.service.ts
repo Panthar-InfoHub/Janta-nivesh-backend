@@ -748,6 +748,59 @@ class JobServiceClass {
         }
     }
 
+
+    process_fd_rates = async (data: any) => {
+        try {
+
+            let successCount = 0;
+
+            for (const rate of data.rates) {
+                await db.fdInterestRate.upsert({
+                    where: {
+                        // Prisma auto-generates this compound key name based on your @@unique constraint
+                        fd_product_id_payout_frequency_tenure_label_customer_type: {
+                            fd_product_id: rate.fd_product_id,
+                            payout_frequency: rate.payout_frequency,
+                            tenure_label: rate.tenure_label,
+                            customer_type: rate.customer_type,
+                        }
+                    },
+                    update: {
+                        // If it exists, update the dynamic values
+                        interest_rate: rate.interest_rate,
+                        annualized_yield: rate.annualized_yield,
+                        is_default_selection: rate.is_default_selection,
+                        is_tax_saver: rate.is_tax_saver,
+                        last_updated_at: rate.last_updated_at,
+                    },
+                    create: {
+                        // If it does not exist, insert the whole record
+                        fd_product_id: rate.fd_product_id,
+                        payout_frequency: rate.payout_frequency,
+                        customer_type: rate.customer_type,
+                        tenure_days: rate.tenure_days,
+                        tenure_label: rate.tenure_label,
+                        interest_rate: rate.interest_rate,
+                        annualized_yield: rate.annualized_yield,
+                        is_default_selection: rate.is_default_selection,
+                        is_tax_saver: rate.is_tax_saver,
+                        last_updated_at: rate.last_updated_at,
+                        // You can choose to use Velvet's createdAt, or let Janta generate its own default
+                        createdAt: rate.createdAt
+                    }
+                });
+                successCount++;
+            }
+
+            logger.info(`Successfully synced ${successCount} FD rates!`);
+
+            return { success: true, success_count: successCount }
+
+        } catch (error) {
+            logger.error(`Something went wrong with process fd rate service`, error)
+            return { success: false, success_count: 0 }
+        }
+    }
 }
 
 export const job_service = new JobServiceClass();
