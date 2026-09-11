@@ -82,7 +82,13 @@ export const handleFpWebhook = async (
         }
         if (object_type === "mf_purchase_plan") {
             await mf_transaction_plan_service.sync_purchase_plan_from_webhook(
-                trusted_object,
+                trusted_object
+            );
+        }
+
+        if (object_type === "mf_redemption_plan") {
+            await mf_transaction_plan_service.sync_redemption_plan_from_webhook(
+                trusted_object
             );
         }
         // WHK-1..WHK-6: dispatch on `object_type` and persist `trusted_object` via
