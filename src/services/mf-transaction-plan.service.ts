@@ -334,6 +334,78 @@ class MfTransactionPlanServiceClass {
             existing.systematic,
         );
     };
+
+    sync_purchase_plan_from_webhook = async (purchase_plan: any) => {
+        const fp_id = purchase_plan?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF purchase plan webhook is missing purchase plan id",
+                400,
+                "MF_PURCHASE_PLAN_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn("MF purchase plan webhook received for unknown FP id", {
+                fp_id,
+            });
+
+            throw new AppError(
+                "MF transaction not found for webhook purchase plan",
+                404,
+                "MF_PURCHASE_PLAN_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "PURCHASE") {
+            logger.error(
+                "MF purchase plan webhook matched non-purchase transaction",
+                {
+                    fp_id,
+                    plan_type: existing.plan_type,
+                },
+            );
+
+            throw new AppError(
+                "Webhook purchase plan does not match a purchase transaction",
+                409,
+                "MF_PURCHASE_PLAN_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        if (!existing.systematic) {
+            logger.error(
+                "MF purchase plan webhook matched a non-systematic transaction",
+                {
+                    fp_id,
+                    systematic: existing.systematic,
+                },
+            );
+
+            throw new AppError(
+                "Webhook purchase plan does not match a SIP transaction",
+                409,
+                "MF_PURCHASE_PLAN_WEBHOOK_NOT_SYSTEMATIC",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "PURCHASE",
+            purchase_plan,
+            true,
+        );
+    };
     /**
      * Stores the payment created against a one-shot order. Written before the order is confirmed,
      * so a retry of the confirm sequence can tell "payment already created" from "not yet" and

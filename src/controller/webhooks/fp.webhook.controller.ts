@@ -80,6 +80,11 @@ export const handleFpWebhook = async (
                 trusted_object
             );
         }
+        if (object_type === "mf_purchase_plan") {
+            await mf_transaction_plan_service.sync_purchase_plan_from_webhook(
+                trusted_object,
+            );
+        }
         // WHK-1..WHK-6: dispatch on `object_type` and persist `trusted_object` via
         // mf_transaction_plan_service.upsert_from_fp. Intentionally a no-op in WHK-0 - this
         // ticket is the shared plumbing, the per-resource handlers are their own tickets.
