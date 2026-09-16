@@ -58,8 +58,8 @@ export const handleFpWebhook = async (
         const trusted_object = await fp_webhook_event_service.fetch_trusted_object(object_type, fp_id);
 
         if (!trusted_object) {
-            // No fetcher yet for this resource (mf_switch until OPS-5 lands). Ack so FP stops
-            // retrying, and leave the claim in place - there's no handler to run later anyway.
+            // No trusted object could be fetched for this resource.
+            // Acknowledge the webhook so FP stops retrying.
             logger.warn("FP webhook acknowledged without processing - no fetcher", {
                 event_id: event.id,
                 object_type,
@@ -91,13 +91,12 @@ export const handleFpWebhook = async (
                 trusted_object
             );
         }
-        // WHK-1..WHK-6: dispatch on `object_type` and persist `trusted_object` via
-        // mf_transaction_plan_service.upsert_from_fp. Intentionally a no-op in WHK-0 - this
-        // ticket is the shared plumbing, the per-resource handlers are their own tickets.
-        //
-        // NOTE for WHK-1/WHK-4: a SIP installment is its own mf_purchase whose `plan` field
-        // holds the parent mfpp_ id. There is no MfTransactionPlan row per installment, so
-        // persisting them needs the installments child table first - see CONTEXT.md section 9.
+
+        if (object_type === "mf_switch") {
+            await mf_transaction_plan_service.sync_switch_from_webhook(
+                trusted_object
+            );
+        }
 
 
         if (object_type === "mf_redemption") {

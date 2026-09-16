@@ -3,28 +3,28 @@ import { isIPv4 } from "net";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import {
-    create_mf_switch_plan_schema,
-    verify_switch_plan_confirmation_otp_schema,
-    type ResolvedMfSwitchPlanInput,
-} from "../lib/zod-schemas/mf-switch-plan.schema.js";
-import { fintech_primitive_mf_switch_plan_service } from "../services/fintech-primitive/mf_switch_plan.service.js";
+    create_mf_switch_schema,
+    verify_switch_confirmation_otp_schema,
+    type ResolvedMfSwitchInput,
+} from "../lib/zod-schemas/mf-switch.schema.js";
+import { fintech_primitive_mf_switch_service } from "../services/fintech-primitive/mf_switch.service.js";
 import { mf_transaction_plan_service } from "../services/mf-transaction-plan.service.js";
 import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
 import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
+import { mf_threshold_validation_service } from "../services/mutual-funds/mf-threshold-validation.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { notification_type } from "../lib/types.js";
+class MfSwitchControllerClass {
 
-class MfSwitchPlanControllerClass {
-
-    create_switch_plan = async (
+    create_switch = async (
         req: Request,
         res: Response,
         next: NextFunction,
     ) => {
         try {
             const user_id = req.user?.id!;
-            const input = create_mf_switch_plan_schema.parse(req.body);
+            const input = create_mf_switch_schema.parse(req.body);
 
             const raw_ip =
                 req.headers["x-forwarded-for"] ||
@@ -86,40 +86,52 @@ class MfSwitchPlanControllerClass {
                 );
             }
 
-            const resolved_input: ResolvedMfSwitchPlanInput = {
+            if (input.amount !== undefined) {
+                await mf_threshold_validation_service.validate_redemption(
+                    source_product.isin,
+                    input.amount,
+                );
+
+                await mf_threshold_validation_service.validate_lumpsum(
+                    destination_product.isin,
+                    input.amount,
+                );
+            }
+
+            const resolved_input: ResolvedMfSwitchInput = {
                 switch_out_scheme: source_product.isin,
                 switch_in_scheme: destination_product.isin,
                 folio_number: input.folio_number,
                 amount: input.amount,
-                frequency: input.frequency,
-                installment_day: input.installment_day,
+                units: input.units,
             };
 
-            logger.info("Creating MF switch plan", {
+            logger.info("Creating MF switch", {
                 user_id,
                 switch_out_scheme: source_product.isin,
                 switch_in_scheme: destination_product.isin,
+                folio_number: input.folio_number,
                 amount: input.amount,
-                frequency: input.frequency,
+                units: input.units,
             });
 
-            const plan =
-                await fintech_primitive_mf_switch_plan_service.create_switch_plan(
+            const switch_order =
+                await fintech_primitive_mf_switch_service.create_switch(
                     resolved_input,
                     user.investment_account,
                     user_ip,
                 );
 
-            if (!plan?.id) {
+            if (!switch_order?.id) {
                 logger.error(
-                    "FP mf_switch_plan response missing id ==> ",
-                    plan,
+                    "FP mf_switch response missing id ==> ",
+                    switch_order,
                 );
 
                 throw new AppError(
-                    "Failed to create MF switch plan",
+                    "Failed to create MF switch",
                     502,
-                    "MF_SWITCH_PLAN_CREATE_FAILED",
+                    "MF_SWITCH_CREATE_FAILED",
                 );
             }
 
@@ -127,20 +139,24 @@ class MfSwitchPlanControllerClass {
                 await mf_transaction_plan_service.upsert_from_fp(
                     user_id,
                     "SWITCH",
-                    plan,
-                    true,
+                    {
+                        ...switch_order,
+                        scheme: switch_order.switch_out_scheme,
+                        switch_in_scheme: switch_order.switch_in_scheme,
+                    },
+                    false,
                 );
 
             res.status(200).json({
                 success: true,
-                message: "MF switch plan created",
+                message: "MF switch created",
                 data: saved,
             });
 
             return;
         } catch (error) {
             logger.error(
-                "Error in create_switch_plan controller:",
+                "Error in create_switch controller:",
                 error,
             );
 
@@ -148,58 +164,95 @@ class MfSwitchPlanControllerClass {
             return;
         }
     };
-
-    fetch_switch_plan = async (
+    get_switches = async (
         req: Request,
         res: Response,
         next: NextFunction,
     ) => {
         try {
             const user_id = req.user?.id!;
-            const fp_switch_plan_id = req.params.id as string;
 
-            logger.info("Fetching MF switch plan status", {
-                user_id,
-                fp_switch_plan_id,
+            const switches =
+                await mf_transaction_plan_service.get_all(
+                    user_id,
+                    "SWITCH",
+                    false,
+                );
+
+            res.status(200).json({
+                success: true,
+                message: "MF switches fetched",
+                data: switches,
             });
+
+            return;
+        } catch (error) {
+            logger.error(
+                "Error in get_switches controller:",
+                error,
+            );
+
+            next(error);
+            return;
+        }
+    };
+    fetch_switch = async (
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ) => {
+        try {
+            const user_id = req.user?.id!;
+            const fp_switch_id = req.params.id as string;
 
             const existing =
                 await mf_transaction_plan_service.get_by_fp_id(
                     user_id,
-                    fp_switch_plan_id,
+                    fp_switch_id,
                 );
 
             if (!existing) {
                 throw new AppError(
-                    "Switch plan not found",
+                    "MF switch not found",
                     404,
-                    "MF_SWITCH_PLAN_NOT_FOUND",
+                    "MF_SWITCH_NOT_FOUND",
                 );
             }
 
-            const plan =
-                await fintech_primitive_mf_switch_plan_service.get_switch_plan(
-                    fp_switch_plan_id,
+            const switch_order =
+                await fintech_primitive_mf_switch_service.get_switch(
+                    fp_switch_id,
                 );
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
+                );
+            }
 
             const updated =
                 await mf_transaction_plan_service.upsert_from_fp(
                     user_id,
                     "SWITCH",
-                    plan,
-                    true,
+                    {
+                        ...switch_order,
+                        scheme: switch_order.switch_out_scheme,
+                        switch_in_scheme: switch_order.switch_in_scheme,
+                    },
+                    false,
                 );
 
             res.status(200).json({
                 success: true,
-                message: "MF switch plan fetched",
+                message: "MF switch fetched",
                 data: updated,
             });
 
             return;
         } catch (error) {
             logger.error(
-                "Error in fetch_switch_plan controller:",
+                "Error in fetch_switch controller:",
                 error,
             );
 
@@ -215,27 +268,35 @@ class MfSwitchPlanControllerClass {
     ) => {
         try {
             const user_id = req.user?.id!;
-            const fp_switch_plan_id = req.params.id as string;
+            const fp_switch_id = req.params.id as string;
 
-            const plan =
+            const switch_order =
                 await mf_transaction_plan_service.get_by_fp_id(
                     user_id,
-                    fp_switch_plan_id,
+                    fp_switch_id,
                 );
 
-            if (!plan) {
+            if (!switch_order) {
                 throw new AppError(
-                    "Switch plan not found",
+                    "MF switch not found",
                     404,
-                    "MF_SWITCH_PLAN_NOT_FOUND",
+                    "MF_SWITCH_NOT_FOUND",
                 );
             }
 
-            if (plan.state !== "REVIEW_COMPLETED") {
+            // Immediate mf_switch orders are confirmed from PENDING state.
+            if (switch_order.state !== "PENDING") {
                 throw new AppError(
-                    `Plan must be in review_completed state to confirm, currently ${plan.state}`,
+                    `Switch must be in pending state to confirm, currently ${switch_order.state}`,
                     400,
-                    "MF_SWITCH_PLAN_NOT_REVIEW_COMPLETED",
+                    "MF_SWITCH_NOT_PENDING",
+                );
+            }
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
                 );
             }
 
@@ -249,17 +310,9 @@ class MfSwitchPlanControllerClass {
                 );
             }
 
-            logger.info(
-                "Requesting switch plan confirmation OTP",
-                {
-                    user_id,
-                    fp_switch_plan_id,
-                },
-            );
-
             await plan_confirmation_otp_service.request_otp(
                 user_id,
-                fp_switch_plan_id,
+                fp_switch_id,
                 user.phone_no,
             );
 
@@ -272,7 +325,7 @@ class MfSwitchPlanControllerClass {
             return;
         } catch (error) {
             logger.error(
-                "Error in request_switch_plan_confirmation_otp controller:",
+                "Error in request_switch_confirmation_otp controller:",
                 error,
             );
 
@@ -288,32 +341,39 @@ class MfSwitchPlanControllerClass {
     ) => {
         try {
             const user_id = req.user?.id!;
-            const fp_switch_plan_id = req.params.id as string;
+            const fp_switch_id = req.params.id as string;
 
             const { otp } =
-                verify_switch_plan_confirmation_otp_schema.parse(
+                verify_switch_confirmation_otp_schema.parse(
                     req.body,
                 );
 
-            const plan =
+            const switch_order =
                 await mf_transaction_plan_service.get_by_fp_id(
                     user_id,
-                    fp_switch_plan_id,
+                    fp_switch_id,
                 );
-
-            if (!plan) {
+            if (!switch_order) {
                 throw new AppError(
-                    "Switch plan not found",
+                    "MF switch not found",
                     404,
-                    "MF_SWITCH_PLAN_NOT_FOUND",
+                    "MF_SWITCH_NOT_FOUND",
+                );
+            }
+            if (switch_order.plan_type !== "SWITCH" || switch_order.systematic) {
+                throw new AppError(
+                    "Transaction is not a one-shot switch",
+                    400,
+                    "MF_SWITCH_NOT_ALLOWED",
                 );
             }
 
-            if (plan.state !== "REVIEW_COMPLETED") {
+
+            if (switch_order.state !== "PENDING") {
                 throw new AppError(
-                    `Plan must be in review_completed state to confirm, currently ${plan.state}`,
+                    `Switch must be in pending state to confirm, currently ${switch_order.state}`,
                     400,
-                    "MF_SWITCH_PLAN_NOT_REVIEW_COMPLETED",
+                    "MF_SWITCH_NOT_PENDING",
                 );
             }
 
@@ -327,27 +387,22 @@ class MfSwitchPlanControllerClass {
                 );
             }
 
-            logger.info(
-                "Verifying switch plan confirmation OTP",
-                {
-                    user_id,
-                    fp_switch_plan_id,
-                },
-            );
-
             await plan_confirmation_otp_service.verify_otp(
                 user_id,
-                fp_switch_plan_id,
+                fp_switch_id,
                 otp,
             );
 
             const confirmed =
-                await fintech_primitive_mf_switch_plan_service.confirm_switch_plan(
-                    fp_switch_plan_id,
+                await fintech_primitive_mf_switch_service.update_switch(
+                    fp_switch_id,
                     {
-                        email: user.email,
-                        isd_code: "91",
-                        mobile: user.phone_no,
+                        state: "confirmed",
+                        consent: {
+                            email: user.email,
+                            isd_code: "91",
+                            mobile: user.phone_no,
+                        },
                     },
                 );
 
@@ -355,10 +410,13 @@ class MfSwitchPlanControllerClass {
                 await mf_transaction_plan_service.upsert_from_fp(
                     user_id,
                     "SWITCH",
-                    confirmed,
-                    true,
+                    {
+                        ...confirmed,
+                        scheme: confirmed.switch_out_scheme,
+                        switch_in_scheme: confirmed.switch_in_scheme,
+                    },
+                    false,
                 );
-
 
             const [_, __] = await Promise.all([
                 mf_transaction_plan_service.mark_consent_given(
@@ -378,14 +436,14 @@ class MfSwitchPlanControllerClass {
 
             res.status(200).json({
                 success: true,
-                message: "Switch plan confirmed",
+                message: "MF switch confirmed",
                 data: updated,
             });
 
             return;
         } catch (error) {
             logger.error(
-                "Error in verify_switch_plan_confirmation_otp controller:",
+                "Error in verify_switch_confirmation_otp controller:",
                 error,
             );
 
@@ -395,5 +453,5 @@ class MfSwitchPlanControllerClass {
     };
 }
 
-export const mf_switch_plan_controller =
-    new MfSwitchPlanControllerClass();
+export const mf_switch_controller =
+    new MfSwitchControllerClass();

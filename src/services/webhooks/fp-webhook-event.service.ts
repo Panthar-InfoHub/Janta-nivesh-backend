@@ -5,6 +5,7 @@ import { fintech_primitive_mf_purchase_service } from "../fintech-primitive/mf_p
 import { fintech_primitive_mf_purchase_plan_service } from "../fintech-primitive/mf_purchase_plan.service.js";
 import { fintech_primitive_mf_redemption_service } from "../fintech-primitive/mf_redemption.service.js";
 import { fintech_primitive_mf_redemption_plan_service } from "../fintech-primitive/mf_redemption_plan.service.js";
+import { fintech_primitive_mf_switch_service } from "../fintech-primitive/mf_switch.service.js";
 import { fintech_primitive_mf_switch_plan_service } from "../fintech-primitive/mf_switch_plan.service.js";
 
 /**
@@ -33,6 +34,9 @@ export interface FpWebhookEvent {
 }
 
 /**
+ * Dedup window. FP's retry schedule is 5s, 10s, 20s, 40s, 80s, 160s, 320s, 640s, 1280s, 2560s...
+ * capped at ~24h total. 24h TTL guarantees a retry never outlives the key.
+ *
  * FP retries any delivery we don't answer 200, so the same event.id arrives more than once.
  * Without this, a retried `.successful` re-applies a state transition that already landed.
  * 24h covers FP's retry window with room to spare; the key is the event id, which is unique
@@ -43,16 +47,13 @@ const dedup_key = (event_id: string) => `fp_webhook_evt:${event_id}`;
 
 /**
  * Maps `data.object.object` to the FP client that can re-fetch it.
- *
- * mf_switch is deliberately absent: its client lands with OPS-5 (PR #114) and doesn't exist on
- * staging_v2 yet. WHK-3 wires it in - until then a mf_switch.* delivery is acknowledged and
- * logged rather than half-processed.
  */
 const FETCHERS: Record<string, (fp_id: string) => Promise<any>> = {
     mf_purchase: (id) => fintech_primitive_mf_purchase_service.get_purchase(id),
     mf_purchase_plan: (id) => fintech_primitive_mf_purchase_plan_service.get_purchase_plan(id),
     mf_redemption: (id) => fintech_primitive_mf_redemption_service.get_redemption(id),
     mf_redemption_plan: (id) => fintech_primitive_mf_redemption_plan_service.get_redemption_plan(id),
+    mf_switch: (id) => fintech_primitive_mf_switch_service.get_switch(id),
     mf_switch_plan: (id) => fintech_primitive_mf_switch_plan_service.get_switch_plan(id),
 };
 

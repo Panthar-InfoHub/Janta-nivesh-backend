@@ -411,6 +411,60 @@ class MfTransactionPlanServiceClass {
      * so a retry of the confirm sequence can tell "payment already created" from "not yet" and
      * skip it rather than charging twice.
      */
+
+    sync_switch_from_webhook = async (switch_order: any) => {
+        const fp_id = switch_order?.id;
+
+        if (!fp_id) {
+            throw new AppError(
+                "MF switch webhook is missing switch id",
+                400,
+                "MF_SWITCH_WEBHOOK_ID_MISSING",
+            );
+        }
+
+        const existing = await db.mfTransactionPlan.findUnique({
+            where: { fp_id },
+            select: {
+                user_id: true,
+                plan_type: true,
+                systematic: true,
+            },
+        });
+
+        if (!existing) {
+            logger.warn("MF switch webhook received for unknown FP id", {
+                fp_id,
+            });
+
+            throw new AppError(
+                "MF transaction not found for webhook switch",
+                404,
+                "MF_SWITCH_WEBHOOK_TRANSACTION_NOT_FOUND",
+            );
+        }
+
+        if (existing.plan_type !== "SWITCH") {
+            logger.error("MF switch webhook matched non-switch transaction", {
+                fp_id,
+                plan_type: existing.plan_type,
+            });
+
+            throw new AppError(
+                "Webhook switch does not match a switch transaction",
+                409,
+                "MF_SWITCH_WEBHOOK_PLAN_TYPE_MISMATCH",
+            );
+        }
+
+        return await this.upsert_from_fp(
+            existing.user_id,
+            "SWITCH",
+            switch_order,
+            existing.systematic,
+        );
+    };
+
     set_payment_id = async (id: string, fp_payment_id: string) => {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
     }

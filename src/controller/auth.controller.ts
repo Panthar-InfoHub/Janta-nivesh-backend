@@ -1,14 +1,13 @@
 import { NextFunction, Request, Response } from "express";
-import { AuthResponse, notification_type } from "../lib/types.js";
+import { notification_type } from "../lib/types.js";
 import AppError from "../middleware/error.middleware.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import logger from "../middleware/logger.js";
 import { deviceParamsSchema, req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
 import { auth_service } from "../services/auth.service.js";
+import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
-import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
-import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
 
 class AuthControllerClass {
 
@@ -102,20 +101,20 @@ class AuthControllerClass {
                 fcm_token,
             });
 
-            await zoho_webhook_service.send_event({
-                event_type: "USER_SIGNUP_COMPLETED",
-                timestamp: new Date().toISOString(),
-                user_id: updated_user.id,
-                user_phone: updated_user.phone_no,
-                onboarding_stage: 0,
-                is_onboarding_completed: false
-            });
+            // await zoho_webhook_service.send_event({
+            //     event_type: "USER_SIGNUP_COMPLETED",
+            //     timestamp: new Date().toISOString(),
+            //     user_id: updated_user.id,
+            //     user_phone: updated_user.phone_no,
+            //     onboarding_stage: 0,
+            //     is_onboarding_completed: false
+            // });
 
             await notification_producer_service.publish_notification_event(
                 user.id,
                 "TRANSACTION",
                 "Login Successful",
-                `Welcome to Velvet Investment, ${user.full_name}`,
+                `Welcome to Janta Nivesh, ${user.full_name}`,
                 {
                     txn: "login",
                     sub_type: notification_type.NOTIFICATION
