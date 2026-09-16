@@ -3,6 +3,9 @@ import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
 import { fd_transaction_service } from "../services/fd.transaction.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
+import { notification_producer_service } from "../services/notification.producer.service.js";
+import { FdTransaction } from "../prisma/generated/prisma/client.js";
+import { notification_type } from "../lib/types.js";
 
 export const validateFdWebhook = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -46,31 +49,54 @@ export const receiveFdWebhookCallback = async (req: Request, res: Response, next
         }
 
         // Only persist if a status transition is present
+        let fd_transaction: FdTransaction;
         if (status) {
-            await fd_transaction_service.update_status_and_details(jid, status, update_data);
+            fd_transaction = await fd_transaction_service.update_status_and_details(jid, status, update_data);
             logger.info(`Transaction ${jid} updated to status=${status}`);
         }
 
         // Zoho side-effects that live in Velvet (central_server is stateless)
         if (event === "PAYMENT_FAILED") {
-            await zoho_webhook_service.send_event({
-                event_type: "FD_BOOKING_FAILED",
-                timestamp: new Date().toISOString(),
-                fd_transaction_id: jid,
-                failure_reason: update_data.failure_reason || "Payment failed",
-                payment_tx_id: update_data.payment_tx_id,
-            });
+            // await zoho_webhook_service.send_event({
+            //     event_type: "FD_BOOKING_FAILED",
+            //     timestamp: new Date().toISOString(),
+            //     fd_transaction_id: jid,
+            //     failure_reason: update_data.failure_reason || "Payment failed",
+            //     payment_tx_id: update_data.payment_tx_id,
+            // });
+
+            await notification_producer_service.publish_notification_event(
+                fd_transaction?.user_id,
+                "TRANSACTION",
+                "Fixed Deposit payment failed",
+                `Your Fixed Deposit payment has failed`,
+                {
+                    txn: "fd",
+                    sub_type: notification_type.ALERT
+                }
+            );
         } else if (event === "FD_CREATED") {
-            await zoho_webhook_service.send_event({
-                event_type: "FD_BOOKING_SUCCESSFUL",
-                timestamp: new Date().toISOString(),
-                fd_transaction_id: jid,
-                fd_account_number: update_data.fd_account_number,
-                maturity_amount: Number(update_data.maturity_amount),
-                maturity_date: update_data.maturity_date,
-                maturity_instruction: update_data.maturity_instruction,
-                fd_issued_at: update_data.fd_issued_at,
-            });
+            // await zoho_webhook_service.send_event({
+            //     event_type: "FD_BOOKING_SUCCESSFUL",
+            //     timestamp: new Date().toISOString(),
+            //     fd_transaction_id: jid,
+            //     fd_account_number: update_data.fd_account_number,
+            //     maturity_amount: Number(update_data.maturity_amount),
+            //     maturity_date: update_data.maturity_date,
+            //     maturity_instruction: update_data.maturity_instruction,
+            //     fd_issued_at: update_data.fd_issued_at,
+            // });
+
+            await notification_producer_service.publish_notification_event(
+                fd_transaction?.user_id,
+                "TRANSACTION",
+                "Fixed Deposit booking successful",
+                `Your Fixed Deposit booking has been successful`,
+                {
+                    txn: "fd",
+                    sub_type: notification_type.FUND_INC
+                }
+            );
         }
 
         res.status(200).json({ success: true });
