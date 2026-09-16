@@ -8,6 +8,8 @@ import { mf_threshold_validation_service } from "../services/mutual-funds/mf-thr
 import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
 import { isIPv4 } from "net";
+import { notification_producer_service } from "../services/notification.producer.service.js";
+import { notification_type } from "../lib/types.js";
 
 class MfRedemptionPlanControllerClass {
 
@@ -206,6 +208,17 @@ class MfRedemptionPlanControllerClass {
 
             const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "REDEMPTION", confirmed, true);
             await mf_transaction_plan_service.mark_consent_given(updated.id);
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Reccuring redemption initiated",
+                `Your reccuring redemption has been initiated`,
+                {
+                    txn: "mf",
+                    sub_type: notification_type.FUND_INC
+                }
+            );
 
             res.status(200).json({
                 success: true,

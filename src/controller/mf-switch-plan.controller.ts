@@ -12,6 +12,8 @@ import { mf_transaction_plan_service } from "../services/mf-transaction-plan.ser
 import { mf_product_service } from "../services/mutual-funds/mf-product.service.js";
 import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
+import { notification_producer_service } from "../services/notification.producer.service.js";
+import { notification_type } from "../lib/types.js";
 
 class MfSwitchPlanControllerClass {
 
@@ -357,9 +359,22 @@ class MfSwitchPlanControllerClass {
                     true,
                 );
 
-            await mf_transaction_plan_service.mark_consent_given(
-                updated.id,
-            );
+
+            const [_, __] = await Promise.all([
+                mf_transaction_plan_service.mark_consent_given(
+                    updated.id,
+                ),
+                notification_producer_service.publish_notification_event(
+                    user.id,
+                    "TRANSACTION",
+                    "Switch purchase initiated",
+                    `Your Switch purchase has been initiated`,
+                    {
+                        txn: "mf",
+                        sub_type: notification_type.NOTIFICATION
+                    }
+                )
+            ])
 
             res.status(200).json({
                 success: true,

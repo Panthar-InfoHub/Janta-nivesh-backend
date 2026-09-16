@@ -11,6 +11,8 @@ import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp
 import { user_bank_details_service } from "../services/user-bank-details.service.js";
 import { user_service } from "../services/user.service.js";
 import { isIPv4 } from "net";
+import { notification_producer_service } from "../services/notification.producer.service.js";
+import { notification_type } from "../lib/types.js";
 
 /**
  * Lumpsum (one-shot) MF purchase. FP's lifecycle:
@@ -226,6 +228,17 @@ class MfPurchaseControllerClass {
             // 3. Only now can the order move to confirmed.
             const confirmed = await fintech_primitive_mf_purchase_service.update_purchase(fp_id, { state: "confirmed" });
             const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", confirmed, false);
+
+            await notification_producer_service.publish_notification_event(
+                user.id,
+                "TRANSACTION",
+                "Lumpsum purchase initiated",
+                `Your lumpsum purchase has been initiated`,
+                {
+                    txn: "mf",
+                    sub_type: notification_type.FUND_INC
+                }
+            );
 
             res.status(200).json({
                 success: true,
