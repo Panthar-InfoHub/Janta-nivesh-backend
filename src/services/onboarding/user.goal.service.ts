@@ -1,135 +1,286 @@
-import axios from "axios";
-import { env } from "../../lib/config-env.js";
-import { UserGoalInput } from "../../lib/zod-schemas/goal.schema.js";
+import { Prisma } from "../../prisma/generated/prisma/client.js";
+import { db } from "../../server.js";
+import { calculateGoalProjections, normalizeRate } from "../../lib/goal-calculator.js";
+import { GoalCalculateInput, UserGoalInput, UserGoalUpdateInput } from "../../lib/zod-schemas/goal.schema.js";
 import AppError from "../../middleware/error.middleware.js";
 import logger from "../../middleware/logger.js";
-import type { Prisma } from "../../prisma/generated/prisma/client.js";
-import { db } from "../../server.js";
 
 type TxClient = Prisma.TransactionClient;
 
+export const GOAL_TYPE_METADATA: Record<number, {
+    name: string;
+    purpose: string;
+    calculation_mode: string;
+    tenure_suggestions: number[];
+    min_years: number;
+    max_years: number;
+    default_cost_chips?: number[];
+    asset_subtypes?: string[];
+}> = {
+    1: {
+        name: "Child's Education",
+        purpose: "Save for school, college or higher education",
+        calculation_mode: "Inflation-adjusted future cost",
+        tenure_suggestions: [5, 10, 15],
+        min_years: 1,
+        max_years: 30,
+        default_cost_chips: [500000, 1000000, 1500000, 2500000],
+    },
+    2: {
+        name: "Child's Marriage",
+        purpose: "Save for future marriage expenses",
+        calculation_mode: "Inflation-adjusted future cost",
+        tenure_suggestions: [5, 10, 15],
+        min_years: 1,
+        max_years: 30,
+        default_cost_chips: [500000, 1000000, 1500000, 2500000],
+    },
+    3: {
+        name: "Buy a Home",
+        purpose: "Build money for house purchase or down payment",
+        calculation_mode: "Inflation-adjusted target",
+        tenure_suggestions: [3, 5, 10],
+        min_years: 1,
+        max_years: 30,
+        default_cost_chips: [500000, 1000000, 2000000, 3000000],
+    },
+    4: {
+        name: "Buy a Vehicle",
+        purpose: "Save for bike, scooter or car",
+        calculation_mode: "Inflation-adjusted target",
+        tenure_suggestions: [1, 3, 5],
+        min_years: 1,
+        max_years: 15,
+        asset_subtypes: ["BIKE", "SCOOTER", "CAR"],
+    },
+    5: {
+        name: "Build My Savings",
+        purpose: "Accumulate a chosen corpus without a purchase goal",
+        calculation_mode: "Fixed target corpus",
+        tenure_suggestions: [1, 3, 5, 10],
+        min_years: 1,
+        max_years: 30,
+        default_cost_chips: [100000, 200000, 500000, 1000000],
+    },
+    6: {
+        name: "Other Goal",
+        purpose: "Any goal not covered above",
+        calculation_mode: "Inflation-adjusted target",
+        tenure_suggestions: [1, 3, 5, 10],
+        min_years: 1,
+        max_years: 30,
+    },
+};
+
 class UserGoalServiceClass {
-    finsys_api: string;
+    /**
+     * Get system goal calculation configs enriched with frontend presentation metadata.
+     */
+    getConfig = async () => {
+        const configs = await db.goalCalculationConfig.findMany({
+            where: { active: true },
+            orderBy: { goal_type_id: "asc" },
+        });
 
-    constructor() {
-        this.finsys_api = `${env.finsys_base_api}/finnsys/app/master.service.asp`;
-    }
+        return configs.map((cfg) => {
+            const meta = GOAL_TYPE_METADATA[cfg.goal_type_id];
+            return {
+                id: cfg.id,
+                goal_type_id: cfg.goal_type_id,
+                name: meta?.name || `Goal Type ${cfg.goal_type_id}`,
+                purpose: meta?.purpose || "",
+                calculation_mode: meta?.calculation_mode || "",
+                inflation_rate: cfg.inflation_rate ? Number(cfg.inflation_rate) : null,
+                expected_return_rate: Number(cfg.expected_return_rate),
+                min_years: cfg.min_years,
+                max_years: cfg.max_years,
+                tenure_suggestions: meta?.tenure_suggestions || [3, 5, 10],
+                cost_chips: meta?.default_cost_chips || [],
+                asset_subtypes: meta?.asset_subtypes || null,
+                config_version: cfg.config_version,
+            };
+        });
+    };
 
-    private extract_params = (user: any, data: UserGoalInput) => {
-        let params: any = {
-            log: user.log,
-            pwd: user.pwd,
-            svc: "setgoal",
-            gtp: data.goal_type_id,
-            tojson: 1,
-            "PROCEED.x": 1
+    /**
+     * Helper to fetch active config for a specific goal type.
+     */
+    getConfigForType = async (goal_type_id: number) => {
+        const cfg = await db.goalCalculationConfig.findUnique({
+            where: { goal_type_id },
+        });
+
+        if (!cfg) {
+            // Fallback hardcoded defaults if config table was somehow unseeded
+            const meta = GOAL_TYPE_METADATA[goal_type_id];
+            const defaultInflation = goal_type_id === 3 || goal_type_id === 4 ? 0.05 : goal_type_id === 5 ? null : 0.06;
+            return {
+                inflation_rate: defaultInflation !== null ? new Prisma.Decimal(defaultInflation) : null,
+                expected_return_rate: new Prisma.Decimal(0.10),
+                min_years: meta?.min_years ?? 1,
+                max_years: meta?.max_years ?? 30,
+                config_version: "v2.0",
+            };
+        }
+
+        return cfg;
+    };
+
+    /**
+     * Stateless calculation preview for interactive sliders / simulators without persisting.
+     */
+    calculate = async (input: GoalCalculateInput) => {
+        const cfg = await this.getConfigForType(input.goal_type_id);
+
+        const cost = input.goal_type_id === 5 ? (input.target_amount ?? 0) : (input.current_cost ?? 0);
+        const isInflationAdjusted = input.goal_type_id !== 5;
+
+        // Use custom rate if passed, otherwise fall back to system config
+        const inflationRate = input.inflation_rate !== undefined && input.inflation_rate !== null
+            ? normalizeRate(input.inflation_rate)
+            : Number(cfg.inflation_rate);
+
+        const expectedReturnRate = input.expected_return_rate !== undefined && input.expected_return_rate !== null
+            ? normalizeRate(input.expected_return_rate)
+            : Number(cfg.expected_return_rate);
+
+        const projections = calculateGoalProjections({
+            current_cost: cost,
+            years_remaining: input.years_remaining,
+            current_savings: input.current_savings ?? 0,
+            inflation_rate: inflationRate,
+            expected_return_rate: expectedReturnRate,
+            is_inflation_adjusted: isInflationAdjusted,
+        });
+
+        return {
+            goal_type_id: input.goal_type_id,
+            years_remaining: input.years_remaining,
+            current_cost: cost,
+            current_savings: input.current_savings ?? 0,
+            inflation_rate_used: inflationRate,
+            expected_return_rate_used: expectedReturnRate,
+            ...projections,
         };
+    };
 
-        if (data.goal_type_id === 1 || data.goal_type_id === 2) {
-            params.C_NAME_1 = data.child_name;
-            params.C_AGE_1 = data.child_age;
-            params.C_YEAR_1 = data.years_left;
-            params.C_COST_1 = data.current_goal_cost;
-        } else if (data.goal_type_id === 3) {
-            params.H_CURR_AGE_1 = data.current_age;
-            params.C_RET_AGE_1 = data.retirement_age;
-            params.C_LIFE_EXP_1 = data.life_expectancy;
-            params.C_MONTHLY_SPENDING_1 = data.current_monthly_expense;
-            params.C_RET_POST_1 = data.post_retirement_return;
-        } else if (data.goal_type_id >= 4) {
-            params.gtp = 4;
-            params.GOAL_ITEM_1 = data.goal_item_id;
-            params.GOAL_NAME_1 = data.goal_name;
-            params.C_YEAR_1 = data.years_left;
-            params.C_COST_1 = data.current_goal_cost;
+    /**
+     * Create a user goal: validates tenure bounds, runs calculations, and persists to DB.
+     */
+    createGoal = async (user_id: string, data: UserGoalInput) => {
+        const cfg = await this.getConfigForType(data.goal_type_id);
+
+        if (data.years_remaining < cfg.min_years || data.years_remaining > cfg.max_years) {
+            throw new AppError(
+                `Years remaining must be between ${cfg.min_years} and ${cfg.max_years} for this goal type`,
+                400,
+                "INVALID_YEARS_REMAINING"
+            );
         }
 
-        params.C_INF_1 = data.inflation_rate;
-        params.C_RET_1 = data.return_rate;
-        params.C_SAVING_1 = data.current_saved_amount;
-
-        return params;
-    }
-
-    createGoal = async (user: any, data: UserGoalInput) => {
-
-        const params = this.extract_params(user, data);
-        const res = await axios.get(this.finsys_api, { params });
-        logger.debug("Finsys goal res ==> ", res.data);
-
-        if (!res.data.results?.[0]?.gid) {
-            logger.error("Error in finnsys goal creation error");
-            throw new AppError("FinSys goal create failed", 500, "FINSYS_GOAL_CREATE_FAILED");
+        // Determine goal name
+        let goal_name = (data as any).goal_name?.trim();
+        if (!goal_name) {
+            if (data.goal_type_id === 1) goal_name = `${data.child_name}'s Education`;
+            else if (data.goal_type_id === 2) goal_name = `${data.child_name}'s Marriage`;
+            else if (data.goal_type_id === 3) goal_name = "My Home";
+            else if (data.goal_type_id === 4) goal_name = "My Vehicle";
+            else if (data.goal_type_id === 5) goal_name = "My Savings";
+            else goal_name = "My Goal";
         }
 
-        const user_goal = await db.userGoals.create({
+        // Determine primary financial amount
+        const isType5 = data.goal_type_id === 5;
+        const current_cost = !isType5 ? (data as any).current_cost : null;
+        const target_amount = isType5 ? (data as any).target_amount : null;
+        const calculationAmount = isType5 ? Number(target_amount) : Number(current_cost);
+
+        // Determine rates to apply
+        const inflation_rate_num = data.inflation_rate !== undefined && data.inflation_rate !== null
+            ? normalizeRate(data.inflation_rate)
+            : (cfg.inflation_rate ? Number(cfg.inflation_rate) : null);
+
+        const expected_return_rate_num = data.expected_return_rate !== undefined && data.expected_return_rate !== null
+            ? normalizeRate(data.expected_return_rate)
+            : Number(cfg.expected_return_rate);
+
+        // Run math engine
+        const projections = calculateGoalProjections({
+            current_cost: calculationAmount,
+            years_remaining: data.years_remaining,
+            current_savings: Number(data.current_savings || 0),
+            inflation_rate: inflation_rate_num,
+            expected_return_rate: expected_return_rate_num,
+            is_inflation_adjusted: !isType5,
+        });
+
+        // Compute target date
+        const target_date = new Date();
+        target_date.setFullYear(target_date.getFullYear() + data.years_remaining);
+
+        // Persist to DB
+        const created = await db.userGoals.create({
             data: {
-                ...(data as any),
-                user_id: user.id,
-                goal_id: parseInt(res.data.results[0]?.gid),
-                ...(data.goal_type_id === 3 && {
-                    goal_name: "Retirement",
-                    goal_item_name: "Retirement"
-                }),
-                ...(data.goal_type_id === 1 && {
-                    goal_name: "Child's Education",
-                    goal_item_name: `${data.child_name}'s Education`
-                }),
-                ...(data.goal_type_id === 2 && {
-                    goal_name: "Child's Marriage",
-                    goal_item_name: `${data.child_name}'s Marriage`
-                })
-            }
-        });
-        logger.debug(`User goal created successfully ==> `, user_goal)
-        return res.data;
-    }
-
-    updateGoal = async (user: any, goal_record_id: string, data: UserGoalInput) => {
-        const existing_goal = await db.userGoals.findFirst({
-            where: {
-                user_id: user.id,
-                id: goal_record_id
+                user_id,
+                goal_type_id: data.goal_type_id,
+                goal_name,
+                child_name: (data as any).child_name ?? null,
+                child_age: (data as any).child_age ?? null,
+                asset_subtype: (data as any).asset_subtype ?? null,
+                years_remaining: data.years_remaining,
+                target_date,
+                current_cost: current_cost !== null ? new Prisma.Decimal(current_cost) : null,
+                target_amount: target_amount !== null ? new Prisma.Decimal(target_amount) : null,
+                current_savings: new Prisma.Decimal(data.current_savings || 0),
+                inflation_rate: inflation_rate_num !== null ? new Prisma.Decimal(inflation_rate_num) : null,
+                expected_return_rate: new Prisma.Decimal(expected_return_rate_num),
+                future_target_amount: new Prisma.Decimal(projections.future_target_amount),
+                fv_current_savings: new Prisma.Decimal(projections.fv_current_savings),
+                net_required_corpus: new Prisma.Decimal(projections.net_required_corpus),
+                required_monthly_sip: new Prisma.Decimal(projections.required_monthly_sip),
+                required_lumpsum_today: new Prisma.Decimal(projections.required_lumpsum_today),
+                calculation_version: cfg.config_version || "v2.0",
+                status: "ACTIVE",
             },
-            select: {
-                id: true,
-                goal_id: true,
-            }
         });
 
-        if (!existing_goal) {
-            throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
-        }
+        logger.info(`Goal created successfully for user ${user_id}: ${created.id}`);
+        return created;
+    };
 
-        await db.userGoals.update({
+    /**
+     * Get all active goals for a user.
+     */
+    getUserGoals = async (user_id: string) => {
+        const goals = await db.userGoals.findMany({
             where: {
-                id: existing_goal.id,
+                user_id,
+                status: { not: "DELETED" },
             },
-            data: data as any,
+            orderBy: { createdAt: "desc" },
         });
 
-        const params: any = this.extract_params(user, data);
-        if (existing_goal.goal_id) {
-            params.gid = existing_goal.goal_id;
-        }
+        return goals.map((g) => {
+            const futureTarget = Number(g.future_target_amount || 0);
+            const currentSavings = Number(g.current_savings || 0);
+            const progress_percent = futureTarget > 0 ? Math.min(100, Math.round((currentSavings / futureTarget) * 100)) : 0;
 
-        const res = await axios.get(this.finsys_api, { params });
+            return {
+                ...g,
+                progress_percent,
+            };
+        });
+    };
 
-        if (!existing_goal.goal_id && res.data.results?.[0]?.gid) {
-            await db.userGoals.update({
-                where: { id: existing_goal.id },
-                data: { goal_id: parseInt(res.data.results[0].gid) },
-            });
-        }
-
-        return res.data;
-    }
-
-    get_goal_by_id = async (user: any, goal_record_id: string) => {
+    /**
+     * Get a specific goal by ID for a user.
+     */
+    getGoalById = async (user_id: string, goal_id: string) => {
         const goal = await db.userGoals.findFirst({
             where: {
-                user_id: user.id,
-                id: goal_record_id,
+                id: goal_id,
+                user_id,
+                status: { not: "DELETED" },
             },
         });
 
@@ -137,138 +288,222 @@ class UserGoalServiceClass {
             throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
         }
 
-        return goal;
-    }
+        const futureTarget = Number(goal.future_target_amount || 0);
+        const currentSavings = Number(goal.current_savings || 0);
+        const progress_percent = futureTarget > 0 ? Math.min(100, Math.round((currentSavings / futureTarget) * 100)) : 0;
 
+        return {
+            ...goal,
+            progress_percent,
+        };
+    };
 
-    delete_goal = async (user: any, goal_record_id: string) => {
-        const existing_goal = await db.userGoals.findFirst({
+    /**
+     * Update a user goal: recalculates snapshot if any financial inputs changed.
+     */
+    updateGoal = async (user_id: string, goal_id: string, data: UserGoalUpdateInput) => {
+        const existing = await db.userGoals.findFirst({
             where: {
-                user_id: user.id,
-                id: goal_record_id,
+                id: goal_id,
+                user_id,
+                status: { not: "DELETED" },
             },
         });
 
-        if (!existing_goal) {
+        if (!existing) {
             throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
         }
 
-        const user_goal = await db.userGoals.delete({
-            where: {
-                id: existing_goal.id
-            }
+        const cfg = await this.getConfigForType(existing.goal_type_id);
+
+        const newYears = data.years_remaining ?? existing.years_remaining;
+        if (data.years_remaining !== undefined && (newYears < cfg.min_years || newYears > cfg.max_years)) {
+            throw new AppError(
+                `Years remaining must be between ${cfg.min_years} and ${cfg.max_years} for this goal type`,
+                400,
+                "INVALID_YEARS_REMAINING"
+            );
+        }
+
+        const isType5 = existing.goal_type_id === 5;
+        const newCost = data.current_cost !== undefined
+            ? data.current_cost
+            : existing.current_cost ? Number(existing.current_cost) : null;
+
+        const newTargetAmount = data.target_amount !== undefined
+            ? data.target_amount
+            : existing.target_amount ? Number(existing.target_amount) : null;
+
+        const calculationAmount = isType5 ? (newTargetAmount ?? 0) : (newCost ?? 0);
+        const newSavings = data.current_savings !== undefined ? data.current_savings : Number(existing.current_savings);
+
+        const newInflation = data.inflation_rate !== undefined
+            ? normalizeRate(data.inflation_rate)
+            : existing.inflation_rate ? Number(existing.inflation_rate) : null;
+
+        const newReturn = data.expected_return_rate !== undefined
+            ? normalizeRate(data.expected_return_rate)
+            : Number(existing.expected_return_rate);
+
+        // Recalculate projections
+        const projections = calculateGoalProjections({
+            current_cost: calculationAmount,
+            years_remaining: newYears,
+            current_savings: newSavings,
+            inflation_rate: newInflation,
+            expected_return_rate: newReturn,
+            is_inflation_adjusted: !isType5,
         });
 
-        return user_goal;
-    }
+        let target_date = existing.target_date;
+        if (data.years_remaining !== undefined) {
+            target_date = new Date();
+            target_date.setFullYear(target_date.getFullYear() + newYears);
+        }
 
+        const updated = await db.userGoals.update({
+            where: { id: goal_id },
+            data: {
+                ...(data.goal_name && { goal_name: data.goal_name }),
+                ...(data.child_name !== undefined && { child_name: data.child_name }),
+                ...(data.child_age !== undefined && { child_age: data.child_age }),
+                ...(data.asset_subtype !== undefined && { asset_subtype: data.asset_subtype }),
+                ...(data.years_remaining !== undefined && { years_remaining: newYears, target_date }),
+                ...(newCost !== null && !isType5 && { current_cost: new Prisma.Decimal(newCost) }),
+                ...(newTargetAmount !== null && isType5 && { target_amount: new Prisma.Decimal(newTargetAmount) }),
+                current_savings: new Prisma.Decimal(newSavings),
+                inflation_rate: newInflation !== null ? new Prisma.Decimal(newInflation) : null,
+                expected_return_rate: new Prisma.Decimal(newReturn),
+                future_target_amount: new Prisma.Decimal(projections.future_target_amount),
+                fv_current_savings: new Prisma.Decimal(projections.fv_current_savings),
+                net_required_corpus: new Prisma.Decimal(projections.net_required_corpus),
+                required_monthly_sip: new Prisma.Decimal(projections.required_monthly_sip),
+                required_lumpsum_today: new Prisma.Decimal(projections.required_lumpsum_today),
+                ...(data.status && { status: data.status }),
+            },
+        });
+
+        logger.info(`Goal updated successfully: ${goal_id}`);
+        return updated;
+    };
+
+    /**
+     * Delete / archive a goal.
+     */
+    deleteGoal = async (user_id: string, goal_id: string) => {
+        const existing = await db.userGoals.findFirst({
+            where: {
+                id: goal_id,
+                user_id,
+                status: { not: "DELETED" },
+            },
+        });
+
+        if (!existing) {
+            throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
+        }
+
+        const deleted = await db.userGoals.update({
+            where: { id: goal_id },
+            data: { status: "DELETED" },
+        });
+
+        return deleted;
+    };
+
+    /**
+     * Sync database goals for onboarding flow.
+     */
     sync_db = async (user_id: string, goals: UserGoalInput[] | undefined, tx: TxClient | typeof db = db) => {
-        const created_goals: Array<{ id: string; goal_type_id: number; }> = [];
+        const created_goals: Array<{ id: string; goal_type_id: number }> = [];
 
         await tx.userGoals.deleteMany({ where: { user_id } });
 
-        if (goals) {
+        if (goals && goals.length > 0) {
             for (const goal of goals) {
-                const created_goal = await tx.userGoals.create({
-                    data: { user_id, ...goal } as any,
+                const cfg = await this.getConfigForType(goal.goal_type_id);
+                const isType5 = goal.goal_type_id === 5;
+                const cost = isType5 ? Number((goal as any).target_amount) : Number((goal as any).current_cost);
+
+                const inflation_rate = goal.inflation_rate !== undefined && goal.inflation_rate !== null
+                    ? normalizeRate(goal.inflation_rate)
+                    : (cfg.inflation_rate ? Number(cfg.inflation_rate) : null);
+
+                const expected_return_rate = goal.expected_return_rate !== undefined && goal.expected_return_rate !== null
+                    ? normalizeRate(goal.expected_return_rate)
+                    : Number(cfg.expected_return_rate);
+
+                const projections = calculateGoalProjections({
+                    current_cost: cost,
+                    years_remaining: goal.years_remaining,
+                    current_savings: Number(goal.current_savings || 0),
+                    inflation_rate,
+                    expected_return_rate,
+                    is_inflation_adjusted: !isType5,
+                });
+
+                let goal_name = (goal as any).goal_name?.trim();
+                if (!goal_name) {
+                    if (goal.goal_type_id === 1) goal_name = `${goal.child_name}'s Education`;
+                    else if (goal.goal_type_id === 2) goal_name = `${goal.child_name}'s Marriage`;
+                    else if (goal.goal_type_id === 3) goal_name = "My Home";
+                    else if (goal.goal_type_id === 4) goal_name = "My Vehicle";
+                    else if (goal.goal_type_id === 5) goal_name = "My Savings";
+                    else goal_name = "My Goal";
+                }
+
+                const target_date = new Date();
+                target_date.setFullYear(target_date.getFullYear() + goal.years_remaining);
+
+                const created = await tx.userGoals.create({
+                    data: {
+                        user_id,
+                        goal_type_id: goal.goal_type_id,
+                        goal_name,
+                        child_name: (goal as any).child_name ?? null,
+                        child_age: (goal as any).child_age ?? null,
+                        asset_subtype: (goal as any).asset_subtype ?? null,
+                        years_remaining: goal.years_remaining,
+                        target_date,
+                        current_cost: !isType5 ? new Prisma.Decimal(cost) : null,
+                        target_amount: isType5 ? new Prisma.Decimal(cost) : null,
+                        current_savings: new Prisma.Decimal(goal.current_savings || 0),
+                        inflation_rate: inflation_rate !== null ? new Prisma.Decimal(inflation_rate) : null,
+                        expected_return_rate: new Prisma.Decimal(expected_return_rate),
+                        future_target_amount: new Prisma.Decimal(projections.future_target_amount),
+                        fv_current_savings: new Prisma.Decimal(projections.fv_current_savings),
+                        net_required_corpus: new Prisma.Decimal(projections.net_required_corpus),
+                        required_monthly_sip: new Prisma.Decimal(projections.required_monthly_sip),
+                        required_lumpsum_today: new Prisma.Decimal(projections.required_lumpsum_today),
+                        calculation_version: cfg.config_version || "v2.0",
+                        status: "ACTIVE",
+                    },
                     select: { id: true, goal_type_id: true },
                 });
 
-                created_goals.push(created_goal);
+                created_goals.push(created);
             }
         }
 
         return created_goals;
-    }
+    };
 
-    sync_finsys = async (user: any, goals: UserGoalInput[] | undefined, db_goals?: Array<{ id: string; goal_type_id: number; }> | any) => {
-        if (!goals || goals.length === 0) return;
+    /**
+     * Kept for backwards compatibility with onboarding service (now a no-op since FinSys is removed).
+     */
+    sync_finsys = async (_user: any, _goals: any, _db_goals?: any) => {
+        logger.debug("sync_finsys called: FinSys sync disabled for Goals v2");
+        return;
+    };
 
-        const fallback_db_goals = db_goals ?? await db.userGoals.findMany({
-            where: { user_id: user.id },
-            select: { id: true, goal_type_id: true },
-            orderBy: { createdAt: "asc" },
-        });
-
-        await Promise.all(goals.map(async (goal, index) => {
-            const db_goal = fallback_db_goals[index] ?? fallback_db_goals.find((g: any) => g.goal_type_id === goal.goal_type_id);
-            if (!db_goal) {
-                logger.warn(`No matching DB goal found while syncing goal_type_id ${goal.goal_type_id}`);
-                return;
-            }
-
-            const params = this.extract_params(user, goal);
-            try {
-                const res = await axios.get(this.finsys_api, { params });
-                logger.debug(`FinSys goal sync res for type ${goal.goal_type_id} ==> `, res.data);
-
-                if (res.data.results?.[0]?.gid) {
-                    await db.userGoals.update({
-                        where: { id: db_goal.id },
-                        data: { goal_id: parseInt(res.data.results[0].gid) },
-                    });
-                }
-            } catch (err) {
-                logger.error(`FinSys sync failed for goal_type_id ${goal.goal_type_id}:`, err);
-            }
-        }));
-    }
-
-    async delete_all_goals(user_id: string, tx: TxClient | typeof db = db) {
+    /**
+     * Delete all goals for a user.
+     */
+    delete_all_goals = async (user_id: string, tx: TxClient | typeof db = db) => {
         return await tx.userGoals.deleteMany({
-            where: {
-                user_id: user_id,
-            },
+            where: { user_id },
         });
-    }
-
-
-    map_scheme_to_goal = async (user_log: string, user_pwd: string, goal_id: number, operation: "ADD" | "DEL", data?: {
-        folio: string,
-        scheme_id: string,
-    }) => {
-        try {
-            const response = await axios.post(this.finsys_api, null, {
-                params: {
-                    log: user_log,
-                    pwd: user_pwd,
-                    svc: "goalmapping",
-                    todo: operation === "ADD" ? 1 : 2,
-                    gid: goal_id,
-                    folio: operation === "ADD" ? data?.folio : "",
-                    scheme_id: operation === "ADD" ? data?.scheme_id : "",
-                }
-            });
-
-            logger.debug(`FinSys map_scheme_to_goal response for goal_id ${goal_id} ==> `, response.data);
-            return response.data;
-
-        } catch (error) {
-            throw error;
-        }
-    }
-
-
-    get_goal_scheme_mappings = async (user_log: string, user_pwd: string, goal_id: number) => {
-        try {
-            const response = await axios.post(this.finsys_api, null, {
-                params: {
-                    log: user_log,
-                    pwd: user_pwd,
-                    svc: "goalinvestments",
-                    gid: goal_id,
-                }
-            });
-
-            logger.debug(`FinSys get_goal_scheme_mappings response for goal_id ${goal_id} ==> `, response.data);
-            return response.data;
-
-        } catch (error) {
-            throw error;
-        }
-    }
+    };
 }
-
-
 
 export const user_goal_service = new UserGoalServiceClass();
