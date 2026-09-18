@@ -21,7 +21,7 @@ const upload = multer({
 });
 
 user_router.get("/", login_require, user_controller.get_user)
-user_router.get("/all", login_require, user_controller.get_all_user)
+user_router.get("/all", user_controller.get_all_user)
 user_router.get("/portfolio", login_require, user_controller.get_user_portfolio)
 
 
