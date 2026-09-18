@@ -34,6 +34,7 @@ model User {
   kyc_profile               KycProfile?
   nominees                  Nominee[]
   mf_transaction_plans      MfTransactionPlan[]
+  mf_cart_items             MfCartItem[]
   user_assets               UserAssets?
   user_bank_details         UserBankDetails[]
   user_finance              UserFinance?
