@@ -138,7 +138,7 @@ class UserGoalServiceClass {
         // Use custom rate if passed, otherwise fall back to system config
         const inflationRate = input.inflation_rate !== undefined && input.inflation_rate !== null
             ? normalizeRate(input.inflation_rate)
-            : (cfg.inflation_rate ? Number(cfg.inflation_rate) : null);
+            : Number(cfg.inflation_rate);
 
         const expectedReturnRate = input.expected_return_rate !== undefined && input.expected_return_rate !== null
             ? normalizeRate(input.expected_return_rate)
