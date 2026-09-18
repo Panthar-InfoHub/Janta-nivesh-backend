@@ -84,6 +84,7 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf", mf_router)
 app.use("/api/v2/frontend", frontend_router)
 app.use("/api/v2/user", user_router)
+app.use("/api/v2/user-goal", user_goal_router)
 app.use("/api/v2/report", report_router)
 
 

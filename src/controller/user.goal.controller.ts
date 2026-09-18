@@ -1,315 +1,185 @@
 import { NextFunction, Request, Response } from "express";
-import { goal_map_res, goal_map_zod_schema, GoalMapInput, user_goal_zod_schema, UserGoalInput } from "../lib/zod-schemas/goal.schema.js";
+import {
+    goal_calculate_schema,
+    user_goal_update_zod_schema,
+    user_goal_zod_schema,
+    GoalCalculateInput,
+    UserGoalInput,
+    UserGoalUpdateInput
+} from "../lib/zod-schemas/goal.schema.js";
 import logger from "../middleware/logger.js";
-import { user_goal_service } from "../services/onboarding/user.goal.service.js";
 import AppError from "../middleware/error.middleware.js";
-import { user_finnsys_service } from "../services/user.finnsys.service.js";
-import { wrapper_service } from "../services/wrapper.service.js";
-import { Prisma } from "../prisma/generated/prisma/client.js";
+import { user_goal_service } from "../services/onboarding/user.goal.service.js";
 
 class UserGoalControllerClass {
-
-    private toNumber = (val: any) =>
-        parseFloat(String(val).replace(/,/g, ""));
-
-    onboarding_create = async (req: Request) => {
-        const user = req.user!;
-        const data = req.body;
-
-        logger.debug(`Processing onboarding goal for User ID: ${user.id}`);
-
-        // verify goal data here using zod schema
-        const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
-        return await user_goal_service.createGoal(user, user_goal_data);
-    }
-
-    create = async (req: Request, res: Response, next: NextFunction) => {
+    /**
+     * GET /api/v2/user-goal/config
+     * Returns supported goal types, calculation modes, allowed tenure ranges, chips, and default rates.
+     */
+    get_config = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const user = req.user!;
-            const data = req.body;
+            logger.debug(`User goal config request..`)
+            const config = await user_goal_service.getConfig();
+            res.status(200).json({
+                success: true,
+                message: "Goal configuration fetched successfully",
+                data: config,
+            });
+        } catch (error) {
+            logger.error("Error in get_config:", error);
+            next(error);
+        }
+    };
 
-            const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
-            const result = await user_goal_service.createGoal(user, user_goal_data);
+    /**
+     * POST /api/v2/user-goal/calculate
+     * Stateless calculation preview endpoint for sliders and interactive simulators.
+     */
+    calculate = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const input: GoalCalculateInput = goal_calculate_schema.parse(req.body);
+            const result = await user_goal_service.calculate(input);
 
             res.status(200).json({
                 success: true,
-                message: "Goal created successfully",
-                data: result
+                message: "Goal projection calculated successfully",
+                data: result,
             });
-            return;
+        } catch (error) {
+            logger.error("Error in calculate goal preview:", error);
+            next(error);
+        }
+    };
 
+    /**
+     * POST /api/v2/user-goal
+     * Creates and saves a goal with computed projection snapshot.
+     */
+    create = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const data: UserGoalInput = user_goal_zod_schema.parse(req.body);
 
+            const result = await user_goal_service.createGoal(user.id, data);
+
+            res.status(201).json({
+                success: true,
+                message: "Goal created successfully",
+                data: result,
+            });
         } catch (error) {
             logger.error("Error in createGoal:", error);
             next(error);
-            return;
         }
-    }
+    };
 
+    /**
+     * GET /api/v2/user-goal
+     * Lists all active goals for authenticated user with live progress.
+     */
+    get_all = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const goals = await user_goal_service.getUserGoals(user.id);
+
+            res.status(200).json({
+                success: true,
+                message: "User goals fetched successfully",
+                data: goals,
+            });
+        } catch (error) {
+            logger.error("Error in get_all user goals:", error);
+            next(error);
+        }
+    };
+
+    /**
+     * GET /api/v2/user-goal/:id
+     * Returns a single goal by ID.
+     */
+    get_by_id = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const goal_id = req.params.id as string;
+
+            if (!goal_id) {
+                throw new AppError("Goal ID is required", 400, "GOAL_ID_REQUIRED");
+            }
+
+            const goal = await user_goal_service.getGoalById(user.id, goal_id);
+
+            res.status(200).json({
+                success: true,
+                message: "Goal fetched successfully",
+                data: goal,
+            });
+        } catch (error) {
+            logger.error("Error in get_by_id:", error);
+            next(error);
+        }
+    };
+
+    /**
+     * PATCH /api/v2/user-goal/:id
+     * Updates goal inputs and recalculates projection metrics.
+     */
     update = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const goal_record_id = req.params.goal_id as string;
-            const data = req.body;
+            const goal_id = req.params.id as string;
 
-            if (!goal_record_id) {
-                throw new AppError("goal_id is required for updating a goal", 400, "GOAL_ID_REQUIRED");
+            if (!goal_id) {
+                throw new AppError("Goal ID is required", 400, "GOAL_ID_REQUIRED");
             }
 
-            // verify goal data using existing zod schema
-            const user_goal_data: UserGoalInput = user_goal_zod_schema.parse(data);
-
-            const result = await user_goal_service.updateGoal(user, goal_record_id, user_goal_data);
+            const data: UserGoalUpdateInput = user_goal_update_zod_schema.parse(req.body);
+            const result = await user_goal_service.updateGoal(user.id, goal_id, data);
 
             res.status(200).json({
                 success: true,
                 message: "Goal updated successfully",
-                data: result
+                data: result,
             });
-            return;
-
         } catch (error) {
-            logger.error("Error in updateGoal:", error);
+            logger.error("Error in update goal:", error);
             next(error);
         }
-    }
+    };
 
-
+    /**
+     * DELETE /api/v2/user-goal/:id
+     * Deletes / archives a goal.
+     */
     delete_goal = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const goal_record_id = req.params.goal_id as string;
-            logger.info(`Received request to delete goal for User ID: ${user.id} with goal_id: ${goal_record_id}`);
+            const goal_id = req.params.id as string;
 
-            if (!goal_record_id) {
-                logger.warn("goal_id is missing in delete_goal request");
-                throw new AppError("goal_id is required for deleting a goal", 400);
+            if (!goal_id) {
+                throw new AppError("Goal ID is required", 400, "GOAL_ID_REQUIRED");
             }
 
-            const result = await user_goal_service.delete_goal(user, goal_record_id);
-
-            const finnsys_goal_id = result?.goal_id;
-
-            if (finnsys_goal_id) {
-                const finnsys_res = await user_finnsys_service.delete_user_finnsys_goal(user.log!, user.pwd!, finnsys_goal_id);
-                logger.debug(`FinSys delete goal response for goal_id ${goal_record_id} ==> `, finnsys_res);
-
-                if (String(finnsys_res.code) !== "1") {
-                    logger.warn(`FinSys failed to delete goal with goal_id ${goal_record_id}. Response ==> `, finnsys_res);
-                    throw new AppError("Failed to delete goal from FinSys", 500, "FINNSYS_DELETE_GOAL_FAILED");
-                }
-            }
+            const result = await user_goal_service.deleteGoal(user.id, goal_id);
 
             res.status(200).json({
                 success: true,
                 message: "Goal deleted successfully",
-                data: result
+                data: result,
             });
-            return;
-
         } catch (error) {
-            logger.error("Error in Delete goal api:", error);
+            logger.error("Error in delete_goal:", error);
             next(error);
         }
-    }
+    };
 
-    map_goal = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-
-            const user = req.user!;
-            const goal_map_data: GoalMapInput = goal_map_zod_schema.parse(req.body);
-
-            logger.debug(`Mapping scheme to goal for User ID: ${user.id} with data ==> `, goal_map_data);
-            const { goal_id, map_data } = goal_map_data;
-
-            const goal_res: goal_map_res[] = [];
-
-            for (const mapping of map_data) {
-                logger.debug(`Mapping scheme_id ${mapping.scheme_id} with folio ${mapping.folio} to goal_id ${goal_id} for user ${user.id}`);
-                const result = await user_goal_service.map_scheme_to_goal(user.log!, user.pwd!, goal_map_data.goal_id, "ADD", {
-                    folio: mapping.folio,
-                    scheme_id: mapping.scheme_id
-                });
-
-                if (result.code === 0) {
-                    logger.warn(`Scheme ${mapping.scheme_id} already mapped`)
-                    goal_res.push({
-                        code: 0,
-                        message: `Scheme ${mapping.scheme_id} already mapped`,
-                        folio: mapping.folio,
-                        scheme_id: mapping.scheme_id
-                    })
-                }
-                else if (result.code === 1) {
-                    logger.info(`Scheme ${mapping.scheme_id} mapped successfully`)
-                    goal_res.push({
-                        code: 1,
-                        message: `Scheme ${mapping.scheme_id} mapped successfully`,
-                        folio: mapping.folio,
-                        scheme_id: mapping.scheme_id
-                    })
-                } else {
-                    logger.error(`Failed to map scheme ${mapping.scheme_id}. Response from FinSys ==> `, result);
-                    throw new AppError(`Failed to map scheme ${mapping.scheme_id} to goal`, 500, "GOAL_MAPPING_FAILED", result);
-                }
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "Goal mapped successfully",
-                data: goal_res
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in Map goal api:", error);
-            next(error);
-        }
-    }
-
-    remove_goal_mapping = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const user = req.user!;
-            const { goal_id } = req.body;
-            logger.debug(`Removing scheme mapping for User ID: ${user.id} with data ==> `, goal_id);
-
-            const result = await user_goal_service.map_scheme_to_goal(user.log!, user.pwd!, Number(goal_id), "DEL");
-
-            if (result.code != 0 && result.code != 1) {
-                logger.error("Error while removing the mapping on goal ==> ", result)
-                throw new AppError("Failed to remove goal mapping", 500, "GOAL_MAPPING_FAILED", result);
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "Goal unmapped successfully",
-                data: result
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in Remove goal mapping api:", error);
-            next(error);
-        }
-    }
-
-    calculate_corpus_value = (currentMonthlyExpense: number, inflationRate: number, returnRate: number, yearsToRetirement: number, yearsPostRetirement: number): number => {
-        if (yearsToRetirement <= 0 || yearsPostRetirement <= 0) {
-            return 0;
-        }
-
-        const annualExpenseNow = currentMonthlyExpense * 12;
-
-        const expenseAtRetirement =
-            annualExpenseNow * Math.pow(1 + inflationRate, yearsToRetirement);
-
-        const r = returnRate;
-        const g = inflationRate;
-        const n = yearsPostRetirement;
-
-        if (Math.abs(r - g) < 1e-9) {
-            const pv = expenseAtRetirement * (n / (1 + r));
-            return pv * (1 + r);
-        } else {
-            const growthFactor = (1 + g) / (1 + r);
-            const pv =
-                expenseAtRetirement *
-                (1 - Math.pow(growthFactor, n)) /
-                (r - g);
-            return pv * (1 + r);
-        }
-    }
-
-    get_goal_by_id = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-
-            const user = req.user!;
-            const goal_id = req.params.id as string;
-            let schemes = [];
-            let goal_schemes: any = []
-            let goalIdToCurrvalMap = new Map<string, number>();
-
-            logger.debug(`Getting goal details for User ID: ${user.id} with goal_id ==> ${goal_id}`);
-
-            const goal = await user_goal_service.get_goal_by_id(user, goal_id);
-
-
-            try {
-                const [portfolio_res, goal_schemes_response] = await Promise.all([
-                    wrapper_service.get_user_portfolio_cached(user.id, user.log, user.pwd),
-                    user_goal_service.get_goal_scheme_mappings(user.log!, user.pwd!, Number(goal.goal_id))
-                ])
-
-                if (portfolio_res && portfolio_res.results) {
-                    portfolio_res.results.forEach((item: any) => {
-                        if (item.gid) {
-                            const currval = this.toNumber(item.currval);
-                            const existing = goalIdToCurrvalMap.get(String(item.gid)) || 0;
-                            goalIdToCurrvalMap.set(String(item.gid), existing + currval);
-                        }
-                    });
-                }
-                goal_schemes = goal_schemes_response
-            } catch (error) {
-                logger.warn("Failed to fetch portfolio for mapping goals currval in get_user", error);
-            }
-
-
-            if (goal_schemes && (goal_schemes.code != 1 && goal_schemes.code != 0)) {
-                logger.error(`Failed to get goal scheme mappings for goal_id ${goal_id}. Response from FinSys ==> `, goal_schemes);
-                throw new AppError(`Failed to get goal scheme mappings for goal_id ${goal_id}`, 500, "GET_GOAL_SCHEMES_FAILED", goal_schemes);
-            }
-
-            schemes = goal_schemes?.results?.map((scheme: any) => ({
-                scheme_id: scheme.schemeid,
-                folio: scheme.folio,
-                actualfolio: scheme.actualfolio,
-                scheme_name: scheme.schemename,
-                bal_units: scheme.balunits,
-                nav: scheme.nav,
-                current_val: scheme.currval,
-            }));
-
-            const response: any = {
-                ...goal,
-                schemes: schemes ?? []
-            }
-
-            // For retirement goals (goal_type_id === 3), compute and append corpus value
-            if (goal.goal_type_id === 3) {
-                const years_to_retirement = (goal.retirement_age ?? 0) - (goal.current_age ?? 0);
-                const years_post_retirement = (goal.life_expectancy ?? 0) - (goal.retirement_age ?? 0);
-
-                const corpus_value = this.calculate_corpus_value(
-                    Number(goal.current_monthly_expense ?? 0),
-                    Number(goal.inflation_rate ?? 0) / 100,       // stored as % (e.g. 7), formula needs 0.07
-                    Number(goal.post_retirement_return ?? 0) / 100, // stored as % (e.g. 6), formula needs 0.06
-                    years_to_retirement,
-                    years_post_retirement
-                );
-
-                response.current_goal_cost = Math.round(corpus_value * 100) / 100;
-                logger.debug(`Computed corpus value for retirement goal ${goal_id}: ${corpus_value}`);
-            }
-
-            const current_value = goalIdToCurrvalMap.get(String(goal.goal_id)) || 0;
-            if (current_value > 0) {
-                const total_amount = Math.abs(Number(goal.current_saved_amount || 0)) + current_value;
-                response.current_saved_amount = new Prisma.Decimal(Math.round(total_amount));
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "Goal mapped successfully",
-                data: response
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in Map goal api:", error);
-            next(error);
-        }
-    }
+    /**
+     * Onboarding helper
+     */
+    onboarding_create = async (req: Request) => {
+        const user = req.user!;
+        const data: UserGoalInput = user_goal_zod_schema.parse(req.body);
+        return await user_goal_service.createGoal(user.id, data);
+    };
 }
 
 export const user_goal_controller = new UserGoalControllerClass();
