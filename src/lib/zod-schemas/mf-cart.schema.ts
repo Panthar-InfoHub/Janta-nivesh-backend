@@ -37,10 +37,6 @@ export const add_mf_cart_item_schema = z.object({
             });
         }
     }
-
-    if (data.cart_type === "SIP" && data.installment_day === undefined) {
-        
-    }
 });
 
 export const update_mf_cart_item_schema = z
