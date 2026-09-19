@@ -6,9 +6,11 @@ import { mf_redemption_plan_router } from "./mf-redemption-plan.router.js";
 import { mf_redemption_router } from "./mf-redemption.router.js";
 import { mf_switch_plan_router } from "./mf-switch-plan.router.js";
 import { mf_switch_router } from "./mf-switch.router.js";
+import { mf_cart_router } from "./mf-cart.router.js";
 
 export const mf_router = Router();
 
+mf_router.use("/cart", mf_cart_router);
 mf_router.use("/purchase", mf_purchase_router);
 mf_router.use("/purchase-plan", mf_purchase_plan_router);
 mf_router.use("/redemption-plan", mf_redemption_plan_router);

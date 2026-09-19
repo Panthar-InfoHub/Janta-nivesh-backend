@@ -24,6 +24,7 @@ model MfProduct {
   updatedAt       DateTime  @default(now()) @updatedAt
 
   nav_history     MfNavHistory[]
+  mf_cart_items   MfCartItem[]
   metrics         MfMetrics?
   scheme_plan     MfSchemePlan?
   mf_transactions MfTransactionPlan[] // Restrict on the other side - a fund with orders can't be deleted
@@ -181,4 +182,32 @@ model MfMetrics {
   mf_product     MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
 
   @@index([mf_product_id])
+}
+
+enum MfCartType {
+  LUMPSUM
+  SIP
+}
+
+enum MfFrequency {
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+model MfCartItem {
+  id              String       @id @default(cuid())
+  user_id         String
+  mf_product_id   String
+  cart_type       MfCartType
+  amount          Decimal      @db.Decimal(12, 2)
+  frequency       MfFrequency?
+  installment_day Int?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  mf_product MfProduct @relation(fields: [mf_product_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, mf_product_id, cart_type])
 }
