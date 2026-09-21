@@ -35,11 +35,7 @@ class MfPurchasePlanControllerClass {
             }
 
             // An APPROVED mandate must be the payment_source before the plan can be confirmed
-            const mandates = await mandate_service.get_all(user_id);
-            const approved_mandate = mandates.find((m) => m.status === "SUCCESS");
-            if (!approved_mandate) {
-                throw new AppError("No approved mandate found - create and authorize a mandate first", 400, "APPROVED_MANDATE_REQUIRED");
-            }
+            const approved_mandate = await mandate_service.find_valid_mandate_for_sip(user_id, input.amount);
 
             // The client names the fund by our catalogue id; the ISIN FP needs is derived here.
             // An unresolvable id is rejected before FP is called, so no plan can exist against a
@@ -189,11 +185,10 @@ class MfPurchasePlanControllerClass {
                 throw new AppError("Purchase plan not found", 404, "MF_PURCHASE_PLAN_NOT_FOUND");
             }
 
-            const mandates = await mandate_service.get_all(user_id);
-            const approved_mandate = mandates.find((m) => m.status === "SUCCESS");
-            if (!approved_mandate) {
-                throw new AppError("No approved mandate found", 400, "APPROVED_MANDATE_REQUIRED");
-            }
+            const approved_mandate = await mandate_service.find_valid_mandate_for_sip(
+                user_id,
+                plan.amount ? Number(plan.amount) : undefined
+            );
 
             const user = await user_service.get_user_by_id(user_id);
             if (!user?.email || !user?.phone_no) {
