@@ -1,6 +1,12 @@
 import { db } from "../server.js";
 import AppError from "../middleware/error.middleware.js";
 import { mf_threshold_validation_service } from "./mutual-funds/mf-threshold-validation.service.js";
+import cuid from "cuid";
+import { redis } from "../lib/redis.js";
+import { fintech_primitive_mf_purchase_service } from "./fintech-primitive/mf_purchase.service.js";
+import { mf_transaction_plan_service } from "./mf-transaction-plan.service.js";
+import { plan_confirmation_otp_service } from "./plan-confirmation-otp.service.js";
+import { user_service } from "./user.service.js";
 import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
@@ -312,6 +318,163 @@ class MfCartServiceClass {
             deleted_count: result.count,
         };
     };
+
+    initiate_lumpsum_checkout = async (user_id: string) => {
+
+        const cart_items = await db.mfCartItem.findMany({
+            where: {
+                user_id,
+                cart_type: "LUMPSUM",
+            },
+            include: {
+                mf_product: {
+                    select: {
+                        id: true,
+                        isin: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: "asc",
+            },
+        });
+
+        if (cart_items.length === 0) {
+            throw new AppError(
+                "No lumpsum items found in cart",
+                400,
+                "CART_EMPTY",
+            );
+        }
+
+        if (cart_items.length > 10) {
+            throw new AppError(
+                "Maximum 10 lumpsum orders are allowed per batch",
+                400,
+                "MF_BATCH_ORDERS_EXCEEDED",
+            );
+        }
+
+        const user = await db.user.findUnique({
+            where: {
+                id: user_id,
+            },
+            select: {
+                investment_account: true,
+                phone_no: true,
+            },
+        });
+
+        if (!user?.investment_account) {
+            throw new AppError(
+                "Investment account is not set up",
+                400,
+                "INVESTMENT_ACCOUNT_MISSING",
+            );
+        }
+
+        if (!user.phone_no) {
+            throw new AppError(
+                "Phone number is not available",
+                400,
+                "USER_PHONE_MISSING",
+            );
+        }
+
+        const orders: Array<{
+            amount: number;
+            scheme: string;
+            mf_investment_account: string;
+            gateway: "ondc";
+        }> = [];
+
+        for (const item of cart_items) {
+            // Product must exist in our MF catalogue
+            if (!item.mf_product?.isin) {
+                throw new AppError(
+                    "Fund not found in catalogue",
+                    404,
+                    "MF_PRODUCT_NOT_FOUND",
+                );
+            }
+
+            const amount = Number(item.amount);
+            const scheme = item.mf_product.isin;
+
+            await mf_threshold_validation_service.validate_lumpsum(
+                scheme,
+                amount,
+            );
+
+            orders.push({
+                amount,
+                scheme,
+                mf_investment_account: user.investment_account,
+                gateway: "ondc",
+            });
+        }
+
+        const fp_response =
+            await fintech_primitive_mf_purchase_service.create_batch_purchases(
+                orders,
+            );
+
+        const purchases = fp_response?.data;
+
+        if (!Array.isArray(purchases) || purchases.length === 0) {
+            throw new AppError(
+                "No purchases were returned by Fintech Primitives",
+                502,
+                "MF_BATCH_PURCHASE_EMPTY_RESPONSE",
+            );
+        }
+
+        const saved_orders = [];
+
+        for (const purchase of purchases) {
+            const saved =
+                await mf_transaction_plan_service.upsert_from_fp(
+                    user_id,
+                    "PURCHASE",
+                    purchase,
+                    false,
+                );
+
+            saved_orders.push(saved);
+        }
+
+        const batch_id = cuid();
+
+        // FP purchase IDs belonging to this batch
+        const order_ids = purchases.map(
+            (purchase: any) => purchase.id,
+        );
+
+        await redis.set(
+            `mf_cart_batch:${user_id}:${batch_id}`,
+            JSON.stringify(order_ids),
+            { EX: 5 * 60 },
+        );
+
+        await plan_confirmation_otp_service.request_otp(
+            user_id,
+            batch_id,
+            user.phone_no,
+        );
+
+        const total_amount = cart_items.reduce(
+            (total, item) => total + Number(item.amount),
+            0,
+        );
+
+        return {
+            batch_id,
+            orders_count: saved_orders.length,
+            total_amount,
+        };
+    };
+
+
 }
 
 export const mf_cart_service = new MfCartServiceClass();

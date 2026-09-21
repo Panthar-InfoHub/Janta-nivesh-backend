@@ -42,6 +42,7 @@ import { migration_router } from "./routes/migration.router.js"
 import { report_router } from "./routes/report.router.js"
 import { extendPrismaClient } from "./lib/extended-db.js"
 import { test_router } from "./routes/test.router.js"
+import { mf_cart_router } from "./routes/mf-cart.router.js"
 
 //Configurations
 dotenv.config()
@@ -115,6 +116,8 @@ app.use("/api/v1/report", report_router)
 
 app.use("/api/v1/kyc", kyc_router)
 app.use("/api/v1/bundles", bundle_router)
+app.use("/api/v2/mf/cart", mf_cart_router);
+
 //Health check
 app.get("/api/v1/ping", (_req, res) => {
     // throw new AppError("Service is running...", 501, "SERVER_RUNNING")
