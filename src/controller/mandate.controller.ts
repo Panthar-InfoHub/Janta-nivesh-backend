@@ -14,6 +14,18 @@ class MandateControllerClass {
             const user_id = req.user?.id!;
             const input = create_mandate_schema.parse(req.body);
 
+            if (input.skip === true) {
+                logger.info("User skipped mandate setup", { user_id });
+                res.status(200).json({
+                    success: true,
+                    message: "Mandate setup skipped",
+                    data: {
+                        skipped: true,
+                    },
+                });
+                return;
+            }
+
             const primary_bank = await user_bank_details_service.get_primary(user_id);
             if (!primary_bank?.fp_bank_account_old_id) {
                 throw new AppError(

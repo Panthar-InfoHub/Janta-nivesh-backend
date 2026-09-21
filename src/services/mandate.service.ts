@@ -1,6 +1,7 @@
 import { db } from "../server.js";
 import type { Prisma } from "../prisma/generated/prisma/client.js";
 import logger from "../middleware/logger.js";
+import AppError from "../middleware/error.middleware.js";
 
 class MandateServiceClass {
 
@@ -12,6 +13,41 @@ class MandateServiceClass {
             },
             orderBy: { createdAt: "desc" },
         });
+    };
+
+    /**
+     * Finds an approved, non-expired mandate covering the required amount.
+     * Throws specific AppError if no approved mandate exists, if all are expired, or if limit is insufficient.
+     */
+    find_valid_mandate_for_sip = async (user_id: string, required_amount?: number) => {
+        const mandates = await this.get_all(user_id);
+        const approved_mandates = mandates.filter((m) => m.status === "SUCCESS");
+
+        if (approved_mandates.length === 0) {
+            throw new AppError("No approved mandate found - create and authorize a mandate first", 400, "APPROVED_MANDATE_REQUIRED");
+        }
+
+        const now = new Date();
+        const active_mandates = approved_mandates.filter((m) => !m.end_date || new Date(m.end_date) >= now);
+
+        if (active_mandates.length === 0) {
+            throw new AppError("Approved mandate has expired. Please authorize a new mandate.", 400, "MANDATE_EXPIRED");
+        }
+
+        if (required_amount != null && required_amount > 0) {
+            const covering_mandates = active_mandates.filter((m) => Number(m.amount) >= required_amount);
+            if (covering_mandates.length === 0) {
+                const max_limit = Math.max(...active_mandates.map((m) => Number(m.amount)));
+                throw new AppError(
+                    `Approved mandate limit (₹${max_limit}) is less than required SIP installment amount (₹${required_amount}). Please authorize a new mandate.`,
+                    400,
+                    "MANDATE_LIMIT_EXCEEDED"
+                );
+            }
+            return covering_mandates[0];
+        }
+
+        return active_mandates[0];
     };
 
     get_by_fp_payment_id = async (fp_payment_id: string) => {
