@@ -75,15 +75,15 @@ class FintechPrimitiveMfPurchaseServiceClass {
             { order_count: payload.length, payload });
 
         try {
-            const reponse = await axios.post(`${this.base_url}/v2/mf/purchases/batch`,
+            const response = await axios.post(`${this.base_url}/v2/mf/purchases/batch`,
                 payload,
                 {
                     headers: await this.auth_headers({ "Content-Type": "application/json" }),
                 });
-            return reponse.data;
+            return response.data;
         }
         catch (error: any) {
-            logger.error("Error creating FP bacth Purchases: ", error.message || error?.response?.data);
+            logger.error("Error creating FP batch Purchases: ", error.message || error?.response?.data);
             throw new AppError("Failed to create batch MF purchase", 502, "MF_BATCH_PURCHASE_CREATE_FAILED");
         }
     }
