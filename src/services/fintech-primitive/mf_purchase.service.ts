@@ -63,19 +63,24 @@ class FintechPrimitiveMfPurchaseServiceClass {
             throw new AppError("Maximum 10 orders are allowed to create batch purchase", 400, "MF_BATCH_ORDERS_EXCEEDED");
         }
 
-        const payload = orders.map((order) => ({
-            mf_investment_account: order.mf_investment_account,
-            scheme: order.scheme,
-            amount: order.amount,
-            gateway: "ondc" as const,
-        })
+        const payload = {
+            mf_purchases: orders.map((order) => ({
+                mf_investment_account: order.mf_investment_account,
+                scheme: order.scheme,
+                amount: order.amount,
+                gateway: "ondc" as const,
+            })),
+        };
+
+        logger.debug(
+            "Creating FP batch MF purchases ==> ",
+            {
+                order_count: payload.mf_purchases.length,
+                payload,
+            },
         );
-
-        logger.debug("Creating FP batch MF purchases",
-            { order_count: payload.length, payload });
-
         try {
-            const response = await axios.post(`${this.base_url}/v2/mf/purchases/batch`,
+            const response = await axios.post(`${this.base_url}/v2/mf_purchases/batch`,
                 payload,
                 {
                     headers: await this.auth_headers({ "Content-Type": "application/json" }),
@@ -83,7 +88,7 @@ class FintechPrimitiveMfPurchaseServiceClass {
             return response.data;
         }
         catch (error: any) {
-            logger.error("Error creating FP batch Purchases: ", error.message || error?.response?.data);
+            logger.error("Error creating FP batch Purchases ==> ", error.message || error?.response?.data);
             throw new AppError("Failed to create batch MF purchase", 502, "MF_BATCH_PURCHASE_CREATE_FAILED");
         }
     }
