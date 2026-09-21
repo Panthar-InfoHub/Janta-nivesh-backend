@@ -51,6 +51,43 @@ class FintechPrimitiveMfPurchaseServiceClass {
         }
     }
 
+
+    create_batch_purchases = async (
+        orders: Array<{ amount: number; scheme: string; mf_investment_account: string; gateway: "ondc"; }>
+    ) => {
+        if (orders.length === 0) {
+            throw new AppError("At Least one order is required to create batch purchase", 400, "MF_BATCH_ORDERS_EMPTY");
+
+        }
+        if (orders.length > 10) {
+            throw new AppError("Maximum 10 orders are allowed to create batch purchase", 400, "MF_BATCH_ORDERS_EXCEEDED");
+        }
+
+        const payload = orders.map((order) => ({
+            mf_investment_account: order.mf_investment_account,
+            scheme: order.scheme,
+            amount: order.amount,
+            gateway: "ondc" as const,
+        })
+        );
+
+        logger.debug("Creating FP batch MF purchases",
+            { order_count: payload.length, payload });
+
+        try {
+            const reponse = await axios.post(`${this.base_url}/v2/mf/purchases/batch`,
+                payload,
+                {
+                    headers: await this.auth_headers({ "Content-Type": "application/json" }),
+                });
+            return reponse.data;
+        }
+        catch (error: any) {
+            logger.error("Error creating FP bacth Purchases: ", error.message || error?.response?.data);
+            throw new AppError("Failed to create batch MF purchase", 502, "MF_BATCH_PURCHASE_CREATE_FAILED");
+        }
+    }
+
     /** GET /v2/mf_purchases/:id - polled while the order sits in under_review. */
     get_purchase = async (fp_id: string) => {
         logger.debug("Fetching FP mf_purchase", { fp_id });
