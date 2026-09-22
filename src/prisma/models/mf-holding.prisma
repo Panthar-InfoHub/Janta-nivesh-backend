@@ -26,6 +26,10 @@ model MfHolding {
   mf_product_id String?
   mf_product    MfProduct? @relation(fields: [mf_product_id], references: [id], onDelete: SetNull)
 
+  // Link to a financial goal (optional: a holding can be allocated to at most one goal)
+  user_goal_id String?
+  user_goal    UserGoals? @relation(fields: [user_goal_id], references: [id], onDelete: SetNull)
+
   units            Decimal   @db.Decimal(18, 4)
   redeemable_units Decimal?  @db.Decimal(18, 4)
   nav              Decimal?  @db.Decimal(12, 4)
@@ -50,5 +54,6 @@ model MfHolding {
 
   @@unique([mf_investment_account, folio_number, isin])
   @@index([user_id])
+  @@index([user_goal_id])
   @@index([mf_product_id])
 }

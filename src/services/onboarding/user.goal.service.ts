@@ -248,6 +248,51 @@ class UserGoalServiceClass {
         return created;
     };
 
+    private static HOLDINGS_INCLUDE = {
+        include: {
+            mf_product: {
+                select: {
+                    id: true,
+                    name: true,
+                    isin: true,
+                    img_url: true,
+                    latest_nav: true,
+                    latest_nav_date: true,
+                },
+            },
+        },
+    } as const;
+
+    private formatGoalWithHoldings = (goal: any) => {
+        const holdings = (goal.holdings || []).map((h: any) => {
+            const { raw_response, ...rest } = h;
+            return rest;
+        });
+        const total_holdings_value = holdings.reduce(
+            (sum: number, h: any) => sum + Number(h.current_value || 0),
+            0
+        );
+        const total_invested_amount = holdings.reduce(
+            (sum: number, h: any) => sum + Number(h.invested_amount || 0),
+            0
+        );
+        const current_savings = Number(goal.current_savings || 0);
+        const total_current_value = Number((current_savings + total_holdings_value).toFixed(2));
+        const future_target = Number(goal.future_target_amount || 0);
+        const progress_percent = future_target > 0
+            ? Math.min(100, Math.round((total_current_value / future_target) * 100))
+            : 0;
+
+        return {
+            ...goal,
+            holdings,
+            total_holdings_value: Number(total_holdings_value.toFixed(2)),
+            total_invested_amount: Number(total_invested_amount.toFixed(2)),
+            total_current_value,
+            progress_percent,
+        };
+    };
+
     /**
      * Get all active goals for a user.
      */
@@ -257,19 +302,13 @@ class UserGoalServiceClass {
                 user_id,
                 status: { not: "DELETED" },
             },
+            include: {
+                holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+            },
             orderBy: { createdAt: "desc" },
         });
 
-        return goals.map((g) => {
-            const futureTarget = Number(g.future_target_amount || 0);
-            const currentSavings = Number(g.current_savings || 0);
-            const progress_percent = futureTarget > 0 ? Math.min(100, Math.round((currentSavings / futureTarget) * 100)) : 0;
-
-            return {
-                ...g,
-                progress_percent,
-            };
-        });
+        return goals.map(this.formatGoalWithHoldings);
     };
 
     /**
@@ -282,20 +321,16 @@ class UserGoalServiceClass {
                 user_id,
                 status: { not: "DELETED" },
             },
+            include: {
+                holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+            },
         });
 
         if (!goal) {
             throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
         }
 
-        const futureTarget = Number(goal.future_target_amount || 0);
-        const currentSavings = Number(goal.current_savings || 0);
-        const progress_percent = futureTarget > 0 ? Math.min(100, Math.round((currentSavings / futureTarget) * 100)) : 0;
-
-        return {
-            ...goal,
-            progress_percent,
-        };
+        return this.formatGoalWithHoldings(goal);
     };
 
     /**
@@ -403,12 +438,103 @@ class UserGoalServiceClass {
             throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
         }
 
+        // Unlink any holdings mapped to this goal so they are not tied to a deleted goal
+        await db.mfHolding.updateMany({
+            where: { user_goal_id: goal_id, user_id },
+            data: { user_goal_id: null },
+        });
+
         const deleted = await db.userGoals.update({
             where: { id: goal_id },
             data: { status: "DELETED" },
         });
 
         return deleted;
+    };
+
+    /**
+     * Map mutual fund holdings to a goal.
+     */
+    mapHoldingsToGoal = async (user_id: string, goal_id: string, holding_ids: string[]) => {
+        const goal = await db.userGoals.findFirst({
+            where: {
+                id: goal_id,
+                user_id,
+                status: { not: "DELETED" },
+            },
+        });
+
+        logger.debug(`Goal found for user proceed to mapping...`)
+
+        if (!goal) {
+            throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
+        }
+
+        const holdings = await db.mfHolding.findMany({
+            where: {
+                id: { in: holding_ids },
+                user_id,
+            },
+        });
+
+        if (holdings.length === 0) {
+            throw new AppError("No matching holdings found for this user", 404, "HOLDINGS_NOT_FOUND");
+        }
+
+        await db.mfHolding.updateMany({
+            where: {
+                id: { in: holding_ids },
+                user_id,
+            },
+            data: {
+                user_goal_id: goal_id,
+            },
+        });
+
+        logger.info(`Mapped ${holdings.length} holding(s) to goal ${goal_id} for user ${user_id}`);
+        return await this.getGoalById(user_id, goal_id);
+    };
+
+    /**
+     * Unmap mutual fund holdings from a goal.
+     */
+    unmapHoldingsFromGoal = async (user_id: string, holding_ids: string[], goal_id?: string) => {
+        if (goal_id) {
+            const goal = await db.userGoals.findFirst({
+                where: {
+                    id: goal_id,
+                    user_id,
+                    status: { not: "DELETED" },
+                },
+            });
+
+            if (!goal) {
+                throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
+            }
+        }
+
+        const whereClause: Prisma.MfHoldingWhereInput = {
+            id: { in: holding_ids },
+            user_id,
+            ...(goal_id ? { user_goal_id: goal_id } : {}),
+        };
+
+        const updated = await db.mfHolding.updateMany({
+            where: whereClause,
+            data: {
+                user_goal_id: null,
+            },
+        });
+
+        logger.info(`Unmapped ${updated.count} holding(s) from goal ${goal_id || "any"} for user ${user_id}`);
+
+        if (goal_id) {
+            return await this.getGoalById(user_id, goal_id);
+        }
+
+        return {
+            unmapped_count: updated.count,
+        };
     };
 
     /**
