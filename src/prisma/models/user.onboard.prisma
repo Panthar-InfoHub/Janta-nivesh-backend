@@ -123,7 +123,8 @@ model UserGoals {
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @default(now()) @updatedAt
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  holdings MfHolding[]
 
   @@index([user_id, status])
   @@index([user_id, goal_type_id], map: "user_goal_type_idx")

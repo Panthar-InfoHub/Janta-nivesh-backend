@@ -105,7 +105,55 @@ export const goal_calculate_schema = z.object({
 });
 
 /**
- * Mapping folios / schemes to goals
+ * Mapping mutual fund holdings to goals
+ */
+const holdingIdOrList = z.union([
+    z.array(z.string().min(1)).min(1, "At least one holding id is required"),
+    z.string().min(1).transform(id => [id]),
+]);
+
+export const map_goal_holding_schema = z.object({
+    goal_id: z.string().min(1, "goal_id is required"),
+    holding_ids: holdingIdOrList.optional(),
+    holding_id: holdingIdOrList.optional(),
+}).refine(data => (data.holding_ids && data.holding_ids.length > 0) || (data.holding_id && data.holding_id.length > 0), {
+    message: "At least one holding_id or holding_ids is required",
+    path: ["holding_ids"],
+}).transform(data => {
+    const ids = new Set<string>();
+    if (data.holding_ids) data.holding_ids.forEach(id => ids.add(id));
+    if (data.holding_id) data.holding_id.forEach(id => ids.add(id));
+    return {
+        goal_id: data.goal_id,
+        holding_ids: Array.from(ids),
+    };
+});
+
+/**
+ * Unmapping mutual fund holdings from goals
+ */
+export const unmap_goal_holding_schema = z.object({
+    goal_id: z.string().optional(),
+    holding_ids: holdingIdOrList.optional(),
+    holding_id: holdingIdOrList.optional(),
+}).refine(data => (data.holding_ids && data.holding_ids.length > 0) || (data.holding_id && data.holding_id.length > 0), {
+    message: "At least one holding_id or holding_ids is required",
+    path: ["holding_ids"],
+}).transform(data => {
+    const ids = new Set<string>();
+    if (data.holding_ids) data.holding_ids.forEach(id => ids.add(id));
+    if (data.holding_id) data.holding_id.forEach(id => ids.add(id));
+    return {
+        goal_id: data.goal_id,
+        holding_ids: Array.from(ids),
+    };
+});
+
+export type MapGoalHoldingInput = z.infer<typeof map_goal_holding_schema>;
+export type UnmapGoalHoldingInput = z.infer<typeof unmap_goal_holding_schema>;
+
+/**
+ * Legacy schema (kept for backwards compatibility)
  */
 export const goal_map_zod_schema = z.object({
     goal_id: z.string(),

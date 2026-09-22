@@ -16,3 +16,7 @@ user_goal_router.get("/", login_require, user_goal_controller.get_all);
 user_goal_router.get("/:id", login_require, user_goal_controller.get_by_id);
 user_goal_router.patch("/:id", login_require, user_goal_controller.update);
 user_goal_router.delete("/:id", login_require, user_goal_controller.delete_goal);
+
+// 4. Holding Mapping operations
+user_goal_router.post("/map", login_require, user_goal_controller.map_holdings);
+user_goal_router.post("/remove", login_require, user_goal_controller.unmap_holdings);

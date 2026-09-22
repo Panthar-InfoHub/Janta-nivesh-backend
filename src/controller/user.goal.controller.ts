@@ -3,9 +3,13 @@ import {
     goal_calculate_schema,
     user_goal_update_zod_schema,
     user_goal_zod_schema,
+    map_goal_holding_schema,
+    unmap_goal_holding_schema,
     GoalCalculateInput,
     UserGoalInput,
-    UserGoalUpdateInput
+    UserGoalUpdateInput,
+    MapGoalHoldingInput,
+    UnmapGoalHoldingInput
 } from "../lib/zod-schemas/goal.schema.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
@@ -168,6 +172,56 @@ class UserGoalControllerClass {
             });
         } catch (error) {
             logger.error("Error in delete_goal:", error);
+            next(error);
+        }
+    };
+
+    /**
+     * POST /api/v2/user-goal/map
+     * Maps one or more mutual fund holdings to a goal.
+     */
+    map_holdings = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const { goal_id, holding_ids } = map_goal_holding_schema.parse(req.body);
+
+            const result = await user_goal_service.mapHoldingsToGoal(user.id, goal_id, holding_ids);
+
+            res.status(200).json({
+                success: true,
+                message: "Holdings mapped to goal successfully",
+                data: result,
+            });
+        } catch (error) {
+            logger.error("Error in map_holdings:", error);
+            next(error);
+        }
+    };
+
+    /**
+     * POST /api/v2/user-goal/unmap or /api/v2/user-goal/remove
+     * DELETE /api/v2/user-goal/map or /api/v2/user-goal/remove
+     * Unmaps one or more mutual fund holdings from a goal.
+     */
+    unmap_holdings = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user!;
+            const payload = {
+                goal_id: req.body?.goal_id || req.query?.goal_id,
+                holding_ids: req.body?.holding_ids || req.body?.holding_id || req.query?.holding_ids || req.query?.holding_id,
+                holding_id: req.body?.holding_id || req.query?.holding_id,
+            };
+            const { goal_id, holding_ids } = unmap_goal_holding_schema.parse(payload);
+
+            const result = await user_goal_service.unmapHoldingsFromGoal(user.id, holding_ids, goal_id);
+
+            res.status(200).json({
+                success: true,
+                message: "Holdings unmapped from goal successfully",
+                data: result,
+            });
+        } catch (error) {
+            logger.error("Error in unmap_holdings:", error);
             next(error);
         }
     };
