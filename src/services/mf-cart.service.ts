@@ -6,6 +6,8 @@ import { redis } from "../lib/redis.js";
 import { fintech_primitive_mf_purchase_service } from "./fintech-primitive/mf_purchase.service.js";
 import { mf_transaction_plan_service } from "./mf-transaction-plan.service.js";
 import { plan_confirmation_otp_service } from "./plan-confirmation-otp.service.js";
+import { user_bank_details_service } from "./user-bank-details.service.js";
+import { fintech_primitive_payment_service } from "./fintech-primitive/payment.service.js";
 import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
@@ -474,6 +476,231 @@ class MfCartServiceClass {
         };
     };
 
+    confirm_lumpsum_checkout = async (
+        user_id: string,
+        batch_id: string,
+        otp: string,
+        payment_postback_url?: string,
+    ) => {
+        await plan_confirmation_otp_service.verify_otp(
+            user_id,
+            batch_id,
+            otp,
+        );
+
+        const batch_key = `mf_cart_batch:${user_id}:${batch_id}`;
+
+        const cached_batch = await redis.get(batch_key);
+
+        if (!cached_batch || typeof cached_batch !== "string") {
+            throw new AppError(
+                "Checkout session has expired",
+                400,
+                "BATCH_EXPIRED",
+            );
+        }
+
+        let order_ids: string[];
+
+        try {
+            order_ids = JSON.parse(cached_batch);
+        } catch {
+            throw new AppError(
+                "Invalid checkout batch",
+                400,
+                "INVALID_BATCH",
+            );
+        }
+
+        if (!Array.isArray(order_ids) || order_ids.length === 0) {
+            throw new AppError(
+                "No purchase orders found for this batch",
+                400,
+                "BATCH_ORDERS_EMPTY",
+            );
+        }
+
+        if (order_ids.length > 10) {
+            throw new AppError(
+                "Maximum 10 purchase orders are allowed in a batch",
+                400,
+                "MF_BATCH_ORDERS_EXCEEDED",
+            );
+        }
+
+        const orders = await db.mfTransactionPlan.findMany({
+            where: {
+                user_id,
+                fp_id: {
+                    in: order_ids,
+                },
+            },
+        });
+
+        if (orders.length !== order_ids.length) {
+            throw new AppError(
+                "Some purchase orders could not be found",
+                400,
+                "BATCH_ORDERS_NOT_FOUND",
+            );
+        }
+
+        const user = await db.user.findUnique({
+            where: {
+                id: user_id,
+            },
+            select: {
+                email: true,
+                phone_no: true,
+            },
+        });
+
+        if (!user?.email || !user?.phone_no) {
+            throw new AppError(
+                "User email and phone number are required",
+                400,
+                "USER_CONTACT_DETAILS_REQUIRED",
+            );
+        }
+
+        for (const order of orders) {
+            if (!order.fp_id) {
+                throw new AppError(
+                    "FP purchase ID is missing",
+                    400,
+                    "FP_PURCHASE_ID_MISSING",
+                );
+            }
+
+            await fintech_primitive_mf_purchase_service.update_purchase(
+                order.fp_id,
+                {
+                    consent: {
+                        email: user.email,
+                        mobile: user.phone_no,
+                        isd_code: "91",
+                    },
+                },
+            );
+
+            await mf_transaction_plan_service.mark_consent_given(
+                order.id,
+            );
+        }
+
+        const primary_bank =
+            await user_bank_details_service.get_primary(user_id);
+
+        if (!primary_bank?.fp_bank_account_old_id) {
+            throw new AppError(
+                "Primary bank account is not configured",
+                400,
+                "PRIMARY_BANK_ACCOUNT_NOT_FOUND",
+            );
+        }
+
+        const missing_old_id = orders.find(
+            (order) => !order.fp_old_id,
+        );
+
+        if (missing_old_id) {
+            throw new AppError(
+                "FP purchase old ID is missing",
+                400,
+                "FP_PURCHASE_OLD_ID_MISSING",
+            );
+        }
+
+        const payment =
+            await fintech_primitive_payment_service.create_payment({
+                amc_order_ids: orders.map(
+                    (order) => order.fp_old_id!,
+                ),
+                bank_account_id:
+                    primary_bank.fp_bank_account_old_id,
+                payment_postback_url,
+            });
+
+        if (!payment?.id) {
+            throw new AppError(
+                "Failed to create payment",
+                502,
+                "MF_PAYMENT_CREATE_FAILED",
+            );
+        }
+
+        const payment_id = String(payment.id);
+
+        for (const order of orders) {
+            await mf_transaction_plan_service.set_payment_id(
+                order.id,
+                payment_id,
+            );
+        }
+
+        const confirmed_response =
+            await fintech_primitive_mf_purchase_service.update_batch_purchases(
+                orders.map((order) => ({
+                    id: order.fp_id!,
+                    state: "confirmed" as const,
+                })),
+            );
+
+        const confirmed_orders =
+            confirmed_response?.data ?? [];
+
+        if (confirmed_orders.length > 0) {
+            for (const confirmed_order of confirmed_orders) {
+                await mf_transaction_plan_service.upsert_from_fp(
+                    user_id,
+                    "PURCHASE",
+                    confirmed_order,
+                    false,
+                );
+            }
+        } else {
+            await db.mfTransactionPlan.updateMany({
+                where: {
+                    user_id,
+                    fp_id: {
+                        in: order_ids,
+                    },
+                },
+                data: {
+                    state: "CONFIRMED",
+                },
+            });
+        }
+
+        await db.mfCartItem.deleteMany({
+            where: {
+                user_id,
+                cart_type: "LUMPSUM",
+            },
+        });
+
+        await redis.del(batch_key);
+
+        const final_orders =
+            await db.mfTransactionPlan.findMany({
+                where: {
+                    user_id,
+                    fp_id: {
+                        in: order_ids,
+                    },
+                },
+            });
+
+        return {
+            payment_url:
+                payment?.payment_url ??
+                payment?.token_url ??
+                null,
+            payment_id,
+            orders_count: final_orders.length,
+            orders: final_orders,
+        };
+    };
 
 }
 

@@ -69,3 +69,16 @@ export type AddMfCartItemInput = z.infer<
 export type UpdateMfCartItemInput = z.infer<
     typeof update_mf_cart_item_schema
 >;
+
+export const confirm_lumpsum_checkout_schema = z.object({
+    batch_id: z.string().min(1, "batch_id is required"),
+    otp: z.string().length(6, "OTP must be 6 digits"),
+    payment_postback_url: z
+        .string()
+        .url("Invalid payment_postback_url")
+        .optional(),
+});
+
+export type ConfirmLumpsumCheckoutInput = z.infer<
+    typeof confirm_lumpsum_checkout_schema
+>;

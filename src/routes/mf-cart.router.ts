@@ -40,3 +40,9 @@ mf_cart_router.post(
     login_require,
     mf_cart_checkout_controller.initiate_lumpsum_checkout,
 );
+
+mf_cart_router.post(
+    "/checkout/lumpsum/confirm",
+    login_require,
+    mf_cart_checkout_controller.confirm_lumpsum_checkout,
+);

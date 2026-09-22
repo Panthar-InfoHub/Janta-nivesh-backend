@@ -144,6 +144,67 @@ class FintechPrimitiveMfPurchaseServiceClass {
             throw new AppError("Failed to update MF purchase", 502, "MF_PURCHASE_UPDATE_FAILED");
         }
     }
+
+    update_batch_purchases = async (
+        updates: Array<{
+            id: string;
+            state: "confirmed";
+        }>,
+    ) => {
+        if (updates.length === 0) {
+            throw new AppError(
+                "No purchase orders provided",
+                400,
+                "MF_BATCH_ORDERS_EMPTY",
+            );
+        }
+
+        if (updates.length > 10) {
+            throw new AppError(
+                "Maximum 10 purchase orders are allowed in a batch",
+                400,
+                "MF_BATCH_ORDERS_EXCEEDED",
+            );
+        }
+
+        const payload = {
+            mf_purchases: updates,
+        };
+
+        logger.debug("Updating FP mf_purchase batch", {
+            payload,
+        });
+
+        try {
+            const response = await axios.patch(
+                `${this.base_url}/v2/mf_purchases/batch`,
+                payload,
+                {
+                    headers: await this.auth_headers({
+                        "Content-Type": "application/json",
+                    }),
+                },
+            );
+
+            logger.debug(
+                "FP mf_purchase batch update response ==> ",
+                response.data,
+            );
+
+            return response.data;
+        } catch (error: any) {
+            logger.error(
+                "Error updating FP mf_purchase batch ==> ",
+                error?.response?.data || error.message,
+            );
+
+            throw new AppError(
+                "Failed to confirm MF purchase batch",
+                502,
+                "MF_BATCH_CONFIRM_FAILED",
+            );
+        }
+    };
 }
 
 export const fintech_primitive_mf_purchase_service = new FintechPrimitiveMfPurchaseServiceClass();
