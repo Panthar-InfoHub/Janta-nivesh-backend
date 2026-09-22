@@ -6,7 +6,6 @@ import { redis } from "../lib/redis.js";
 import { fintech_primitive_mf_purchase_service } from "./fintech-primitive/mf_purchase.service.js";
 import { mf_transaction_plan_service } from "./mf-transaction-plan.service.js";
 import { plan_confirmation_otp_service } from "./plan-confirmation-otp.service.js";
-import { user_service } from "./user.service.js";
 import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
@@ -319,7 +318,7 @@ class MfCartServiceClass {
         };
     };
 
-    initiate_lumpsum_checkout = async (user_id: string) => {
+    initiate_lumpsum_checkout = async (user_id: string, user_ip: string) => {
 
         const cart_items = await db.mfCartItem.findMany({
             where: {
@@ -417,6 +416,7 @@ class MfCartServiceClass {
         const fp_response =
             await fintech_primitive_mf_purchase_service.create_batch_purchases(
                 orders,
+                user_ip,
             );
 
         const purchases = fp_response?.data;

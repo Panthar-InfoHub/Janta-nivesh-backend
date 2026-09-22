@@ -1,3 +1,4 @@
+import { isIPv4 } from "net";
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import { mf_cart_service } from "../services/mf-cart.service.js";
@@ -19,9 +20,25 @@ class MfCartCheckoutControllerClass {
                 return;
             }
 
+            let raw_ip =
+                req.headers["x-forwarded-for"] ||
+                req.ip ||
+                req.socket.remoteAddress ||
+                "127.0.0.1";
+
+            let user_ip = (Array.isArray(raw_ip) ? raw_ip[0] : raw_ip)
+                .split(",")[0]
+                .replace("::ffff:", "")
+                .trim();
+
+            if (!isIPv4(user_ip)) {
+                user_ip = "127.0.0.1";
+            }
+
             const result =
                 await mf_cart_service.initiate_lumpsum_checkout(
                     user_id,
+                    user_ip,
                 );
 
             res.status(200).json({

@@ -53,7 +53,14 @@ class FintechPrimitiveMfPurchaseServiceClass {
 
 
     create_batch_purchases = async (
-        orders: Array<{ amount: number; scheme: string; mf_investment_account: string; gateway: "ondc"; }>
+
+        orders: Array<{
+            amount: number;
+            scheme: string;
+            mf_investment_account: string;
+            gateway: "ondc";
+        }>,
+        user_ip: string,
     ) => {
         if (orders.length === 0) {
             throw new AppError("At Least one order is required to create batch purchase", 400, "MF_BATCH_ORDERS_EMPTY");
@@ -69,6 +76,7 @@ class FintechPrimitiveMfPurchaseServiceClass {
                 scheme: order.scheme,
                 amount: order.amount,
                 gateway: "ondc" as const,
+                user_ip,
             })),
         };
 
