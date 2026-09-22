@@ -34,8 +34,21 @@ class MfPurchasePlanControllerClass {
                 throw new AppError("Investment account not set up yet - complete the profile stage first", 400, "INVESTMENT_ACCOUNT_MISSING");
             }
 
-            // An APPROVED mandate must be the payment_source before the plan can be confirmed
-            const approved_mandate = await mandate_service.find_valid_mandate_for_sip(user_id, input.amount);
+            // Validate that the provided mandate_id exists and belongs to this user
+            const mandate = await mandate_service.get_user_mandate(user_id, input.mandate_id);
+            if (!mandate) {
+                throw new AppError("Mandate not found for this user", 404, "MANDATE_NOT_FOUND");
+            }
+
+            // Enforce dedicated per-SIP mandate (no mandate reuse across active SIP plans)
+            const is_already_used = await mf_transaction_plan_service.is_mandate_already_used(mandate.mandate_id);
+            if (is_already_used) {
+                throw new AppError(
+                    "This mandate is already linked to an existing SIP plan. Every SIP requires a newly created mandate.",
+                    400,
+                    "MANDATE_ALREADY_USED"
+                );
+            }
 
             // The client names the fund by our catalogue id; the ISIN FP needs is derived here.
             // An unresolvable id is rejected before FP is called, so no plan can exist against a
@@ -45,10 +58,10 @@ class MfPurchasePlanControllerClass {
                 throw new AppError("Fund not found in the catalogue", 404, "MF_PRODUCT_NOT_FOUND");
             }
 
-            const { mf_product_id, ...rest } = input;
+            const { mf_product_id, mandate_id, ...rest } = input;
             const resolved_input: ResolvedMfPurchasePlanInput = { ...rest, scheme: product.isin };
 
-            logger.info("Creating MF purchase plan", { user_id, scheme: product.isin, amount: input.amount, frequency: input.frequency });
+            logger.info("Creating MF purchase plan", { user_id, scheme: product.isin, amount: input.amount, frequency: input.frequency, mandate_id: mandate.mandate_id });
 
             // Per-fund limits before the FP call. installment_day is checked against the fund's own
             // allowed dates here - the zod bound is only a loose sanity check.
@@ -58,7 +71,7 @@ class MfPurchasePlanControllerClass {
             );
 
             const plan = await fintech_primitive_mf_purchase_plan_service.create_purchase_plan(
-                resolved_input, user.investment_account, approved_mandate.mandate_id, user_ip
+                resolved_input, user.investment_account, mandate.mandate_id, user_ip
             );
 
             if (!plan?.id) {
@@ -184,11 +197,6 @@ class MfPurchasePlanControllerClass {
             if (!plan) {
                 throw new AppError("Purchase plan not found", 404, "MF_PURCHASE_PLAN_NOT_FOUND");
             }
-
-            const approved_mandate = await mandate_service.find_valid_mandate_for_sip(
-                user_id,
-                plan.amount ? Number(plan.amount) : undefined
-            );
 
             const user = await user_service.get_user_by_id(user_id);
             if (!user?.email || !user?.phone_no) {

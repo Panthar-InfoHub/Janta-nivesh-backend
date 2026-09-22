@@ -218,7 +218,11 @@ class UserServiceClass {
                 },
                 user_insurance: true,
                 user_loan: true,
-                user_goals: true,
+                user_goals: {
+                    where: {
+                        status: { not: "DELETED" },
+                    },
+                },
             }
         });
     }
@@ -234,7 +238,14 @@ class UserServiceClass {
                 user_assets: options?.user_assets ?? false,
                 user_insurance: options?.user_insurance ?? false,
                 user_loan: options?.user_loan ?? false,
-                user_goals: options?.user_goals ?? false,
+                user_goals: options?.user_goals
+                    ? {
+                        where: {
+                            status: { not: "DELETED" },
+                        },
+                        orderBy: { createdAt: "desc" },
+                    }
+                    : false,
                 user_bank_details: options?.user_bank_details ?? false,
                 onboarding: options?.onboarding ?? false,
                 // kyc_types: options?.kyc_types ? {
