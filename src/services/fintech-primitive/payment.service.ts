@@ -62,6 +62,23 @@ class FintechPrimitivePaymentServiceClass {
             throw new AppError("Failed to create payment", 502, "PAYMENT_CREATE_FAILED");
         }
     }
+
+    /** GET /api/pg/payments/:id - fetches a particular payment by id. */
+    fetch_payment = async (payment_id: string | number) => {
+        logger.debug("Fetching FP payment", { payment_id });
+
+        try {
+            const response = await axios.get(`${this.base_url}/api/pg/payments/${payment_id}`, {
+                headers: await this.auth_headers(),
+            });
+
+            logger.debug("FP payment fetch response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching FP payment ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to fetch payment", 502, "PAYMENT_FETCH_FAILED");
+        }
+    }
 }
 
 export const fintech_primitive_payment_service = new FintechPrimitivePaymentServiceClass();
