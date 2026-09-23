@@ -110,6 +110,7 @@ class MfTransactionPlanServiceClass {
                     fp_id: true,
                     fp_old_id: true,
                     fp_payment_id: true,
+                    payment_status: true,
                     mf_investment_account: true,
                     scheme: true,
                     folio_number: true,
@@ -467,6 +468,10 @@ class MfTransactionPlanServiceClass {
 
     set_payment_id = async (id: string, fp_payment_id: string) => {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
+    }
+
+    set_payment_status = async (id: string, payment_status: string) => {
+        return await db.mfTransactionPlan.update({ where: { id }, data: { payment_status } });
     }
 
     sync_redemption_from_webhook = async (redemption: any) => {
