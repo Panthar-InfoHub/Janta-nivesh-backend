@@ -9,6 +9,7 @@ import { user_service } from "../services/user.service.js";
 import { pending_orders_service } from "../services/pending_orders.service.js";
 import { wrapper_service } from "../services/wrapper.service.js";
 import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
+import { MfTransactionState } from "../prisma/generated/prisma/enums.js";
 import { user_goal_controller } from "./user.goal.controller.js";
 import { redis } from "../lib/redis.js";
 import { db } from "../server.js";
@@ -412,11 +413,17 @@ class UserFinanceControllerClass {
                 orderBy: { current_value: "desc" },
             });
             const isins = holdings.map((h) => h.isin);
+            const ACTIVE_SIP_STATES: MfTransactionState[] = [
+                MfTransactionState.ACTIVE,
+                MfTransactionState.CONFIRMED,
+                MfTransactionState.SUBMITTED,
+            ];
             const purchase_plans = await db.mfTransactionPlan.findMany({
                 where: {
                     user_id: user.id,
                     plan_type: "PURCHASE",
                     scheme: { in: isins },
+                    state: { in: ACTIVE_SIP_STATES },
                 },
                 orderBy: { createdAt: "desc" },
             });
@@ -467,9 +474,9 @@ class UserFinanceControllerClass {
             const mf_investment_items = Array.from(by_fund.values()).map((f: any) => {
 
                 const fund_plans = plans_by_isin.get(f.isin) || [];
-                // Find if user has an active SIP for this fund
+                // Find if user has an active or confirmed/submitted SIP for this fund
                 const active_sip = fund_plans.find(
-                    (p) => p.systematic === true && p.state === "ACTIVE"
+                    (p) => p.systematic === true && ACTIVE_SIP_STATES.includes(p.state)
                 );
 
                 return {
