@@ -73,6 +73,7 @@ class MandateControllerClass {
                 success: true,
                 message: "Mandate created and authorization initiated",
                 data: {
+                    id: mandate.id,
                     mandate_id: created.id,
                     token_url: authorized.token_url,
                     status: "PENDING", // final SUCCESS/FAILED only lands via the async authorization webhook
