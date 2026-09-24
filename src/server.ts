@@ -84,8 +84,9 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf", mf_router)
 app.use("/api/v2/frontend", frontend_router)
 app.use("/api/v2/user", user_router)
+app.use("/api/v2/user-goal", user_goal_router)
 app.use("/api/v2/report", report_router)
-
+app.use("/api/v2/bundles", bundle_router)
 
 
 // Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
@@ -114,7 +115,6 @@ app.use("/api/v1/fire-report", fire_report_router)
 app.use("/api/v1/report", report_router)
 
 app.use("/api/v1/kyc", kyc_router)
-app.use("/api/v1/bundles", bundle_router)
 
 //Health check
 app.get("/api/v1/ping", (_req, res) => {

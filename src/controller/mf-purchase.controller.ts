@@ -102,10 +102,30 @@ class MfPurchaseControllerClass {
             const purchase = await fintech_primitive_mf_purchase_service.get_purchase(fp_id);
             const updated = await mf_transaction_plan_service.upsert_from_fp(user_id, "PURCHASE", purchase, false);
 
+            let payment: any = null;
+            let payment_status = updated.payment_status || existing.payment_status || null;
+            const payment_id = updated.fp_payment_id || existing.fp_payment_id;
+
+            if (payment_id) {
+                try {
+                    payment = await fintech_primitive_payment_service.fetch_payment(payment_id);
+                    if (payment?.status) {
+                        payment_status = payment.status; // Raw status from FP (do not capitalise)
+                        await mf_transaction_plan_service.set_payment_status(updated.id, payment_status);
+                    }
+                } catch (payment_err) {
+                    logger.warn("Could not fetch payment details from FP", { payment_id, error: payment_err });
+                }
+            }
+
             res.status(200).json({
                 success: true,
                 message: "MF purchase fetched",
-                data: updated
+                data: {
+                    ...updated,
+                    payment_status,
+                    payment,
+                }
             });
             return;
         } catch (error) {
@@ -223,6 +243,9 @@ class MfPurchaseControllerClass {
 
                 fp_payment_id = String(payment.id);
                 await mf_transaction_plan_service.set_payment_id(purchase.id, fp_payment_id);
+                if (payment?.status) {
+                    await mf_transaction_plan_service.set_payment_status(purchase.id, payment.status);
+                }
             }
 
             // 3. Only now can the order move to confirmed.
@@ -245,6 +268,7 @@ class MfPurchaseControllerClass {
                 message: "MF purchase confirmed",
                 data: {
                     payment_id: fp_payment_id,
+                    payment_status: payment?.status ?? updated.payment_status ?? null,
                     // Present only on the run that actually created the payment - a resumed retry
                     // has no fresh URL to hand back, since FP returns it once.
                     payment_url: payment?.token_url ?? payment?.payment_url ?? null,

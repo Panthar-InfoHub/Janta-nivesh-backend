@@ -148,24 +148,6 @@ export function extendPrismaClient(client: PrismaClient) {
                     compute(l) { return decryptDecimal(l.monthly_emi) ?? new Prisma.Decimal(0); }
                 }
             },
-            userGoals: {
-                current_saved_amount: {
-                    needs: { current_saved_amount: true },
-                    compute(g) { return decryptDecimal(g.current_saved_amount) ?? new Prisma.Decimal(0); }
-                },
-                current_goal_cost: {
-                    needs: { current_goal_cost: true },
-                    compute(g) { return decryptDecimal(g.current_goal_cost); }
-                },
-                current_monthly_expense: {
-                    needs: { current_monthly_expense: true },
-                    compute(g) { return decryptDecimal(g.current_monthly_expense); }
-                },
-                post_retirement_return: {
-                    needs: { post_retirement_return: true },
-                    compute(g) { return decryptDecimal(g.post_retirement_return); }
-                }
-            },
             kycProfile: {
                 pan: { needs: { pan: true }, compute(k) { return decrypt(k.pan); } },
                 full_name: { needs: { full_name: true }, compute(k) { return decrypt(k.full_name); } },
@@ -245,13 +227,6 @@ export function extendPrismaClient(client: PrismaClient) {
                             const fields = ["outstanding_amount", "monthly_emi"];
                             for (const f of fields) {
                                 if (data[f] !== undefined) data[f] = encrypt(String(data[f]));
-                            }
-                        }
-
-                        if (modelName === "UserGoals") {
-                            const fields = ["current_saved_amount", "current_goal_cost", "current_monthly_expense", "post_retirement_return"];
-                            for (const f of fields) {
-                                if (data[f] !== undefined && data[f] !== null) data[f] = encrypt(String(data[f]));
                             }
                         }
 
