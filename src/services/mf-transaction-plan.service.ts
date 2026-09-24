@@ -469,6 +469,10 @@ class MfTransactionPlanServiceClass {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
     }
 
+    set_payment_status = async (id: string, payment_status: string) => {
+        return await db.mfTransactionPlan.update({ where: { id }, data: { payment_status } });
+    }
+
     sync_redemption_from_webhook = async (redemption: any) => {
         const fp_id = redemption?.id;
 

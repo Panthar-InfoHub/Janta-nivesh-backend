@@ -12,6 +12,7 @@ import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
 } from "../lib/zod-schemas/mf-cart.schema.js";
+import logger from "../middleware/logger.js";
 
 class MfCartServiceClass {
 
@@ -322,6 +323,8 @@ class MfCartServiceClass {
 
     initiate_lumpsum_checkout = async (user_id: string, user_ip: string) => {
 
+
+        // 1. Get the cart items of Lumpsum and check for basic validations
         const cart_items = await db.mfCartItem.findMany({
             where: {
                 user_id,
@@ -356,6 +359,7 @@ class MfCartServiceClass {
             );
         }
 
+        // TODO : need to make kyc check middleware
         const user = await db.user.findUnique({
             where: {
                 id: user_id,
@@ -389,9 +393,12 @@ class MfCartServiceClass {
             gateway: "ondc";
         }> = [];
 
+        logger.debug(`Basic validations check are clear.. Proceeding for payload creation`)
+
         for (const item of cart_items) {
             // Product must exist in our MF catalogue
             if (!item.mf_product?.isin) {
+                logger.warn(`MF product not found in catalogue for cart item id = ${item.id} , cart id - ${item.id} , user id - ${user_id}`)
                 throw new AppError(
                     "Fund not found in catalogue",
                     404,
@@ -415,6 +422,7 @@ class MfCartServiceClass {
             });
         }
 
+        logger.debug(`Sending payload for batch lumpsum orders`)
         const fp_response =
             await fintech_primitive_mf_purchase_service.create_batch_purchases(
                 orders,
@@ -538,6 +546,7 @@ class MfCartServiceClass {
         });
 
         if (orders.length !== order_ids.length) {
+            logger.warn(`Some purchase orders could not be found in database- user_id - ${user_id} - batch_id - ${batch_id} - order_ids - ${JSON.stringify(order_ids)}`)
             throw new AppError(
                 "Some purchase orders could not be found",
                 400,
@@ -563,6 +572,48 @@ class MfCartServiceClass {
             );
         }
 
+        // 1. FP asynchronously reviews orders: UNDER_REVIEW -> PENDING before consent can be updated.
+        // Re-fetch any orders that are still recorded as UNDER_REVIEW in our database.
+        for (let i = 0; i < orders.length; i++) {
+            let order = orders[i];
+            if (order.state === "UNDER_REVIEW") {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const fresh = await fintech_primitive_mf_purchase_service.get_purchase(order.fp_id);
+                    if (fresh) {
+                        const updated = await mf_transaction_plan_service.upsert_from_fp(
+                            user_id,
+                            "PURCHASE",
+                            fresh,
+                            false,
+                        );
+                        order = updated;
+                        orders[i] = updated;
+                        if (order.state !== "UNDER_REVIEW") break;
+                    }
+                    if (attempt < 2) {
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    }
+                }
+            }
+
+            if (order.state === "FAILED") {
+                throw new AppError(
+                    `Purchase order ${order.fp_id} failed during review`,
+                    400,
+                    "MF_PURCHASE_REVIEW_FAILED",
+                );
+            }
+
+            if (order.state !== "PENDING" && order.state !== "CONFIRMED" && order.state !== "SUBMITTED") {
+                throw new AppError(
+                    `Order ${order.fp_id} is still under review, please retry in a few seconds`,
+                    400,
+                    "MF_PURCHASE_UNDER_REVIEW",
+                );
+            }
+        }
+
+        // 3. Update consent on FP with idempotency guard (skip if already given)
         for (const order of orders) {
             if (!order.fp_id) {
                 throw new AppError(
@@ -572,20 +623,22 @@ class MfCartServiceClass {
                 );
             }
 
-            await fintech_primitive_mf_purchase_service.update_purchase(
-                order.fp_id,
-                {
-                    consent: {
-                        email: user.email,
-                        mobile: user.phone_no,
-                        isd_code: "91",
+            if (!order.consent_given_at) {
+                await fintech_primitive_mf_purchase_service.update_purchase(
+                    order.fp_id,
+                    {
+                        consent: {
+                            email: user.email,
+                            mobile: user.phone_no,
+                            isd_code: "91",
+                        },
                     },
-                },
-            );
+                );
 
-            await mf_transaction_plan_service.mark_consent_given(
-                order.id,
-            );
+                await mf_transaction_plan_service.mark_consent_given(
+                    order.id,
+                );
+            }
         }
 
         const primary_bank =
@@ -631,11 +684,18 @@ class MfCartServiceClass {
 
         const payment_id = String(payment.id);
 
+        // 2. Track payment_id and payment_status on all orders
         for (const order of orders) {
             await mf_transaction_plan_service.set_payment_id(
                 order.id,
                 payment_id,
             );
+            if (payment?.status) {
+                await mf_transaction_plan_service.set_payment_status(
+                    order.id,
+                    payment.status,
+                );
+            }
         }
 
         const confirmed_response =
@@ -697,6 +757,7 @@ class MfCartServiceClass {
                 payment?.token_url ??
                 null,
             payment_id,
+            payment_status: payment?.status ?? null,
             orders_count: final_orders.length,
             orders: final_orders,
         };
