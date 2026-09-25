@@ -96,7 +96,7 @@ class KycFormControllerClass {
             if (kyc_form?.status === "submitted") {
                 await user_onboarding_service.update_stage(user_id, {
                     kyc_status: "VERIFIED",
-                    current_stage: "REVERSE_PENNY_VERIFICATION",
+                    current_stage: "PENNY_DROP_VERIFICATION",
                 });
             } else if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
                 await user_onboarding_service.update_stage(user_id, { kyc_status: "FAILED" });
