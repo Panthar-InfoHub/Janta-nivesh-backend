@@ -8,9 +8,12 @@ import { mf_transaction_plan_service } from "./mf-transaction-plan.service.js";
 import { plan_confirmation_otp_service } from "./plan-confirmation-otp.service.js";
 import { user_bank_details_service } from "./user-bank-details.service.js";
 import { fintech_primitive_payment_service } from "./fintech-primitive/payment.service.js";
+import { bundle_service } from "./bundle.services.js";
+import { zoho_webhook_service } from "./zoho.webhook.service.js";
 import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
+    AddBundleToCartInput,
 } from "../lib/zod-schemas/mf-cart.schema.js";
 import logger from "../middleware/logger.js";
 
@@ -171,6 +174,171 @@ class MfCartServiceClass {
         });
     };
 
+    add_bundle_to_cart = async (
+        user_id: string,
+        input: AddBundleToCartInput,
+    ) => {
+        // 1. Confirm the bundle exists
+        const bundle = await bundle_service.get_bundle_by_id(input.bundle_id);
+        if (!bundle) {
+            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+        }
+
+        // 2. Selection count must match the bundle's total slot count
+        const total_slots = bundle.categories.reduce(
+            (sum, cat) => sum + cat.slots.length,
+            0,
+        );
+        if (input.selections.length !== total_slots) {
+            throw new AppError(
+                `Bundle requires exactly ${total_slots} fund selection(s), got ${input.selections.length}`,
+                400,
+                "SELECTION_COUNT_MISMATCH",
+            );
+        }
+
+        // 3. Reject duplicate fund selections
+        const unique_ids = new Set(input.selections.map((s) => s.mf_product_id));
+        if (unique_ids.size !== input.selections.length) {
+            throw new AppError(
+                "Duplicate mutual funds are selected",
+                400,
+                "DUPLICATE_SELECTION",
+            );
+        }
+
+        // 4. Resolve each selection to its MfProduct in DB
+        const products = await db.mfProduct.findMany({
+            where: {
+                id: { in: input.selections.map((s) => s.mf_product_id) },
+            },
+            select: {
+                id: true,
+                isin: true,
+                name: true,
+            },
+        });
+
+        if (products.length !== input.selections.length) {
+            const found_ids = new Set(products.map((p) => p.id));
+            const missing = input.selections.filter(
+                (s) => !found_ids.has(s.mf_product_id),
+            );
+            throw new AppError(
+                `Mutual fund product not found: ${missing.map((m) => m.mf_product_id).join(", ")}`,
+                404,
+                "PRODUCT_NOT_FOUND",
+            );
+        }
+
+        const product_map = new Map(products.map((p) => [p.id, p]));
+
+        // 5. Apply application-level default for SIP
+        const frequency =
+            input.cart_type === "SIP"
+                ? input.frequency ?? "MONTHLY"
+                : null;
+
+        // 6. Validate fund-specific investment thresholds for each fund before writing to DB
+        const prepared_items: Array<{
+            mf_product_id: string;
+            amount: number;
+            frequency: "MONTHLY" | "WEEKLY" | "DAILY" | null;
+            installment_day: number | null;
+        }> = [];
+
+        for (const selection of input.selections) {
+            const product = product_map.get(selection.mf_product_id)!;
+            const per_fund_amount = Math.round(
+                (selection.allocation_percentage / 100) * input.amount,
+            );
+
+            if (input.cart_type === "LUMPSUM") {
+                await mf_threshold_validation_service.validate_lumpsum(
+                    product.isin,
+                    per_fund_amount,
+                );
+            } else if (input.cart_type === "SIP") {
+                if (frequency === "MONTHLY" || frequency === "DAILY") {
+                    await mf_threshold_validation_service.validate_sip(
+                        product.isin,
+                        per_fund_amount,
+                        frequency.toLowerCase() as "monthly" | "daily",
+                        input.installment_day,
+                    );
+                }
+            }
+
+            prepared_items.push({
+                mf_product_id: selection.mf_product_id,
+                amount: per_fund_amount,
+                frequency,
+                installment_day:
+                    input.cart_type === "SIP"
+                        ? input.installment_day ?? null
+                        : null,
+            });
+        }
+
+        // 7. Atomic DB operations (optionally clear existing cart items of same type, then upsert all funds)
+        const cart_items = await db.$transaction(async (tx) => {
+            if (input.clear_existing) {
+                await tx.mfCartItem.deleteMany({
+                    where: {
+                        user_id,
+                        cart_type: input.cart_type,
+                    },
+                });
+            }
+
+            const items = [];
+            for (const item of prepared_items) {
+                const cart_item = await tx.mfCartItem.upsert({
+                    where: {
+                        user_id_mf_product_id_cart_type: {
+                            user_id,
+                            mf_product_id: item.mf_product_id,
+                            cart_type: input.cart_type,
+                        },
+                    },
+                    create: {
+                        user_id,
+                        mf_product_id: item.mf_product_id,
+                        cart_type: input.cart_type,
+                        amount: item.amount,
+                        frequency: item.frequency,
+                        installment_day: item.installment_day,
+                    },
+                    update: {
+                        amount: item.amount,
+                        frequency: item.frequency,
+                        installment_day: item.installment_day,
+                    },
+                    include: {
+                        mf_product: {
+                            select: {
+                                id: true,
+                                name: true,
+                                isin: true,
+                                img_url: true,
+                            },
+                        },
+                    },
+                });
+                items.push(cart_item);
+            }
+            return items;
+        });
+
+        return {
+            bundle_id: input.bundle_id,
+            bundle_name: bundle.bundle_name,
+            cart_type: input.cart_type,
+            total_funds: input.selections.length,
+            added: cart_items.length,
+            items: cart_items,
+        };
+    };
 
     update_cart_item = async (
         user_id: string,
