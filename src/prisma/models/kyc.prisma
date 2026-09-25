@@ -2,6 +2,7 @@ enum OnboardingStage {
   BASIC_DETAILS
   PAN_VERIFICATION
   KYC_VERIFICATION
+  REVERSE_PENNY_VERIFICATION
   PENNY_DROP_VERIFICATION
   EMAIL_VERIFICATION
   INVESTOR_PROFILE
@@ -19,7 +20,7 @@ enum StageStatus {
 
 // Resume-cursor / state machine for the onboarding flow:
 // basic details (name+dob, or skip the whole flow) -> PAN + readiness check ->
-// (DigiLocker KYC, only if not readiness) -> penny drop -> email OTP -> investor profile -> nominee
+// (DigiLocker KYC, only if not readiness) -> reverse penny (Decentro UPI) -> penny drop -> email OTP -> investor profile -> nominee
 model UserOnboarding {
   id                   String          @id @default(cuid())
   user_id              String          @unique
@@ -27,6 +28,7 @@ model UserOnboarding {
   basic_details_status StageStatus     @default(PENDING) // VERIFIED only if the real form was submitted - SKIPPED if the user skipped the whole flow. Strict in recompute_completion: SKIPPED here must never read as completed.
   readiness_status     StageStatus     @default(PENDING)
   kyc_status           StageStatus     @default(PENDING)
+  reverse_penny_status StageStatus     @default(PENDING) // Optional for legacy users, mandatory in sequence for new users
   penny_drop_status    StageStatus     @default(PENDING)
   email_status         StageStatus     @default(PENDING) // VERIFIED only - email OTP is never skippable, the address lands in FP/Cybrilla compliance records
   profile_status       StageStatus     @default(PENDING)
@@ -133,4 +135,48 @@ model KycProfile {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+}
+
+model UserReversePennyVerification {
+  id                                  String    @id @default(cuid())
+  user_id                             String
+  user                                User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  // Decentro Identifiers
+  reference_id                        String    @unique
+  decentro_txn_id                     String?   @unique
+  request_decentro_txn_id             String?
+
+  // Status & Descriptions
+  status                              String    @default("PENDING") // PENDING | SUCCESS | FAILED | EXPIRED | DEEMED | DISPUTED_AMOUNT | REQUEST_INITIALIZED
+  status_description                  String?
+  response_code                       String?
+  response_key                        String?
+  error_key                           String?   // e.g. "error_at_remitter_bank"
+  provider_message                    String?
+
+  // Payment Links
+  validation_link                     String?
+  gpay_uri                            String?
+  phonepe_uri                         String?
+  paytm_uri                           String?
+
+  // Verified Payer / Bank Details (captured upon SUCCESS)
+  bank_reference_number               String?   // UTR / RRN (e.g. "106395651870")
+  npci_txn_id                         String?   // NPCI Transaction ID
+  payer_account_number                String?
+  payer_account_ifsc                  String?
+  payer_account_type                  String?   // SAVINGS | CURRENT
+  payer_name                          String?   // Name as per bank
+  payer_vpa                           String?   // Customer UPI ID
+  transaction_auth_timestamp          DateTime?
+
+  // Raw responses for audit/debugging
+  raw_initiate_response               Json?
+  raw_status_response                 Json?
+
+  createdAt                           DateTime  @default(now())
+  updatedAt                           DateTime  @default(now()) @updatedAt
+
+  @@index([user_id])
 }

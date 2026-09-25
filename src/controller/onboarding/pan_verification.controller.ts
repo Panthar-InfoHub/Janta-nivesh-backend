@@ -200,7 +200,7 @@ class PanVerificationControllerClass {
                     await user_onboarding_service.update_stage(user_id, {
                         readiness_status: "VERIFIED",
                         kyc_status: "VERIFIED",
-                        ...(onboarding_before.current_stage === "PAN_VERIFICATION" ? { current_stage: "PENNY_DROP_VERIFICATION" } : {}),
+                        ...(onboarding_before.current_stage === "PAN_VERIFICATION" ? { current_stage: "REVERSE_PENNY_VERIFICATION" } : {}),
                     });
                 }
 
