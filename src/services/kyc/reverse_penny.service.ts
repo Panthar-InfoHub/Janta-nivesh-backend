@@ -99,10 +99,9 @@ class ReversePennyServiceClass {
             },
         });
 
-        // Update onboarding stage to IN_PROGRESS
+        // Update reverse_penny_status to IN_PROGRESS
         await user_onboarding_service.update_stage(user_id, {
             reverse_penny_status: "IN_PROGRESS",
-            current_stage: "REVERSE_PENNY_VERIFICATION",
         });
 
         return {
