@@ -1,7 +1,13 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
+import AppError from "../middleware/error.middleware.js";
 import { bundle_service } from "../services/bundle.services.js";
 import { create_bundle_zod_schema } from "../lib/zod-schemas/bundle.schema.js";
+import {
+    mf_catalogue_service,
+    MF_SECTION_TITLES,
+    type MfSectionTag,
+} from "../services/mutual-funds/mf-catalogue.service.js";
 
 class BundleControllerClass {
 
@@ -52,17 +58,46 @@ class BundleControllerClass {
             logger.info(`Fetching bundle by id: ${id}`);
 
             const bundle_result = await bundle_service.get_bundle_by_id(id);
+            if (!bundle_result) {
+                throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+            }
 
-            logger.debug("Bundle result ==> ", bundle_result)
+            logger.debug("Bundle result ==> ", bundle_result);
 
-            // "Trending in category" used the v1 Finnsys-backed catalogue query, which is retired
-            // as part of the Cybrilla/FP catalogue migration (MfQueryService.ts is excluded from
-            // the build - see tsconfig.json). Degrading to an empty funds list rather than
-            // crashing the whole bundle response; a v2-catalogue equivalent isn't built yet.
-            const result = bundle_result.categories.map((cat) => ({
-                ...cat,
-                funds: [] as unknown[],
-            }))
+            const categories = await Promise.all(
+                bundle_result.categories.map(async (cat) => {
+                    const normalized = cat.category_name.toLowerCase().trim();
+                    let tag: MfSectionTag = "popular";
+
+                    if (normalized in MF_SECTION_TITLES) {
+                        tag = normalized as MfSectionTag;
+                    } else if (
+                        normalized === "large_mid_cap" ||
+                        normalized === "large_and_mid_cap"
+                    ) {
+                        tag = "mid_cap";
+                    } else if (
+                        normalized === "index" ||
+                        normalized === "gold" ||
+                        normalized === "silver" ||
+                        normalized === "arbitrage" ||
+                        normalized === "global_others"
+                    ) {
+                        tag = "others";
+                    }
+
+                    const category_funds = await mf_catalogue_service.get_funds({
+                        tag,
+                        page: 1,
+                        limit: 10,
+                    });
+
+                    return {
+                        ...cat,
+                        funds: category_funds.funds,
+                    };
+                }),
+            );
 
             res.status(200).json({
                 success: true,
@@ -75,7 +110,7 @@ class BundleControllerClass {
                     debt_percentage: bundle_result.debt_percentage,
                     hybrid_percentage: bundle_result.hybrid_percentage,
                     meta_data: bundle_result.meta_data,
-                    categories: result
+                    categories,
                 }
             });
             return;

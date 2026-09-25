@@ -40,10 +40,18 @@ class UserOnboardingServiceClass {
     recompute_completion = async (user_id: string) => {
         const onboarding = await this.get_or_create(user_id);
 
+        // Backward-compatible reverse penny check:
+        // For existing users who already passed Penny Drop or completed onboarding, PENDING won't block them.
+        // For users going through the flow, reverse_penny_status must be VERIFIED.
+        const is_reverse_penny_satisfied =
+            onboarding.reverse_penny_status === "VERIFIED" ||
+            (onboarding.penny_drop_status === "VERIFIED" && onboarding.reverse_penny_status === "PENDING");
+
         const is_done =
             onboarding.basic_details_status === "VERIFIED" && // strict - mandatory stage, no skip path exists
             onboarding.readiness_status === "VERIFIED" && // strict - SKIPPED here means "deferred the whole flow", never completable
             ["VERIFIED", "SKIPPED"].includes(onboarding.kyc_status) &&
+            is_reverse_penny_satisfied &&
             onboarding.penny_drop_status === "VERIFIED" &&
             onboarding.email_status === "VERIFIED" && // strict - email OTP is never skippable
             onboarding.profile_status === "VERIFIED" &&
@@ -74,6 +82,7 @@ class UserOnboardingServiceClass {
                 basic_details: onboarding.basic_details_status,
                 readiness: onboarding.readiness_status,
                 kyc: onboarding.kyc_status,
+                reverse_penny: onboarding.reverse_penny_status,
                 penny_drop: onboarding.penny_drop_status,
                 email: onboarding.email_status,
                 profile: onboarding.profile_status,
