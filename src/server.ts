@@ -14,6 +14,7 @@ import { kyc_router } from "./routes/kyc.router.js"
 import { basic_details_router } from "./routes/onboarding_routers/basic_details.router.js"
 import { pan_verification_router } from "./routes/onboarding_routers/pan_verification.router.js"
 import { kyc_form_router } from "./routes/onboarding_routers/kyc_form.router.js"
+import { reverse_penny_router } from "./routes/onboarding_routers/reverse_penny.router.js"
 import { penny_drop_router } from "./routes/onboarding_routers/penny_drop.router.js"
 import { email_verification_router } from "./routes/onboarding_routers/email_verification.router.js"
 import { admin_router } from "./routes/admin.router.js"
@@ -71,6 +72,7 @@ app.use("/api/v2/auth", auth_router)
 app.use("/api/v2/onboarding/basic-details", basic_details_router)
 app.use("/api/v2/onboarding/pan-verification", pan_verification_router)
 app.use("/api/v2/onboarding/kyc-form", kyc_form_router)
+app.use("/api/v2/onboarding/reverse-penny", reverse_penny_router)
 app.use("/api/v2/onboarding/penny-drop", penny_drop_router)
 app.use("/api/v2/onboarding/email", email_verification_router)
 app.use("/api/v2/onboarding/investor-profile", investor_profile_router)

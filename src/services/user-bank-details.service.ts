@@ -52,6 +52,56 @@ class UserBankDetailsServiceClass {
         });
     }
 
+    /**
+     * Reverse penny save - upserts bank details fetched via Decentro UPI ₹1 verification
+     * so that the subsequent Penny Drop stage has accurate pre-filled data.
+     */
+    save_from_reverse_penny = async (
+        user_id: string,
+        input: {
+            account_number: string;
+            ifsc_code: string;
+            account_holder_name?: string | null;
+            account_type?: string | null;
+            bank_name?: string | null;
+            bank_reference_number?: string | null;
+            raw_response?: any;
+        }
+    ) => {
+        logger.debug("Persisting reverse penny bank details", { user_id });
+
+        return await db.userBankDetails.upsert({
+            where: {
+                user_account_no_idx: {
+                    user_id,
+                    account_no_hash: input.account_number,
+                },
+            },
+            create: {
+                user_id,
+                account_no: input.account_number,
+                ifsc_code: input.ifsc_code,
+                bank_name: input.bank_name,
+                account_holder_name: input.account_holder_name,
+                account_type: input.account_type,
+                is_primary: true,
+                verification_status: "PENDING",
+                verification_method: "REVERSE_PENNY",
+                provider_reference_id: input.bank_reference_number,
+                raw_verification_response: input.raw_response,
+            },
+            update: {
+                ifsc_code: input.ifsc_code,
+                bank_name: input.bank_name,
+                account_holder_name: input.account_holder_name,
+                account_type: input.account_type,
+                is_primary: true,
+                provider_reference_id: input.bank_reference_number,
+                raw_verification_response: input.raw_response,
+            },
+        });
+    };
+
     /** Syncs verification_status/raw_verification_response from a pre_verification's bank_accounts[0] entry. */
     sync_verification_from_pre_verification = async (id: string, bank_account_result: any) => {
         const status = bank_account_result?.status; // verified | failed | null (in progress)

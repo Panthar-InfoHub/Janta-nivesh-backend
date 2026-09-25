@@ -6,6 +6,7 @@ import { user_bank_details_service } from "../../services/user-bank-details.serv
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { cybrilla_pan_verification_service } from "../../services/cybrilla/pan_verification.service.js";
+import { reverse_penny_service } from "../../services/kyc/reverse_penny.service.js";
 
 class PennyDropControllerClass {
 
@@ -100,7 +101,32 @@ class PennyDropControllerClass {
             next(error);
             return;
         }
-    }
+    };
+
+    /**
+     * GET /api/v2/onboarding/penny-drop/prefill
+     * Returns verified bank details captured during Reverse Penny (Decentro UPI ₹1).
+     * Used by the frontend Penny Drop screen to automatically populate bank details.
+     */
+    get_prefill = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id!;
+            const prefill = await reverse_penny_service.get_prefill(user_id);
+
+            res.status(200).json({
+                success: true,
+                message: prefill.has_prefilled
+                    ? "Prefilled bank details fetched"
+                    : "No prefilled bank details found",
+                data: prefill,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in penny_drop get_prefill controller:", error);
+            next(error);
+            return;
+        }
+    };
 }
 
 export const penny_drop_controller = new PennyDropControllerClass();
