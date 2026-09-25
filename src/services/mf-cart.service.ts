@@ -14,6 +14,7 @@ import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
 } from "../lib/zod-schemas/mf-cart.schema.js";
+import { user_service } from "./user.service.js";
 
 class MfCartServiceClass {
 
@@ -685,6 +686,145 @@ class MfCartServiceClass {
             batch_id,
             plans_count: saved_plans.length,
             total_amount,
+        };
+    };
+
+    confirm_sip_checkout = async (
+        user_id: string,
+        batch_id: string,
+        otp: string,
+    ) => {
+        await plan_confirmation_otp_service.verify_otp(
+            user_id,
+            batch_id,
+            otp,
+        );
+
+        const batch_key = `mf_cart_batch:${user_id}:${batch_id}`;
+        const cached_batch = await redis.get(batch_key);
+
+        if (!cached_batch || typeof cached_batch !== "string") {
+            throw new AppError(
+                "Checkout session has expired",
+                400,
+                "BATCH_EXPIRED",
+            );
+        }
+
+        let plan_ids: string[];
+
+        try {
+            plan_ids = JSON.parse(cached_batch);
+        } catch {
+            throw new AppError(
+                "Invalid checkout session",
+                400,
+                "BATCH_INVALID",
+            );
+        }
+
+        if (
+            !Array.isArray(plan_ids) ||
+            plan_ids.length === 0
+        ) {
+            throw new AppError(
+                "No purchase plans found for this batch",
+                400,
+                "BATCH_EMPTY",
+            );
+        }
+
+        if (plan_ids.length > 10) {
+            throw new AppError(
+                "Maximum 10 purchase plans are allowed in a batch",
+                400,
+                "MF_BATCH_PLANS_EXCEEDED",
+            );
+        }
+
+        const user = await user_service.get_user_by_id(user_id);
+
+        if (!user) {
+            throw new AppError(
+                "User not found",
+                404,
+                "USER_NOT_FOUND",
+            );
+        }
+
+        if (!user.email || !user.phone_no) {
+            throw new AppError(
+                "User email and phone number are required for consent",
+                400,
+                "USER_CONTACT_INFO_MISSING",
+            );
+        }
+
+        const confirmed_plans = [];
+        for (const fp_plan_id of plan_ids) {
+            const transaction_plan =
+                await mf_transaction_plan_service.get_by_fp_id(
+                    user_id,
+                    fp_plan_id,
+                );
+
+            if (!transaction_plan) {
+                throw new AppError(
+                    "Purchase plan not found",
+                    404,
+                    "MF_PURCHASE_PLAN_NOT_FOUND",
+                );
+            }
+
+            if (
+                transaction_plan.plan_type !== "PURCHASE" ||
+                !transaction_plan.systematic
+            ) {
+                throw new AppError(
+                    "Invalid SIP purchase plan",
+                    400,
+                    "INVALID_SIP_PURCHASE_PLAN",
+                );
+            }
+
+            const updated_plan =
+                await fintech_primitive_mf_purchase_plan_service.update_purchase_plan(
+                    fp_plan_id,
+                    {
+                        email: user.email,
+                        mobile: user.phone_no,
+                        isd_code: "91",
+                    },
+                );
+
+            const saved_plan =
+                await mf_transaction_plan_service.upsert_from_fp(
+                    user_id,
+                    "PURCHASE",
+                    updated_plan,
+                    true,
+                );
+
+            await mf_transaction_plan_service.mark_consent_given(
+                saved_plan.id,
+            );
+
+            confirmed_plans.push(saved_plan);
+        }
+
+        await db.mfCartItem.deleteMany({
+            where: {
+                user_id,
+                cart_type: "SIP",
+            },
+        });
+
+        await redis.del(batch_key);
+
+        return {
+            batch_id,
+            plans_count: confirmed_plans.length,
+            plans: confirmed_plans,
         };
     };
 

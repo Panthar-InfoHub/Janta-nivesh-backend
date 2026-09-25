@@ -82,3 +82,12 @@ export const confirm_lumpsum_checkout_schema = z.object({
 export type ConfirmLumpsumCheckoutInput = z.infer<
     typeof confirm_lumpsum_checkout_schema
 >;
+
+export const confirm_sip_checkout_schema = z.object({
+    batch_id: z.string().min(1, "batch_id is required"),
+    otp: z.string().length(6, "OTP must be 6 digits"),
+});
+
+export type ConfirmSipCheckoutInput = z.infer<
+    typeof confirm_sip_checkout_schema
+>;

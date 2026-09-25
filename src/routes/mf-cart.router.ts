@@ -46,3 +46,15 @@ mf_cart_router.post(
     login_require,
     mf_cart_checkout_controller.confirm_lumpsum_checkout,
 );
+
+mf_cart_router.post(
+    "/checkout/sip",
+    login_require,
+    mf_cart_checkout_controller.initiate_sip_checkout,
+);
+
+mf_cart_router.post(
+    "/checkout/sip/confirm",
+    login_require,
+    mf_cart_checkout_controller.confirm_sip_checkout,
+);
