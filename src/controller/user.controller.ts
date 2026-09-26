@@ -9,9 +9,11 @@ import { user_service } from "../services/user.service.js";
 import { pending_orders_service } from "../services/pending_orders.service.js";
 import { wrapper_service } from "../services/wrapper.service.js";
 import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
+import { MfTransactionState } from "../prisma/generated/prisma/enums.js";
 import { user_goal_controller } from "./user.goal.controller.js";
 import { redis } from "../lib/redis.js";
 import { db } from "../server.js";
+import { mf_cart_service } from "../services/mf-cart.service.js";
 class UserFinanceControllerClass {
 
 
@@ -210,85 +212,29 @@ class UserFinanceControllerClass {
 
     get_user_cart = async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const user_id = req.user?.id!;
+            logger.info(`Fetching user cart for User ID: ${user_id}`);
 
-            const user = req.user!;
-            logger.info(`Fetching user cart for User ID: ${user.id}`);
+            const cart_items = await mf_cart_service.get_cart(user_id);
 
-            const user_cart_res = await user_service.get_user_cart_finnsys(user.log!, user.pwd!)
-
-            logger.debug(`User data fetched successfully ==> `, user_cart_res);
-
-            if (user_cart_res.code === 0) {
-                logger.debug("Empty cart for User ID ==> ", user.id);
-                res.status(200).json({
-                    code: 200,
-                    message: "User cart fetched successfully",
-                    data: {
-                        sip_items: [],
-                        lump_sum_items: []
-                    }
-                });
-                return;
-            }
-
-            if (user_cart_res.code != 1 && user_cart_res.code != 0) {
-                logger.warn(`Failed to fetch user cart from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_cart_res.code}`);
-                throw new AppError("Failed to fetch user cart from Finnsys", 502, "FINNSYS_CART_FETCH_FAILED");
-            }
-
-            const { sip_items, lump_sum_items } = this.extract_cart_items(user_cart_res);
-
-            logger.info("Mapping logo img for funds...")
-
-            // wrapper_service.get_logos_of_amc / get_transaction_rules_by_nse_codes queried
-            // MfProduct columns (amc_name, nse_scheme_code, transaction_rules) dropped in the
-            // Cybrilla/FP catalogue migration - both are commented out there. Empty maps here
-            // degrade cart items to blank logo/rules rather than crashing cart fetch; a
-            // v2-catalogue equivalent isn't built yet.
-            const logo_map = new Map<string, string>();
-            const rules_map = new Map<string, any>();
-
-            // Enrich items with img_url and transaction_rules
-            const enriched_sip_items = sip_items.map((item: any) => {
-                const isTaxOrElss = /TAX|ELSS/i.test(item.prod_name || item.amc_name || "");
-                const baseAmount = Number(item.sip_amt || item.txn_amount || 0);
-
-                const min_step_up_percent = isTaxOrElss ? 0 : 10;
-                const min_step_up_amt = isTaxOrElss ? 500 : (baseAmount * 0.10);
-
-                return {
-                    ...item,
-                    img_url: logo_map.get(item.amc_name) || "",
-                    transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code), item.sip_freq),
-                    min_step_up_percent,
-                    min_step_up_amt: Math.round(min_step_up_amt)
-                };
-            });
-
-            const enriched_lump_sum_items = lump_sum_items.map((item: any) => ({
-                ...item,
-                img_url: logo_map.get(item.amc_name) || "",
-                transaction_rules: this.extract_relevant_transaction_rules(rules_map.get(item.prod_code))
-            }));
-
-            logger.info("Mapping completed of logo funds")
+            const sip_items = cart_items.filter((item) => item.cart_type === "SIP");
+            const lumpsum_items = cart_items.filter((item) => item.cart_type === "LUMPSUM");
 
             res.status(200).json({
-                code: 200,
+                success: true,
                 message: "User cart fetched successfully",
                 data: {
-                    sip_items: enriched_sip_items,
-                    lump_sum_items: enriched_lump_sum_items
-                }
+                    sip: sip_items,
+                    lumpsum: lumpsum_items,
+                },
             });
             return;
-
         } catch (error) {
             logger.error(`Error in getting user cart: `, error);
             next(error);
             return;
         }
-    }
+    };
 
     get_user_fd_transactions = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -412,11 +358,17 @@ class UserFinanceControllerClass {
                 orderBy: { current_value: "desc" },
             });
             const isins = holdings.map((h) => h.isin);
+            const ACTIVE_SIP_STATES: MfTransactionState[] = [
+                MfTransactionState.ACTIVE,
+                MfTransactionState.CONFIRMED,
+                MfTransactionState.SUBMITTED,
+            ];
             const purchase_plans = await db.mfTransactionPlan.findMany({
                 where: {
                     user_id: user.id,
                     plan_type: "PURCHASE",
                     scheme: { in: isins },
+                    state: { in: ACTIVE_SIP_STATES },
                 },
                 orderBy: { createdAt: "desc" },
             });
@@ -467,9 +419,9 @@ class UserFinanceControllerClass {
             const mf_investment_items = Array.from(by_fund.values()).map((f: any) => {
 
                 const fund_plans = plans_by_isin.get(f.isin) || [];
-                // Find if user has an active SIP for this fund
+                // Find if user has an active or confirmed/submitted SIP for this fund
                 const active_sip = fund_plans.find(
-                    (p) => p.systematic === true && p.state === "ACTIVE"
+                    (p) => p.systematic === true && ACTIVE_SIP_STATES.includes(p.state)
                 );
 
                 return {

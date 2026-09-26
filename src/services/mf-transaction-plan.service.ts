@@ -110,6 +110,7 @@ class MfTransactionPlanServiceClass {
                     fp_id: true,
                     fp_old_id: true,
                     fp_payment_id: true,
+                    payment_status: true,
                     mf_investment_account: true,
                     scheme: true,
                     folio_number: true,
@@ -469,6 +470,10 @@ class MfTransactionPlanServiceClass {
         return await db.mfTransactionPlan.update({ where: { id }, data: { fp_payment_id } });
     }
 
+    set_payment_status = async (id: string, payment_status: string) => {
+        return await db.mfTransactionPlan.update({ where: { id }, data: { payment_status } });
+    }
+
     sync_redemption_from_webhook = async (redemption: any) => {
         const fp_id = redemption?.id;
 
@@ -611,6 +616,23 @@ class MfTransactionPlanServiceClass {
             true,
         );
     };
+
+    /**
+     * Checks if a mandate is already linked to an existing active/confirmed SIP purchase plan.
+     */
+    is_mandate_already_used = async (mandate_id: string): Promise<boolean> => {
+        const existing = await db.mfTransactionPlan.findFirst({
+            where: {
+                payment_source: mandate_id,
+                plan_type: "PURCHASE",
+                systematic: true,
+                state: { notIn: ["CANCELLED", "REVERSED", "FAILED"] },
+            },
+            select: { id: true },
+        });
+        return !!existing;
+    };
 }
 
 export const mf_transaction_plan_service = new MfTransactionPlanServiceClass();
+

@@ -42,6 +42,7 @@ model MfTransactionPlan {
   fp_id                 String     @unique // FP's id for this row - mfpp_/mfrp_/mfsp_ for plans, mfp_ for one-shot orders
   fp_old_id             Int? // numeric id off the same object - what the older /api/pg/* surface wants (payments), same split as bank accounts
   fp_payment_id         String? // payment created against a one-shot order, mirrors Mandate.fp_payment_id
+  payment_status        String? // raw payment status from FP (e.g. SUCCESS, PENDING, FAILED)
   mf_investment_account String // mfia_...
 
   // Link to the curated catalogue, resolved from `scheme` on write (mf-transaction-plan.service.ts).

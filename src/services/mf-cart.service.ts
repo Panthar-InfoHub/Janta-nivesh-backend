@@ -10,11 +10,15 @@ import { user_bank_details_service } from "./user-bank-details.service.js";
 import { fintech_primitive_payment_service } from "./fintech-primitive/payment.service.js";
 import { fintech_primitive_mf_purchase_plan_service } from "./fintech-primitive/mf_purchase_plan.service.js";
 import { mandate_service } from "./mandate.service.js";
+import { bundle_service } from "./bundle.services.js";
+import { zoho_webhook_service } from "./zoho.webhook.service.js";
 import type {
     AddMfCartItemInput,
     UpdateMfCartItemInput,
+    AddBundleToCartInput,
 } from "../lib/zod-schemas/mf-cart.schema.js";
 import { user_service } from "./user.service.js";
+import logger from "../middleware/logger.js";
 
 class MfCartServiceClass {
 
@@ -173,6 +177,171 @@ class MfCartServiceClass {
         });
     };
 
+    add_bundle_to_cart = async (
+        user_id: string,
+        input: AddBundleToCartInput,
+    ) => {
+        // 1. Confirm the bundle exists
+        const bundle = await bundle_service.get_bundle_by_id(input.bundle_id);
+        if (!bundle) {
+            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+        }
+
+        // 2. Selection count must match the bundle's total slot count
+        const total_slots = bundle.categories.reduce(
+            (sum, cat) => sum + cat.slots.length,
+            0,
+        );
+        if (input.selections.length !== total_slots) {
+            throw new AppError(
+                `Bundle requires exactly ${total_slots} fund selection(s), got ${input.selections.length}`,
+                400,
+                "SELECTION_COUNT_MISMATCH",
+            );
+        }
+
+        // 3. Reject duplicate fund selections
+        const unique_ids = new Set(input.selections.map((s) => s.mf_product_id));
+        if (unique_ids.size !== input.selections.length) {
+            throw new AppError(
+                "Duplicate mutual funds are selected",
+                400,
+                "DUPLICATE_SELECTION",
+            );
+        }
+
+        // 4. Resolve each selection to its MfProduct in DB
+        const products = await db.mfProduct.findMany({
+            where: {
+                id: { in: input.selections.map((s) => s.mf_product_id) },
+            },
+            select: {
+                id: true,
+                isin: true,
+                name: true,
+            },
+        });
+
+        if (products.length !== input.selections.length) {
+            const found_ids = new Set(products.map((p) => p.id));
+            const missing = input.selections.filter(
+                (s) => !found_ids.has(s.mf_product_id),
+            );
+            throw new AppError(
+                `Mutual fund product not found: ${missing.map((m) => m.mf_product_id).join(", ")}`,
+                404,
+                "PRODUCT_NOT_FOUND",
+            );
+        }
+
+        const product_map = new Map(products.map((p) => [p.id, p]));
+
+        // 5. Apply application-level default for SIP
+        const frequency =
+            input.cart_type === "SIP"
+                ? input.frequency ?? "MONTHLY"
+                : null;
+
+        // 6. Validate fund-specific investment thresholds for each fund before writing to DB
+        const prepared_items: Array<{
+            mf_product_id: string;
+            amount: number;
+            frequency: "MONTHLY" | "WEEKLY" | "DAILY" | null;
+            installment_day: number | null;
+        }> = [];
+
+        for (const selection of input.selections) {
+            const product = product_map.get(selection.mf_product_id)!;
+            const per_fund_amount = Math.round(
+                (selection.allocation_percentage / 100) * input.amount,
+            );
+
+            if (input.cart_type === "LUMPSUM") {
+                await mf_threshold_validation_service.validate_lumpsum(
+                    product.isin,
+                    per_fund_amount,
+                );
+            } else if (input.cart_type === "SIP") {
+                if (frequency === "MONTHLY" || frequency === "DAILY") {
+                    await mf_threshold_validation_service.validate_sip(
+                        product.isin,
+                        per_fund_amount,
+                        frequency.toLowerCase() as "monthly" | "daily",
+                        input.installment_day,
+                    );
+                }
+            }
+
+            prepared_items.push({
+                mf_product_id: selection.mf_product_id,
+                amount: per_fund_amount,
+                frequency,
+                installment_day:
+                    input.cart_type === "SIP"
+                        ? input.installment_day ?? null
+                        : null,
+            });
+        }
+
+        // 7. Atomic DB operations (optionally clear existing cart items of same type, then upsert all funds)
+        const cart_items = await db.$transaction(async (tx) => {
+            if (input.clear_existing) {
+                await tx.mfCartItem.deleteMany({
+                    where: {
+                        user_id,
+                        cart_type: input.cart_type,
+                    },
+                });
+            }
+
+            const items = [];
+            for (const item of prepared_items) {
+                const cart_item = await tx.mfCartItem.upsert({
+                    where: {
+                        user_id_mf_product_id_cart_type: {
+                            user_id,
+                            mf_product_id: item.mf_product_id,
+                            cart_type: input.cart_type,
+                        },
+                    },
+                    create: {
+                        user_id,
+                        mf_product_id: item.mf_product_id,
+                        cart_type: input.cart_type,
+                        amount: item.amount,
+                        frequency: item.frequency,
+                        installment_day: item.installment_day,
+                    },
+                    update: {
+                        amount: item.amount,
+                        frequency: item.frequency,
+                        installment_day: item.installment_day,
+                    },
+                    include: {
+                        mf_product: {
+                            select: {
+                                id: true,
+                                name: true,
+                                isin: true,
+                                img_url: true,
+                            },
+                        },
+                    },
+                });
+                items.push(cart_item);
+            }
+            return items;
+        });
+
+        return {
+            bundle_id: input.bundle_id,
+            bundle_name: bundle.bundle_name,
+            cart_type: input.cart_type,
+            total_funds: input.selections.length,
+            added: cart_items.length,
+            items: cart_items,
+        };
+    };
 
     update_cart_item = async (
         user_id: string,
@@ -325,6 +494,8 @@ class MfCartServiceClass {
 
     initiate_lumpsum_checkout = async (user_id: string, user_ip: string) => {
 
+
+        // 1. Get the cart items of Lumpsum and check for basic validations
         const cart_items = await db.mfCartItem.findMany({
             where: {
                 user_id,
@@ -359,6 +530,7 @@ class MfCartServiceClass {
             );
         }
 
+        // TODO : need to make kyc check middleware
         const user = await db.user.findUnique({
             where: {
                 id: user_id,
@@ -392,9 +564,12 @@ class MfCartServiceClass {
             gateway: "ondc";
         }> = [];
 
+        logger.debug(`Basic validations check are clear.. Proceeding for payload creation`)
+
         for (const item of cart_items) {
             // Product must exist in our MF catalogue
             if (!item.mf_product?.isin) {
+                logger.warn(`MF product not found in catalogue for cart item id = ${item.id} , cart id - ${item.id} , user id - ${user_id}`)
                 throw new AppError(
                     "Fund not found in catalogue",
                     404,
@@ -418,6 +593,7 @@ class MfCartServiceClass {
             });
         }
 
+        logger.debug(`Sending payload for batch lumpsum orders`)
         const fp_response =
             await fintech_primitive_mf_purchase_service.create_batch_purchases(
                 orders,
@@ -890,6 +1066,7 @@ class MfCartServiceClass {
         });
 
         if (orders.length !== order_ids.length) {
+            logger.warn(`Some purchase orders could not be found in database- user_id - ${user_id} - batch_id - ${batch_id} - order_ids - ${JSON.stringify(order_ids)}`)
             throw new AppError(
                 "Some purchase orders could not be found",
                 400,
@@ -915,6 +1092,48 @@ class MfCartServiceClass {
             );
         }
 
+        // 1. FP asynchronously reviews orders: UNDER_REVIEW -> PENDING before consent can be updated.
+        // Re-fetch any orders that are still recorded as UNDER_REVIEW in our database.
+        for (let i = 0; i < orders.length; i++) {
+            let order = orders[i];
+            if (order.state === "UNDER_REVIEW") {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const fresh = await fintech_primitive_mf_purchase_service.get_purchase(order.fp_id);
+                    if (fresh) {
+                        const updated = await mf_transaction_plan_service.upsert_from_fp(
+                            user_id,
+                            "PURCHASE",
+                            fresh,
+                            false,
+                        );
+                        order = updated;
+                        orders[i] = updated;
+                        if (order.state !== "UNDER_REVIEW") break;
+                    }
+                    if (attempt < 2) {
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    }
+                }
+            }
+
+            if (order.state === "FAILED") {
+                throw new AppError(
+                    `Purchase order ${order.fp_id} failed during review`,
+                    400,
+                    "MF_PURCHASE_REVIEW_FAILED",
+                );
+            }
+
+            if (order.state !== "PENDING" && order.state !== "CONFIRMED" && order.state !== "SUBMITTED") {
+                throw new AppError(
+                    `Order ${order.fp_id} is still under review, please retry in a few seconds`,
+                    400,
+                    "MF_PURCHASE_UNDER_REVIEW",
+                );
+            }
+        }
+
+        // 3. Update consent on FP with idempotency guard (skip if already given)
         for (const order of orders) {
             if (!order.fp_id) {
                 throw new AppError(
@@ -924,20 +1143,22 @@ class MfCartServiceClass {
                 );
             }
 
-            await fintech_primitive_mf_purchase_service.update_purchase(
-                order.fp_id,
-                {
-                    consent: {
-                        email: user.email,
-                        mobile: user.phone_no,
-                        isd_code: "91",
+            if (!order.consent_given_at) {
+                await fintech_primitive_mf_purchase_service.update_purchase(
+                    order.fp_id,
+                    {
+                        consent: {
+                            email: user.email,
+                            mobile: user.phone_no,
+                            isd_code: "91",
+                        },
                     },
-                },
-            );
+                );
 
-            await mf_transaction_plan_service.mark_consent_given(
-                order.id,
-            );
+                await mf_transaction_plan_service.mark_consent_given(
+                    order.id,
+                );
+            }
         }
 
         const primary_bank =
@@ -983,11 +1204,18 @@ class MfCartServiceClass {
 
         const payment_id = String(payment.id);
 
+        // 2. Track payment_id and payment_status on all orders
         for (const order of orders) {
             await mf_transaction_plan_service.set_payment_id(
                 order.id,
                 payment_id,
             );
+            if (payment?.status) {
+                await mf_transaction_plan_service.set_payment_status(
+                    order.id,
+                    payment.status,
+                );
+            }
         }
 
         const confirmed_response =
@@ -1049,6 +1277,7 @@ class MfCartServiceClass {
                 payment?.token_url ??
                 null,
             payment_id,
+            payment_status: payment?.status ?? null,
             orders_count: final_orders.length,
             orders: final_orders,
         };

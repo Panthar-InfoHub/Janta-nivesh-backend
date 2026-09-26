@@ -9,7 +9,8 @@ import { z } from "zod";
 // mf_product_id, not ISIN - see the note in mf-purchase.schema.ts. The controller resolves the
 // ISIN from it, so an order can never reference a fund outside the curated catalogue.
 export const create_mf_purchase_plan_schema = z.object({
-    mf_product_id: z.string().min(1),
+    mf_product_id: z.string().min(1, "mf_product_id is required"),
+    mandate_id: z.string().min(1, "mandate_id is required"),
     amount: z.number().positive(),
     frequency: z.enum(["monthly", "daily"]), // only these two are supported per the docs
     // Loose sanity bound only - the real per-fund constraint is MfSchemePlan.sip_monthly_dates,
@@ -29,7 +30,7 @@ export const create_mf_purchase_plan_schema = z.object({
 export type CreateMfPurchasePlanInput = z.infer<typeof create_mf_purchase_plan_schema>;
 
 // Client input with mf_product_id swapped for the resolved ISIN - what the FP client posts.
-export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_product_id"> & {
+export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_product_id" | "mandate_id"> & {
     scheme: string;
 };
 

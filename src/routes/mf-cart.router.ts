@@ -17,6 +17,12 @@ mf_cart_router.post(
     mf_cart_controller.add_to_cart,
 );
 
+mf_cart_router.post(
+    "/bundle",
+    login_require,
+    mf_cart_controller.add_bundle_to_cart,
+);
+
 mf_cart_router.patch(
     "/:id",
     login_require,

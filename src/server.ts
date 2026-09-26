@@ -14,6 +14,7 @@ import { kyc_router } from "./routes/kyc.router.js"
 import { basic_details_router } from "./routes/onboarding_routers/basic_details.router.js"
 import { pan_verification_router } from "./routes/onboarding_routers/pan_verification.router.js"
 import { kyc_form_router } from "./routes/onboarding_routers/kyc_form.router.js"
+import { reverse_penny_router } from "./routes/onboarding_routers/reverse_penny.router.js"
 import { penny_drop_router } from "./routes/onboarding_routers/penny_drop.router.js"
 import { email_verification_router } from "./routes/onboarding_routers/email_verification.router.js"
 import { admin_router } from "./routes/admin.router.js"
@@ -71,6 +72,7 @@ app.use("/api/v2/auth", auth_router)
 app.use("/api/v2/onboarding/basic-details", basic_details_router)
 app.use("/api/v2/onboarding/pan-verification", pan_verification_router)
 app.use("/api/v2/onboarding/kyc-form", kyc_form_router)
+app.use("/api/v2/onboarding/reverse-penny", reverse_penny_router)
 app.use("/api/v2/onboarding/penny-drop", penny_drop_router)
 app.use("/api/v2/onboarding/email", email_verification_router)
 app.use("/api/v2/onboarding/investor-profile", investor_profile_router)
@@ -84,8 +86,9 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf", mf_router)
 app.use("/api/v2/frontend", frontend_router)
 app.use("/api/v2/user", user_router)
+app.use("/api/v2/user-goal", user_goal_router)
 app.use("/api/v2/report", report_router)
-
+app.use("/api/v2/bundles", bundle_router)
 
 
 // Admin/internal-ops routes. Mounted unconditionally - each route decides its own restriction
@@ -114,7 +117,6 @@ app.use("/api/v1/fire-report", fire_report_router)
 app.use("/api/v1/report", report_router)
 
 app.use("/api/v1/kyc", kyc_router)
-app.use("/api/v1/bundles", bundle_router)
 
 //Health check
 app.get("/api/v1/ping", (_req, res) => {

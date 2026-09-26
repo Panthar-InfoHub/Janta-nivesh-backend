@@ -4,6 +4,7 @@ import logger from "../middleware/logger.js";
 import {
     add_mf_cart_item_schema,
     update_mf_cart_item_schema,
+    add_bundle_to_cart_schema,
 } from "../lib/zod-schemas/mf-cart.schema.js";
 import { mf_cart_service } from "../services/mf-cart.service.js";
 
@@ -51,6 +52,30 @@ class MfCartControllerClass {
             return;
         } catch (error) {
             logger.error("Error in add_to_cart controller:", error);
+            next(error);
+            return;
+        }
+    };
+
+    add_bundle_to_cart = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id = req.user?.id!;
+
+            const input = add_bundle_to_cart_schema.parse(req.body);
+
+            const result = await mf_cart_service.add_bundle_to_cart(
+                user_id,
+                input,
+            );
+
+            res.status(200).json({
+                success: true,
+                message: `Bundle added to cart: ${result.added} of ${result.total_funds} fund(s) added successfully`,
+                data: result,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in add_bundle_to_cart controller:", error);
             next(error);
             return;
         }

@@ -88,6 +88,19 @@ class MandateServiceClass {
         return await db.mandate.findFirst({ where: { user_id, mandate_id } });
     }
 
+    /** Ownership-scoped lookup matching either FP's mandate_id or our internal CUID id. */
+    get_user_mandate = async (user_id: string, mandate_id: string) => {
+        return await db.mandate.findFirst({
+            where: {
+                user_id,
+                OR: [
+                    { mandate_id },
+                    { id: mandate_id },
+                ],
+            },
+        });
+    }
+
     /**
      * FP mandate_status -> our 3-state enum. Full FP vocab per the webhook event list:
      * created / received / submitted / approved / rejected / cancelled.
