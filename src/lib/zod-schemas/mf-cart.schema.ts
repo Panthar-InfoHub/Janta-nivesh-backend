@@ -83,6 +83,23 @@ export type ConfirmLumpsumCheckoutInput = z.infer<
     typeof confirm_lumpsum_checkout_schema
 >;
 
+export const initiate_sip_checkout_schema = z.object({
+    mandate_id: z.string().min(1, "mandate_id is required"),
+});
+
+export type InitiateSipCheckoutInput = z.infer<
+    typeof initiate_sip_checkout_schema
+>;
+
+export const confirm_sip_checkout_schema = z.object({
+    batch_id: z.string().min(1, "batch_id is required"),
+    otp: z.string().length(6, "OTP must be 6 digits"),
+});
+
+export type ConfirmSipCheckoutInput = z.infer<
+    typeof confirm_sip_checkout_schema
+>;
+
 export const bundle_cart_selection_schema = z.object({
     mf_product_id: z.string().min(1, "MF product id is required"),
     allocation_percentage: z.number().min(0).max(100),
@@ -170,4 +187,3 @@ export const add_bundle_to_cart_schema = z.preprocess((val: any) => {
 export type AddBundleToCartInput = z.infer<
     typeof base_add_bundle_to_cart_schema
 >;
-
