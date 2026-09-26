@@ -24,7 +24,7 @@ export type ResolvedMfRedemptionInput = {
 };
 
 export const verify_redemption_confirmation_otp_schema = z.object({
-    otp: z.string().length(4),
+    otp: z.string().length(6),
 });
 
 export type VerifyRedemptionConfirmationOtpInput = z.infer<

@@ -45,7 +45,8 @@ class UserFinanceControllerClass {
                 user_assets: true,
                 user_finance: true,
                 kyc_types: true,
-                onboarding: true
+                onboarding: true,
+                user_bank_details: true
             });
 
             logger.debug(`User data fetched successfully ==> `, data);
