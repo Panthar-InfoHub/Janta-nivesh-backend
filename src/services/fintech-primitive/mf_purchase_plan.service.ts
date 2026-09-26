@@ -8,6 +8,23 @@ import type { ResolvedMfPurchasePlanInput } from "../../lib/zod-schemas/mf-purch
 // 1-year plan - 12 monthly installments (or 12 daily ones, if daily frequency is picked)
 const NUMBER_OF_INSTALLMENTS = 12;
 
+type BatchPurchasePlanItem = {
+    scheme: string;
+    mf_investment_account: string;
+    frequency: "monthly" | "daily";
+    amount: number;
+    installment_day?: number | null;
+    folio_number?: string;
+    purpose?: string;
+    systematic: true;
+    generate_first_installment_now: true;
+    auto_generate_installments: true;
+    number_of_installments: number;
+    payment_method: "mandate";
+    payment_source: string;
+    user_ip: string;
+};
+
 // Thin Fintech Primitives client - no DB writes here, controller orchestrates persistence.
 // initiated_by/initiated_via/systematic/payment_method/gateway are constants for this product.
 class FintechPrimitiveMfPurchasePlanServiceClass {
@@ -69,6 +86,55 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
         }
     }
 
+    create_batch_purchase_plans = async (
+        plans: Array<BatchPurchasePlanItem>,
+    ) => {
+        if (plans.length === 0) {
+            throw new AppError(
+                "No purchase plans provided",
+                400,
+                "MF_BATCH_PLANS_EMPTY",
+            );
+        }
+
+        const payload = {
+            mf_purchase_plans: plans,
+        };
+
+        logger.debug("Creating FP mf_purchase_plan batch", {
+            plans_count: plans.length,
+        });
+
+        try {
+            const response = await axios.post(
+                `${this.base_url}/v2/mf_purchase_plans/batch`,
+                payload,
+                {
+                    headers: await this.auth_headers({
+                        "Content-Type": "application/json",
+                    }),
+                },
+            );
+
+            logger.debug(
+                "FP mf_purchase_plan batch create response ==> ",
+                response.data,
+            );
+
+            return response.data;
+        } catch (error: any) {
+            logger.error(
+                "Error creating FP mf_purchase_plan batch ==> ",
+                error?.response?.data || error.message,
+            );
+
+            throw new AppError(
+                "Failed to create MF purchase plan batch",
+                502,
+                "MF_BATCH_PLAN_CREATE_FAILED",
+            );
+        }
+    };
     /**
      * PATCH /v2/mf_purchase_plans - moves review_completed -> confirmed by attaching consent.
      * Docs' working example sends only { id, state, consent } - no payment_method/payment_source
@@ -96,6 +162,9 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
             throw new AppError("Failed to confirm MF purchase plan", 502, "MF_PURCHASE_PLAN_CONFIRM_FAILED");
         }
     }
+
+    /** Alias for confirm_purchase_plan for semantic compatibility across callers */
+    update_purchase_plan = this.confirm_purchase_plan;
 
     /** GET /v2/mf_purchase_plans/:id */
     get_purchase_plan = async (fp_purchase_plan_id: string) => {
@@ -154,6 +223,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
             );
         }
     };
+
 }
 
 export const fintech_primitive_mf_purchase_plan_service = new FintechPrimitiveMfPurchasePlanServiceClass();
