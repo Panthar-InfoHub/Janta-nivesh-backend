@@ -658,6 +658,7 @@ class MfCartServiceClass {
     initiate_sip_checkout = async (
         user_id: string,
         user_ip: string,
+        mandate_id: string,
     ) => {
         const cart_items = await db.mfCartItem.findMany({
             where: {
@@ -719,17 +720,21 @@ class MfCartServiceClass {
             );
         }
 
-        const mandates = await mandate_service.get_all(user_id);
+        const mandate = await mandate_service.get_user_mandate(user_id, mandate_id);
 
-        const approved_mandate = mandates.find(
-            (mandate) => mandate.status === "SUCCESS",
-        );
-
-        if (!approved_mandate) {
+        if (!mandate) {
             throw new AppError(
-                "No approved mandate found - create and authorize a mandate first",
+                "Mandate not found for this user",
+                404,
+                "MANDATE_NOT_FOUND",
+            );
+        }
+
+        if (mandate.status !== "SUCCESS") {
+            throw new AppError(
+                "Mandate is not approved yet - authorize the mandate first",
                 400,
-                "APPROVED_MANDATE_REQUIRED",
+                "MANDATE_NOT_APPROVED",
             );
         }
 
@@ -790,7 +795,7 @@ class MfCartServiceClass {
                 auto_generate_installments: true as const,
                 number_of_installments: 12,
                 payment_method: "mandate" as const,
-                payment_source: approved_mandate.mandate_id,
+                payment_source: mandate.mandate_id,
                 user_ip,
             });
         }

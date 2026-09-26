@@ -163,54 +163,8 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
         }
     }
 
-    update_purchase_plan = async (
-        fp_purchase_plan_id: string,
-        consent: {
-            email: string;
-            isd_code: string;
-            mobile: string;
-        },
-    ) => {
-        const payload = {
-            id: fp_purchase_plan_id,
-            state: "confirmed",
-            consent,
-        };
-
-        logger.debug("Updating FP mf_purchase_plan", {
-            fp_purchase_plan_id,
-        });
-
-        try {
-            const response = await axios.patch(
-                `${this.base_url}/v2/mf_purchase_plans`,
-                payload,
-                {
-                    headers: await this.auth_headers({
-                        "Content-Type": "application/json",
-                    }),
-                },
-            );
-
-            logger.debug(
-                "FP mf_purchase_plan update response ==> ",
-                response.data,
-            );
-
-            return response.data;
-        } catch (error: any) {
-            logger.error(
-                "Error updating FP mf_purchase_plan ==> ",
-                error?.response?.data || error.message,
-            );
-
-            throw new AppError(
-                "Failed to update MF purchase plan",
-                502,
-                "MF_PURCHASE_PLAN_UPDATE_FAILED",
-            );
-        }
-    };
+    /** Alias for confirm_purchase_plan for semantic compatibility across callers */
+    update_purchase_plan = this.confirm_purchase_plan;
 
     /** GET /v2/mf_purchase_plans/:id */
     get_purchase_plan = async (fp_purchase_plan_id: string) => {

@@ -4,6 +4,7 @@ import logger from "../middleware/logger.js";
 import { mf_cart_service } from "../services/mf-cart.service.js";
 import {
     confirm_lumpsum_checkout_schema,
+    initiate_sip_checkout_schema,
     confirm_sip_checkout_schema,
 } from "../lib/zod-schemas/mf-cart.schema.js";
 
@@ -142,10 +143,13 @@ class MfCartCheckoutControllerClass {
                 user_ip = "127.0.0.1";
             }
 
+            const { mandate_id } = initiate_sip_checkout_schema.parse(req.body);
+
             const result =
                 await mf_cart_service.initiate_sip_checkout(
                     user_id,
                     user_ip,
+                    mandate_id,
                 );
 
             res.status(200).json({
