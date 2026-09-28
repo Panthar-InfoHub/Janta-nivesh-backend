@@ -42,13 +42,13 @@ class BundleServiceClass {
         const [bundles, total] = await Promise.all([
             db.bundle.findMany({
                 skip,
-                // include: {
-                //     categories: {
-                //         include: {
-                //             slots: true
-                //         }
-                //     }
-                // },
+                include: {
+                    categories: {
+                        include: {
+                            slots: true
+                        }
+                    }
+                },
                 take: limit,
                 orderBy: {
                     bundle_name: 'asc'
