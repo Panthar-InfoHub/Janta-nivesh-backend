@@ -43,12 +43,28 @@ class NomineeServiceClass {
         };
     }
 
+    /** Cleans up any un-synced / orphan nominee drafts left by prior failed attempts. */
+    delete_unsynced = async (user_id: string) => {
+        const result = await db.nominee.deleteMany({
+            where: {
+                user_id,
+                fp_related_party_id: null,
+            },
+        });
+        if (result.count > 0) {
+            logger.info("Cleaned up unsynced nominee drafts", { user_id, count: result.count });
+        }
+        return result;
+    }
+
     /**
      * Creates a batch of nominees in one go (the "Add another nominee" screen submits the
      * whole list at once). Validates the combined total - existing nominees + this batch -
      * sums to exactly 100 when allocations are specified, or defaults equally if omitted.
      */
     create_many = async (user_id: string, nominees: NomineeInput[]) => {
+        await this.delete_unsynced(user_id);
+
         const existing = await this.get_all(user_id);
 
         const any_allocation_specified =
