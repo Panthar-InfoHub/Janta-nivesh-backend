@@ -14,15 +14,16 @@ class MfCatalogueControllerClass {
      */
     get_funds_by_tag = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const { tag, search, category, amount_type, page, limit } = funds_by_tag_query_schema.parse(req.query);
+            const { tag, search, category, amount_type, investment_mode, page, limit } = funds_by_tag_query_schema.parse(req.query);
 
-            logger.debug(`tag ${tag} search ${search} category ${category} amount_type ${amount_type} page ${page} limit ${limit}`);
+            logger.debug(`tag ${tag} search ${search} category ${category} amount_type ${amount_type} investment_mode ${investment_mode} page ${page} limit ${limit}`);
 
             const data = await mf_catalogue_service.get_funds({
                 tag,
                 search,
                 category,
                 amount_type,
+                investment_mode,
                 page,
                 limit,
             });

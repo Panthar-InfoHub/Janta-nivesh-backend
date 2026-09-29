@@ -1,71 +1,49 @@
 import { db } from "../../server.js";
 import type { pagination } from "../../lib/types.js";
 
-/**
- * Section tags. Each is a named slice of the catalogue the discovery screens render, and the
- * value doubles as the query param the "see all" screen passes to GET /api/v2/mf/funds?tag=.
- *
- * Only `popular` resolves to real funds today - every category tag needs a category/sector field
- * on MfProduct, which the curated catalogue doesn't carry yet (DISC-0 in Todo.md). They're
- * declared here so the response shape is final and the frontend can build against it; each
- * returns an empty list until that column lands.
- */
-export const MF_SECTION_TAGS = [
-    "popular",
-    "large_cap",
-    "mid_cap",
-    "small_cap",
-    "flexi_cap",
-    "multi_cap",
-    "others",
-    "debt", //index
-] as const;
+export {
+    MF_SECTION_TAGS,
+    type MfSectionTag,
+    MF_SECTION_TITLES,
+    FUND_CATEGORIES,
+    type FundCategory,
+    AMOUNT_TYPES,
+    type AmountType,
+    INVESTMENT_MODES,
+    type InvestmentMode,
+} from "../../lib/zod-schemas/mf-catalogue.schema.js";
 
-export type MfSectionTag = (typeof MF_SECTION_TAGS)[number];
-
-export const MF_SECTION_TITLES: Record<MfSectionTag, string> = {
-    popular: "Popular Funds",
-    large_cap: "Large Cap",
-    mid_cap: "Mid Cap",
-    small_cap: "Small Cap",
-    flexi_cap: "Flexi Cap",
-    multi_cap: "Multi Cap",
-    others: "Other",
-    debt: "Debt",
-};
-
-export const FUND_CATEGORIES = ["all", "equity", "debt", "liquid"] as const;
-export type FundCategory = (typeof FUND_CATEGORIES)[number];
-
-export const AMOUNT_TYPES = ["daily_10", "monthly_100"] as const;
-export type AmountType = (typeof AMOUNT_TYPES)[number];
+import {
+    MF_SECTION_TAGS,
+    MF_SECTION_TITLES,
+    type MfSectionTag,
+    type FundCategory,
+    type AmountType,
+    type InvestmentMode,
+} from "../../lib/zod-schemas/mf-catalogue.schema.js";
 
 export type GetFundsOptions = {
     tag?: MfSectionTag;
     search?: string;
     category?: FundCategory;
     amount_type?: AmountType;
+    investment_mode?: InvestmentMode;
     page: number;
     limit: number;
 };
 
-// Funds with a complete return history. A fund under five years old legitimately has a null
-// return_5y, and ranking it beside funds with a full track record compares things that aren't
-// comparable - so those are excluded rather than sorted to the bottom.
-const COMPLETE_METRICS = {
+// Flexible metrics: fund has at least 1Y, 3Y, or 5Y return track record.
+// Prevents newer, high-performing funds under 5 years old from being completely excluded.
+const FLEXIBLE_METRICS = {
     metrics: {
         is: {
-            return_1y: { not: null },
-            return_3y: { not: null },
-            return_5y: { not: null },
+            OR: [
+                { return_1y: { not: null } },
+                { return_3y: { not: null } },
+                { return_5y: { not: null } },
+            ],
         },
     },
-    scheme_plan: {
-        is: {
-            plan_type: 'regular',
-            option: 'growth'
-        }
-    }
 };
 
 const FUND_CARD_SELECT = {
@@ -93,20 +71,22 @@ const FUND_CARD_SELECT = {
 class MfCatalogueServiceClass {
 
     /**
-     * Unified query method for catalogue browsing, search, category, and amount filters.
+     * Unified query method for catalogue browsing, search, category, amount filters, and transaction eligibility.
      */
     get_funds = async ({
         tag = "popular",
         search,
         category = "all",
         amount_type,
+        investment_mode = "both",
         page,
         limit,
     }: GetFundsOptions) => {
-        // Base scheme_plan conditions: regular growth
+        // Base scheme_plan conditions: active regular growth
         const scheme_plan_is: Record<string, any> = {
             plan_type: "regular",
             option: "growth",
+            active: true,
         };
 
         // 1. Tag / Sub-category filter (unless 'popular' which shows all subcategories)
@@ -119,17 +99,30 @@ class MfCatalogueServiceClass {
             scheme_plan_is.fund_category = { equals: category, mode: "insensitive" };
         }
 
-        // 3. Amount / SIP threshold filter
+        // 3. Amount / SIP threshold filter & Transaction Mode Eligibility
         if (amount_type === "daily_10") {
             scheme_plan_is.sip_daily_allowed = true;
             scheme_plan_is.sip_daily_amount_min = { lte: 10 };
         } else if (amount_type === "monthly_100") {
             scheme_plan_is.sip_monthly_allowed = true;
             scheme_plan_is.sip_monthly_amount_min = { lte: 100 };
+        } else if (investment_mode === "sip") {
+            scheme_plan_is.sip_monthly_allowed = true;
+        } else if (investment_mode === "lumpsum") {
+            scheme_plan_is.lumpsum_allowed = true;
+        } else if (investment_mode === "any") {
+            scheme_plan_is.OR = [
+                { lumpsum_allowed: true },
+                { sip_monthly_allowed: true },
+            ];
+        } else {
+            // Default "both": must allow both lumpsum and monthly SIP, ensuring 100% eligibility for cart & bundles
+            scheme_plan_is.lumpsum_allowed = true;
+            scheme_plan_is.sip_monthly_allowed = true;
         }
 
         const where: any = {
-            ...COMPLETE_METRICS,
+            ...FLEXIBLE_METRICS,
             scheme_plan: {
                 is: scheme_plan_is,
             },
@@ -149,7 +142,9 @@ class MfCatalogueServiceClass {
             db.mfProduct.findMany({
                 where,
                 select: FUND_CARD_SELECT,
-                orderBy: search ? { name: "asc" as const } : { metrics: { return_3y: "desc" as const } },
+                orderBy: search
+                    ? { name: "asc" as const }
+                    : { metrics: { return_3y: { sort: "desc" as const, nulls: "last" as const } } },
                 skip: (page - 1) * limit,
                 take: limit,
             }),
@@ -161,6 +156,7 @@ class MfCatalogueServiceClass {
             search: search ? search.trim() : undefined,
             category,
             amount_type,
+            investment_mode,
             funds,
             pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
         };
