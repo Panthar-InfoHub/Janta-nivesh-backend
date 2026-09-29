@@ -60,6 +60,7 @@ class NomineeControllerClass {
                     );
                     if (related_party?.id) {
                         await nominee_service.set_fp_related_party_id(nominee.id, related_party.id);
+                        nominee.fp_related_party_id = related_party.id;
                     }
                 }
 
