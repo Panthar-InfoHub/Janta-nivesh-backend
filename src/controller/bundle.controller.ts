@@ -88,6 +88,7 @@ class BundleControllerClass {
 
                     const category_funds = await mf_catalogue_service.get_funds({
                         tag,
+                        investment_mode: "both",
                         page: 1,
                         limit: 10,
                     });

@@ -31,17 +31,63 @@ const nominee_phone_schema = z.object({
 // driving_licence_number | passport_number) at call time, not a single shared field on FP's side.
 export const NOMINEE_DOCUMENT_TYPES = ["pan", "aadhaar", "driving_licence", "passport"] as const;
 
+// Helpers to treat empty strings, nulls, and empty nested objects from form submissions as undefined
+const empty_string_to_undefined = (val: unknown) =>
+    val === null || (typeof val === "string" && val.trim() === "") ? undefined : val;
+
+const empty_number_to_undefined = (val: unknown) =>
+    val === null || val === "" || val === undefined ? undefined : typeof val === "string" ? Number(val) : val;
+
+const empty_phone_to_undefined = (val: unknown) => {
+    if (!val || typeof val !== "object") return undefined;
+    const phone = val as Record<string, any>;
+    if (!phone.number || (typeof phone.number === "string" && phone.number.trim() === "")) {
+        return undefined;
+    }
+    return phone;
+};
+
+const empty_address_to_undefined = (val: unknown) => {
+    if (!val || typeof val !== "object") return undefined;
+    const addr = val as Record<string, any>;
+    if (!addr.line1 || (typeof addr.line1 === "string" && addr.line1.trim() === "")) {
+        return undefined;
+    }
+    return addr;
+};
+
 export const nominee_input_schema = z.object({
     nominee_name: z.string().min(1, "Nominee name is required"),
     relationship: z.enum(NOMINEE_RELATIONSHIP_VALUES),
-    percentage_allocation: z.number().min(0).max(100).optional(),
-    dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dob must be YYYY-MM-DD").optional(),
+    percentage_allocation: z.preprocess(
+        empty_number_to_undefined,
+        z.number().min(0).max(100).optional()
+    ),
+    dob: z.preprocess(
+        empty_string_to_undefined,
+        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dob must be YYYY-MM-DD").optional()
+    ),
     // Required by FP for non-minor nominees
-    document_type: z.enum(NOMINEE_DOCUMENT_TYPES).optional(),
-    document_number: z.string().min(1).optional(),
-    email_address: z.string().email().optional(),
-    phone_number: nominee_phone_schema.optional(),
-    address: nominee_address_schema.optional(),
+    document_type: z.preprocess(
+        empty_string_to_undefined,
+        z.enum(NOMINEE_DOCUMENT_TYPES).optional()
+    ),
+    document_number: z.preprocess(
+        empty_string_to_undefined,
+        z.string().min(1).optional()
+    ),
+    email_address: z.preprocess(
+        empty_string_to_undefined,
+        z.string().email("Invalid email address").optional()
+    ),
+    phone_number: z.preprocess(
+        empty_phone_to_undefined,
+        nominee_phone_schema.optional()
+    ),
+    address: z.preprocess(
+        empty_address_to_undefined,
+        nominee_address_schema.optional()
+    ),
 });
 
 export type NomineeInput = z.infer<typeof nominee_input_schema>;
