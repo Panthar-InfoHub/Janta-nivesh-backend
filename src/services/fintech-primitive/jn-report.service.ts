@@ -57,41 +57,83 @@ class JnReportServiceClass {
 
             if (!rows.length) {
                 logger.debug('[JN-Report] Capital gains report returned 0 eligible transactions (no redemptions yet).');
-                return undefined;
+                const currentYear = new Date().getFullYear();
+                const fyMonth = new Date().getMonth();
+                const fy = fyMonth >= 3 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
+
+                return {
+                    financial_year: fy,
+                    short_term: {
+                        sale_value: 0,
+                        cost: 0,
+                        gain: 0,
+                        taxable: 0,
+                    },
+                    long_term: {
+                        sale_value: 0,
+                        cost: 0,
+                        gain: 0,
+                        taxable: 0,
+                    },
+                    sources: [],
+                };
             }
 
-            let stSale = 0, stCost = 0, stGain = 0;
-            let ltSale = 0, ltCost = 0, ltGain = 0;
+            let stSale = 0, stCost = 0, stGain = 0, stTaxable = 0;
+            let ltSale = 0, ltCost = 0, ltGain = 0, ltTaxable = 0;
 
             const sources: JnReportCapitalGainsSource[] = rows.map((r) => {
                 const rec: any = {};
                 cols.forEach((col, i) => { rec[col] = r[i]; });
 
-                const termType = String(rec.term || rec.type || '').toUpperCase();
-                const isLt = termType.includes('LONG') || termType === 'LTCG';
-                const sale = Number(rec.sale_value || rec.amount) || 0;
-                const cost = Number(rec.purchase_value || rec.cost) || 0;
-                const gain = Number(rec.capital_gain || rec.gain) || (sale - cost);
+                // Holding period / Term: source_days_held > 365 is Long Term for mutual funds
+                const daysHeld = Number(rec.source_days_held) || 0;
+                const termType = String(rec.term || '').toUpperCase();
+                const isLt = termType.includes('LONG') || termType === 'LTCG' || daysHeld > 365;
+
+                const sale = Number(rec.amount ?? rec.sale_value) || 0;
+                const units = rec.units != null ? Number(rec.units) : undefined;
+                const purchaseNav = Number(rec.source_purchased_at ?? rec.purchase_nav) || 0;
+
+                // Cost: units * purchase_nav, or sale - source_actual_gain, or purchase_value/cost
+                let cost = 0;
+                if (units && purchaseNav > 0) {
+                    cost = units * purchaseNav;
+                } else if (rec.source_actual_gain != null && sale > 0) {
+                    cost = Math.max(0, sale - Number(rec.source_actual_gain));
+                } else {
+                    cost = Number(rec.purchase_value ?? rec.cost) || 0;
+                }
+
+                const gain = rec.source_actual_gain != null
+                    ? Number(rec.source_actual_gain)
+                    : (Number(rec.capital_gain ?? rec.gain) || (sale - cost));
+
+                const taxable = rec.source_taxable_gain != null
+                    ? Math.max(0, Number(rec.source_taxable_gain))
+                    : gain;
 
                 if (isLt) {
                     ltSale += sale;
                     ltCost += cost;
                     ltGain += gain;
+                    ltTaxable += taxable;
                 } else {
                     stSale += sale;
                     stCost += cost;
                     stGain += gain;
+                    stTaxable += taxable;
                 }
 
                 return {
                     scheme_name: rec.scheme_name || rec.scheme || 'Mutual Fund',
                     term: isLt ? 'LONG_TERM' : 'SHORT_TERM',
-                    units: rec.units ? Number(rec.units) : undefined,
-                    purchase_date: rec.traded_on_from || rec.purchase_date,
+                    units,
+                    purchase_date: rec.source_purchased_on || rec.traded_on_from || rec.purchase_date,
                     sell_date: rec.traded_on || rec.sell_date,
-                    purchase_value: cost,
-                    sale_value: sale,
-                    gain,
+                    purchase_value: Math.round(cost * 100) / 100,
+                    sale_value: Math.round(sale * 100) / 100,
+                    gain: Math.round(gain * 100) / 100,
                 };
             });
 
@@ -105,19 +147,38 @@ class JnReportServiceClass {
                     sale_value: Math.round(stSale * 100) / 100,
                     cost: Math.round(stCost * 100) / 100,
                     gain: Math.round(stGain * 100) / 100,
-                    taxable: Math.round(stGain * 100) / 100,
+                    taxable: Math.round(stTaxable * 100) / 100,
                 } : undefined,
                 long_term: (ltSale || ltCost || ltGain) ? {
                     sale_value: Math.round(ltSale * 100) / 100,
                     cost: Math.round(ltCost * 100) / 100,
                     gain: Math.round(ltGain * 100) / 100,
-                    taxable: Math.round(ltGain * 100) / 100,
+                    taxable: Math.round(ltTaxable * 100) / 100,
                 } : undefined,
                 sources,
             };
         } catch (err: any) {
             logger.debug(`[JN-Report] Capital gains report fetch skipped: ${err?.message}`);
-            return undefined;
+            const currentYear = new Date().getFullYear();
+            const fyMonth = new Date().getMonth();
+            const fy = fyMonth >= 3 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
+
+            return {
+                financial_year: fy,
+                short_term: {
+                    sale_value: 0,
+                    cost: 0,
+                    gain: 0,
+                    taxable: 0,
+                },
+                long_term: {
+                    sale_value: 0,
+                    cost: 0,
+                    gain: 0,
+                    taxable: 0,
+                },
+                sources: [],
+            };
         }
     }
 
@@ -156,7 +217,10 @@ class JnReportServiceClass {
             throw new AppError('User not found', 404, 'USER_NOT_FOUND');
         }
 
-        const rawHoldings = user.mf_holdings || [];
+        // Filter out fully-redeemed holdings (0 units, 0 value) so they don't linger in active holdings
+        const rawHoldings = (user.mf_holdings || []).filter(
+            h => (Number(h.units) > 0 || Number(h.current_value) > 0 || Number(h.invested_amount) > 0)
+        );
 
         // Map DB holdings to template holding shape
         const holdings: JnReportHolding[] = rawHoldings.map((h, i) => {
@@ -246,34 +310,58 @@ class JnReportServiceClass {
         }));
         aumSummary.sort((a, b) => b.current_value - a.current_value);
 
-        // Map transactions from user.mf_transaction_plans
         const rawPlans = user.mf_transaction_plans || [];
-        const transactions: JnReportTransaction[] = rawPlans.map(p => {
-            const typeLabel = p.systematic
-                ? (p.plan_type === 'PURCHASE' ? 'SIP Purchase' : p.plan_type === 'REDEMPTION' ? 'SWP' : 'STP')
-                : (p.plan_type === 'PURCHASE' ? 'Lumpsum Purchase' : p.plan_type === 'REDEMPTION' ? 'Redemption' : 'Switch');
+
+        // Map transactions from the actual holdings (exactly one per purchased fund in the portfolio)
+        const transactions: JnReportTransaction[] = holdings.map(h => {
+            // Find the most recent confirmed plan for this holding
+            const plan = rawPlans.find(p =>
+                (p.state === 'CONFIRMED' || p.state === 'SUCCESSFUL' || p.state === 'COMPLETED' || p.state === 'ACTIVE' || p.state === 'SUBMITTED') &&
+                ((p.folio_number && p.folio_number === h.folio_number) || p.scheme === h.isin)
+            );
+
+            const isSip = plan?.systematic ?? false;
+            const typeLabel = isSip ? 'SIP Purchase' : 'Lumpsum Purchase';
+            const txDate = plan?.createdAt ? plan.createdAt.toISOString() : (h.nav_date || new Date().toISOString());
 
             return {
-                date: p.createdAt ? p.createdAt.toISOString() : undefined,
+                date: txDate,
                 type: typeLabel,
-                scheme_name: p.mf_product?.name || p.scheme,
-                isin: p.scheme,
-                folio: p.folio_number || undefined,
-                amount: p.amount ? Number(p.amount) : undefined,
-                units: p.units ? Number(p.units) : undefined,
-                status: p.state || undefined,
+                scheme_name: h.scheme_name,
+                isin: h.isin,
+                folio: h.folio_number || undefined,
+                amount: h.invested_amount,
+                units: h.units ? Math.round(h.units * 1000) / 1000 : undefined,
+                nav: (h.average_nav || h.current_nav) ? Math.round((h.average_nav || h.current_nav)! * 100) / 100 : undefined,
+                status: plan?.state || 'CONFIRMED',
             };
         });
 
-        // Group transaction summary
+        // Sort newest first
+        transactions.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+        // Group transaction summary from active holdings (so Total matches Holdings Invested Amount)
         const txTypeMap: Record<string, { count: number; amount: number }> = {};
-        for (const t of transactions) {
-            if (!txTypeMap[t.type]) {
-                txTypeMap[t.type] = { count: 0, amount: 0 };
+        for (const h of holdings) {
+            const invested = h.invested_amount || 0;
+            if (invested <= 0) continue;
+
+            // Check if this holding is tied to an active SIP
+            const isSip = rawPlans.some(p =>
+                p.systematic &&
+                p.plan_type === 'PURCHASE' &&
+                (p.folio_number === h.folio_number || p.scheme === h.isin) &&
+                p.state !== 'CANCELLED' && p.state !== 'FAILED'
+            );
+
+            const typeLabel = isSip ? 'SIP Purchase' : 'Lumpsum Purchase';
+            if (!txTypeMap[typeLabel]) {
+                txTypeMap[typeLabel] = { count: 0, amount: 0 };
             }
-            txTypeMap[t.type].count++;
-            txTypeMap[t.type].amount += (t.amount || 0);
+            txTypeMap[typeLabel].count += 1;
+            txTypeMap[typeLabel].amount += invested;
         }
+
         const transactionSummary: JnReportTransactionSummary[] = Object.entries(txTypeMap).map(([type, s], i) => ({
             transaction_type: type,
             count: s.count,
@@ -378,40 +466,6 @@ class JnReportServiceClass {
                 benchReturns = { y1: 21.5, y3: 17.4, y5: 16.2, inception: 14.5 };
             }
 
-            const metrics = rawTargetHolding?.mf_product?.metrics;
-            const ret1y = metrics?.return_1y != null ? Math.round(metrics.return_1y * 10) / 10 : (targetHolding.absolute_return ?? 24.6);
-            const ret3y = metrics?.return_3y != null ? Math.round(metrics.return_3y * 10) / 10 : (targetHolding.xirr ?? 19.1);
-            const ret5y = metrics?.return_5y != null ? Math.round(metrics.return_5y * 10) / 10 : 18.4;
-            const retInception = targetHolding.xirr != null ? Math.round(targetHolding.xirr * 10) / 10 : (ret3y ? Math.round((ret3y * 0.9) * 10) / 10 : 16.8);
-
-            const returnsVsBenchmark: JnReportFundReturnBenchmark[] = [
-                { period: '1Y', fund: ret1y, benchmark: benchReturns.y1 },
-                { period: '3Y', fund: ret3y, benchmark: benchReturns.y3 },
-                { period: '5Y', fund: ret5y, benchmark: benchReturns.y5 },
-                { period: 'Since Inception', fund: retInception, benchmark: benchReturns.inception },
-            ];
-
-            // 3. Construct Valuation History (f.growth)
-            const growth: JnReportFundGrowthPoint[] = [];
-            const curInvested = targetHolding.invested_amount || 0;
-            const curVal = targetHolding.current_value || curInvested;
-            const now = new Date();
-            const totalMonths = 24;
-
-            for (let i = 0; i < totalMonths; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() - (totalMonths - 1 - i), 1);
-                const ym = d.toISOString().slice(0, 7);
-                if (i === totalMonths - 1) {
-                    growth.push({ month: ym, invested: curInvested, value: curVal });
-                } else {
-                    const progress = (i + 1) / totalMonths;
-                    const inv = Math.round((curInvested * Math.max(0.65, progress)) * 100) / 100;
-                    const drift = 1 + (0.012 * (i + 1)) + (Math.sin(i / 2) * 0.008);
-                    const val = Math.round((inv * Math.min(curVal / (curInvested || 1), drift)) * 100) / 100;
-                    growth.push({ month: ym, invested: inv, value: val });
-                }
-            }
-
             const firstTx = schemeTransactions[schemeTransactions.length - 1];
             const firstInvestedOn = firstTx?.date || rawTargetHolding?.createdAt?.toISOString();
 
@@ -422,8 +476,8 @@ class JnReportServiceClass {
                 expense_ratio: undefined,
                 first_invested_on: firstInvestedOn,
                 sip: sipInfo,
-                returns_vs_benchmark: returnsVsBenchmark,
-                growth,
+                returns_vs_benchmark: undefined,
+                growth: undefined,
                 transactions: schemeTransactions,
                 realised_gains: (capitalGains?.sources || []).filter(s => s.scheme_name === targetHolding.scheme_name),
             };

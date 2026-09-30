@@ -142,17 +142,29 @@ export function generateFundReportHTML(d: JnReportData): string {
       <tbody>${rgRows}</tbody></table></div>`;
     }
 
-    // Assemble — pair cards two-up where both exist
-    const pair = (aCard: string, bCard: string): string =>
-        (aCard || bCard) ? `<div class="grid-2c">${aCard || '<div></div>'}${bCard || '<div></div>'}</div><div class="spacer"></div>` : '';
+    // Facts layout: If Active SIP exists, pair side-by-side in 2-column grid.
+    // If no SIP exists (e.g. lumpsum purchase), render full-width with balanced 2-column KV grid (no blank gap!).
+    const factsSection = factRows
+        ? (sipCard
+            ? `<div class="grid-2c"><div class="card">${sectionTitle('Fund & Holding Details')}<div class="kv">${factRows}</div></div>${sipCard}</div><div class="spacer"></div>`
+            : `<div class="card">${sectionTitle('Fund & Holding Details')}<div class="kv kv-2c">${factRows}</div></div><div class="spacer"></div>`
+        )
+        : '';
+
+    // Returns vs benchmark & Valuation history (rendered only if provided by service)
+    const rvbValSection = (rvbCard && valCard)
+        ? `<div class="grid-2c">${rvbCard}${valCard}</div><div class="spacer"></div>`
+        : (rvbCard || valCard)
+            ? `${rvbCard || valCard}<div class="spacer"></div>`
+            : '';
 
     const body = `
     ${brandBar('Fund Holding Report', f.scheme_name || 'Scheme')}
     ${meta}
     ${tags}
     ${kpis}
-    ${pair(factsCard, sipCard)}
-    ${pair(rvbCard, valCard)}
+    ${factsSection}
+    ${rvbValSection}
     ${txCard}
     ${txCard && rgCard ? '<div class="spacer"></div>' : ''}
     ${rgCard}
