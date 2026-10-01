@@ -3,6 +3,7 @@ import { z } from "zod";
 export const bundle_slot_schema = z.object({
     allocation_percentage: z.number().min(0).max(100),
     default_rank: z.number().int().positive(),
+    pre_selected_product_id: z.string().optional().nullable(),
 });
 
 export const bundle_category_schema = z.object({

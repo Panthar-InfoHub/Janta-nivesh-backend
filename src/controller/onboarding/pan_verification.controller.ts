@@ -110,6 +110,11 @@ class PanVerificationControllerClass {
 
             await kyc_profile_service.update_pre_verification_status(user_id, pre_verification);
 
+            if (!pre_verification?.completed_at) {
+                logger.warn(`PAN readiness check of user ${user_id} is not completed yet, Kindly refetch again after sometime `)
+                throw new AppError(`PAN readiness check is not completed yet, Kindly refetch again after some time`, 400, `PAN_READINESS_CHECK_IN_PROGRESS`)
+            }
+
             const is_processing_complete = !!pre_verification?.completed_at;
 
             if (is_processing_complete) {
