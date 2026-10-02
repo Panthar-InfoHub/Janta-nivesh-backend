@@ -64,6 +64,13 @@ const FUND_CARD_SELECT = {
             nav_change_pct: true,
         },
     },
+    scheme_plan: {
+        select: {
+            lumpsum_amount_min: true,
+            sip_monthly_amount_min: true,
+            sip_daily_amount_min: true,
+        }
+    }
 } as const;
 
 // Read-side of the curated catalogue - what the app's discovery screens query. Separate from

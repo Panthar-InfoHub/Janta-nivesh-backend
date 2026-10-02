@@ -1,5 +1,6 @@
 import { db } from "../server.js";
 import { CreateBundleInput } from "../lib/zod-schemas/bundle.schema.js";
+import { Prisma } from "../prisma/generated/prisma/client.js";
 
 class BundleServiceClass {
 
@@ -14,7 +15,7 @@ class BundleServiceClass {
                 commodity_percentage,
                 hybrid_percentage,
                 debt_percentage,
-                meta_data,
+                meta_data: meta_data as Prisma.InputJsonValue,
                 categories: {
                     create: categories.map(category => ({
                         category_name: category.category_name,
@@ -107,6 +108,7 @@ class BundleServiceClass {
                                                 fund_category: true,
                                                 lumpsum_amount_min: true,
                                                 sip_monthly_amount_min: true,
+                                                sip_daily_amount_min: true
                                             }
                                         }
                                     }

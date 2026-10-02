@@ -24,7 +24,10 @@ export const create_bundle_zod_schema = z.object({
         risk_level: z.string(),
         investment_growth: z.string(),
         investment_time: z.string(),
-    }),
+        start_amount: z.number().optional(),
+        daily_start_amount: z.number().optional(),
+        monthly_start_amount: z.number().optional(),
+    }).passthrough(),
     categories: z.array(bundle_category_schema).min(1, "At least one category is required in a bundle"),
 });
 
