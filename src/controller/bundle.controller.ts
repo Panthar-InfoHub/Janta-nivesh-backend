@@ -13,6 +13,21 @@ class BundleControllerClass {
 
     create_bundle = async (req: Request, res: Response, next: NextFunction) => {
         try {
+
+            const scheduler_token = req.headers["x-admin-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+            if (scheduler_token !== secret) {
+                logger.warn(
+                    `[SECURITY] Unauthorized attempt to access create bundle job with token: ${scheduler_token}`
+                );
+                throw new AppError(
+                    "Unauthorized: Invalid or missing admin token",
+                    401,
+                    "Unauthorized"
+                );
+            }
+
+
             logger.info("Creating a new bundle");
             const data = create_bundle_zod_schema.parse(req.body);
 
@@ -113,6 +128,7 @@ class BundleControllerClass {
                                 min_investment: {
                                     lumpsum_min: p.scheme_plan?.lumpsum_amount_min ? Number(p.scheme_plan.lumpsum_amount_min) : null,
                                     sip_monthly_min: p.scheme_plan?.sip_monthly_amount_min ? Number(p.scheme_plan.sip_monthly_amount_min) : null,
+                                    sip_daily_min: p.scheme_plan?.sip_daily_amount_min ? Number(p.scheme_plan.sip_daily_amount_min) : null,
                                 },
                             };
                         } else if (category_funds.funds.length > 0) {
