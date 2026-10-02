@@ -1,3 +1,4 @@
+import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import puppeteer, { Browser } from 'puppeteer';
@@ -11,14 +12,19 @@ function getChromeExecutablePath(): string | undefined {
         return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
-    // Check workspace .cache/puppeteer/chrome
-    const cacheBasePath = path.join(process.cwd(), '.cache', 'puppeteer', 'chrome');
-    if (fs.existsSync(cacheBasePath)) {
-        const versions = fs.readdirSync(cacheBasePath);
-        for (const ver of versions) {
-            const candidate = path.join(cacheBasePath, ver, 'chrome-linux64', 'chrome');
-            if (fs.existsSync(candidate)) {
-                return candidate;
+    const searchDirs = [
+        path.join(process.cwd(), '.cache', 'puppeteer', 'chrome'),
+        path.join(os.homedir(), '.cache', 'puppeteer', 'chrome'),
+    ];
+
+    for (const cacheBasePath of searchDirs) {
+        if (fs.existsSync(cacheBasePath)) {
+            const versions = fs.readdirSync(cacheBasePath);
+            for (const ver of versions.reverse()) {
+                const candidate = path.join(cacheBasePath, ver, 'chrome-linux64', 'chrome');
+                if (fs.existsSync(candidate)) {
+                    return candidate;
+                }
             }
         }
     }

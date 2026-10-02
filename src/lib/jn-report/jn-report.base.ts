@@ -178,6 +178,7 @@ table.tbl tr.totalrow td.l { text-align: left; }
 .badge.ok { background: rgba(18,135,90,.12); color: ${BRAND.pos}; }
 
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 10.5px; }
+.kv.kv-2c { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 24px; }
 .kv .k { color: ${BRAND.muted}; }
 .kv .v { font-weight: 600; text-align: right; }
 
