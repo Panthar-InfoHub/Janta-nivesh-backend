@@ -1,6 +1,7 @@
 import { db } from "../server.js";
 import logger from "../middleware/logger.js";
 import type { PennyDropInput } from "../lib/zod-schemas/penny-drop.schema.js";
+import { get_bank_name_from_ifsc } from "../lib/bank-master.js";
 
 class UserBankDetailsServiceClass {
 
@@ -21,6 +22,9 @@ class UserBankDetailsServiceClass {
      */
     save_from_penny_drop = async (user_id: string, input: PennyDropInput) => {
         logger.debug("Persisting penny drop bank details", { user_id });
+        const bank_name = input.bank_name || get_bank_name_from_ifsc(input.ifsc_code);
+
+        logger.debug(`Bank name ==> $${bank_name}`)
 
         return await db.userBankDetails.upsert({
             where: {
@@ -33,7 +37,7 @@ class UserBankDetailsServiceClass {
                 user_id,
                 account_no: input.account_number,
                 ifsc_code: input.ifsc_code,
-                bank_name: input.bank_name,
+                bank_name,
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,
@@ -42,7 +46,7 @@ class UserBankDetailsServiceClass {
             },
             update: {
                 ifsc_code: input.ifsc_code,
-                bank_name: input.bank_name,
+                bank_name,
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,
@@ -69,6 +73,7 @@ class UserBankDetailsServiceClass {
         }
     ) => {
         logger.debug("Persisting reverse penny bank details", { user_id });
+        const bank_name = input.bank_name || get_bank_name_from_ifsc(input.ifsc_code);
 
         return await db.userBankDetails.upsert({
             where: {
@@ -81,7 +86,7 @@ class UserBankDetailsServiceClass {
                 user_id,
                 account_no: input.account_number,
                 ifsc_code: input.ifsc_code,
-                bank_name: input.bank_name,
+                bank_name,
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,
@@ -92,7 +97,7 @@ class UserBankDetailsServiceClass {
             },
             update: {
                 ifsc_code: input.ifsc_code,
-                bank_name: input.bank_name,
+                bank_name,
                 account_holder_name: input.account_holder_name,
                 account_type: input.account_type,
                 is_primary: true,

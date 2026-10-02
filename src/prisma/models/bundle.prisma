@@ -22,9 +22,13 @@ model BundleCategory {
 }
 
 model BundleCategorySlot {
-  id                    String         @id @default(cuid())
-  bundle_category_id    String
-  allocation_percentage Float
-  default_rank          Int
-  bundle_category       BundleCategory @relation(fields: [bundle_category_id], references: [id], onDelete: Cascade)
+  id                      String         @id @default(cuid())
+  bundle_category_id      String
+  allocation_percentage   Float
+  default_rank            Int
+  pre_selected_product_id String?
+  pre_selected_product    MfProduct?     @relation(fields: [pre_selected_product_id], references: [id], onDelete: SetNull)
+  bundle_category         BundleCategory @relation(fields: [bundle_category_id], references: [id], onDelete: Cascade)
+
+  @@index([pre_selected_product_id])
 }

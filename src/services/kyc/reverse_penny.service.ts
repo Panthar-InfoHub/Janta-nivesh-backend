@@ -4,6 +4,7 @@ import logger from "../../middleware/logger.js";
 import AppError from "../../middleware/error.middleware.js";
 import { user_onboarding_service } from "./user.onboarding.service.js";
 import { user_bank_details_service } from "../user-bank-details.service.js";
+import { get_bank_name_from_ifsc } from "../../lib/bank-master.js";
 import cuid from "cuid";
 
 // Central Server configuration with placeholders
@@ -226,9 +227,11 @@ class ReversePennyServiceClass {
         // On SUCCESS: Save verified details into UserBankDetails for Penny Drop prefill & advance stage
         if (transaction_status === "SUCCESS") {
             if (status_data?.payer_account_number && status_data?.payer_account_ifsc) {
+                const bank_name = get_bank_name_from_ifsc(status_data.payer_account_ifsc);
                 await user_bank_details_service.save_from_reverse_penny(user_id, {
                     account_number: status_data.payer_account_number,
                     ifsc_code: status_data.payer_account_ifsc,
+                    bank_name,
                     account_holder_name: status_data.payer_name,
                     account_type: status_data.payer_account_type,
                     bank_reference_number: status_data.bank_reference_number,
@@ -277,7 +280,7 @@ class ReversePennyServiceClass {
                 account_holder_name: successful_rp.payer_name,
                 account_type: successful_rp.payer_account_type || "SAVINGS",
                 payer_vpa: successful_rp.payer_vpa,
-                bank_name: null,
+                bank_name: get_bank_name_from_ifsc(successful_rp.payer_account_ifsc) || null,
                 bank_reference_number: successful_rp.bank_reference_number,
                 source: "REVERSE_PENNY",
             };

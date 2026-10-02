@@ -93,8 +93,48 @@ class BundleControllerClass {
                         limit: 10,
                     });
 
+                    const slots = (cat.slots || []).map((slot: any) => {
+                        let pre_selected_fund = null;
+
+                        if (slot.pre_selected_product) {
+                            const p = slot.pre_selected_product;
+                            pre_selected_fund = {
+                                id: p.id,
+                                name: p.name,
+                                isin: p.isin,
+                                img_url: p.img_url,
+                                latest_nav: p.latest_nav ? Number(p.latest_nav) : null,
+                                latest_nav_date: p.latest_nav_date,
+                                returns: {
+                                    return_1y: p.metrics?.return_1y ? Number(p.metrics.return_1y) : null,
+                                    return_3y: p.metrics?.return_3y ? Number(p.metrics.return_3y) : null,
+                                    return_5y: p.metrics?.return_5y ? Number(p.metrics.return_5y) : null,
+                                },
+                                min_investment: {
+                                    lumpsum_min: p.scheme_plan?.lumpsum_amount_min ? Number(p.scheme_plan.lumpsum_amount_min) : null,
+                                    sip_monthly_min: p.scheme_plan?.sip_monthly_amount_min ? Number(p.scheme_plan.sip_monthly_amount_min) : null,
+                                },
+                            };
+                        } else if (category_funds.funds.length > 0) {
+                            const fallback_idx = Math.max(0, (slot.default_rank || 1) - 1);
+                            pre_selected_fund = category_funds.funds[fallback_idx] ?? category_funds.funds[0];
+                        }
+
+                        return {
+                            id: slot.id,
+                            allocation_percentage: slot.allocation_percentage,
+                            default_rank: slot.default_rank,
+                            pre_selected_product_id: slot.pre_selected_product_id,
+                            pre_selected_fund,
+                        };
+                    });
+
                     return {
-                        ...cat,
+                        id: cat.id,
+                        category_name: cat.category_name,
+                        display_name: cat.display_name,
+                        total_percentage: cat.total_percentage,
+                        slots,
                         funds: category_funds.funds,
                     };
                 }),

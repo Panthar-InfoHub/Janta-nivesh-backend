@@ -1,0 +1,1498 @@
+[
+    {
+        "ifsc": "AACX",
+        "bank_name": "Akhand Anand Co.op Bank"
+    },
+    {
+        "ifsc": "ABBL",
+        "bank_name": "AB Bank"
+    },
+    {
+        "ifsc": "ABCX",
+        "bank_name": "Aurangabad District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "ABDX",
+        "bank_name": "Dr. Ambedkar Nagrik Sahakari Bank Mydt Gwalior"
+    },
+    {
+        "ifsc": "ABEX",
+        "bank_name": "Andhra Bank Employees Co-operative Bank"
+    },
+    {
+        "ifsc": "ABHY",
+        "bank_name": "Abhyudaya Co-operative Bank Ltd"
+    },
+    {
+        "ifsc": "ABNA",
+        "bank_name": "The Royal Bank of Scotland N.V. / legacy ABN AMRO"
+    },
+    {
+        "ifsc": "ABSB",
+        "bank_name": "Abhinav Sahakari Bank"
+    },
+    {
+        "ifsc": "ABUX",
+        "bank_name": "Abhinandan Urban Co-operative Bank Amravati"
+    },
+    {
+        "ifsc": "ACAX",
+        "bank_name": "Assam Co-operative Apex Bank"
+    },
+    {
+        "ifsc": "ACBX",
+        "bank_name": "Adarsh Co-operative Bank"
+    },
+    {
+        "ifsc": "ACCX",
+        "bank_name": "Ace Co-operative Bank"
+    },
+    {
+        "ifsc": "ACKX",
+        "bank_name": "Annasaheb Chougule Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "ACOX",
+        "bank_name": "Amarnath Co-operative Bank"
+    },
+    {
+        "ifsc": "ACUB",
+        "bank_name": "Aryapuram Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "ACUX",
+        "bank_name": "Adarsh Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "ADBX",
+        "bank_name": "Ahmedabad District Co-operative Bank"
+    },
+    {
+        "ifsc": "ADCB",
+        "bank_name": "Abu Dhabi Commercial Bank"
+    },
+    {
+        "ifsc": "ADCC",
+        "bank_name": "Akola District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "ADCX",
+        "bank_name": "Shri Adinath Co-operative Bank"
+    },
+    {
+        "ifsc": "ADDX",
+        "bank_name": "Adilabad District Co-operative Central Bank"
+    },
+    {
+        "ifsc": "AGCX",
+        "bank_name": "Agrasen Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "AGDX",
+        "bank_name": "Agra District Co-operative Bank"
+    },
+    {
+        "ifsc": "AGRX",
+        "bank_name": "Agroha Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "AGSX",
+        "bank_name": "Agrasen Nagari Sahakari Bank"
+    },
+    {
+        "ifsc": "AGUX",
+        "bank_name": "Agartala Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "AGVX",
+        "bank_name": "Assam Gramin Vikash Bank"
+    },
+    {
+        "ifsc": "AHDC",
+        "bank_name": "Ahmednagar District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AHMX",
+        "bank_name": "Ahmednagar District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AHUX",
+        "bank_name": "Ahilyadevi Urban Co-operative Bank Solapur"
+    },
+    {
+        "ifsc": "AIRP",
+        "bank_name": "Airtel Payments Bank"
+    },
+    {
+        "ifsc": "AJAR",
+        "bank_name": "Ajara Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AJHC",
+        "bank_name": "Ambarnath Jai-hind Co-operative Bank"
+    },
+    {
+        "ifsc": "AJKB",
+        "bank_name": "Akola Janata Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "AJMX",
+        "bank_name": "Ajmer Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AJNX",
+        "bank_name": "Ajantha Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AJPX",
+        "bank_name": "Ambajogai Peoples Co-operative Bank"
+    },
+    {
+        "ifsc": "AJSX",
+        "bank_name": "Ambarnath Jai-hind Co-operative Bank"
+    },
+    {
+        "ifsc": "AJUX",
+        "bank_name": "Ajara Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AKJB",
+        "bank_name": "Akola Janata Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "AKKB",
+        "bank_name": "Akkamahadevi Mahila Sahakari Bank Niyamit"
+    },
+    {
+        "ifsc": "AKMX",
+        "bank_name": "Akola Merchant Co-operative Bank"
+    },
+    {
+        "ifsc": "AKOX",
+        "bank_name": "Akola Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "ALAX",
+        "bank_name": "Alavi Co-operative Bank"
+    },
+    {
+        "ifsc": "ALIX",
+        "bank_name": "Aligarh District Co-operative Bank"
+    },
+    {
+        "ifsc": "ALLA",
+        "bank_name": "Allahabad Bank"
+    },
+    {
+        "ifsc": "ALLX",
+        "bank_name": "Allahabad District Co-operative Bank"
+    },
+    {
+        "ifsc": "ALWX",
+        "bank_name": "Alwar Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AMAX",
+        "bank_name": "Aman Sahakari Bank"
+    },
+    {
+        "ifsc": "AMBX",
+        "bank_name": "Ambala Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AMCB",
+        "bank_name": "Ahmedabad Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "AMCX",
+        "bank_name": "Amritsar Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AMDN",
+        "bank_name": "Ahmednagar Merchants Co-operative Bank"
+    },
+    {
+        "ifsc": "AMMX",
+        "bank_name": "Adarsh Mahila Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "AMNX",
+        "bank_name": "Astha Mahila Nagrik Sahakari Bank Maryadit"
+    },
+    {
+        "ifsc": "AMRX",
+        "bank_name": "Amreli Jilla Madhyastha Sahakari Bank"
+    },
+    {
+        "ifsc": "AMSB",
+        "bank_name": "Annasaheb Magar Sahakari Bank"
+    },
+    {
+        "ifsc": "AMSX",
+        "bank_name": "Ambika Mahila Sahakari Bank"
+    },
+    {
+        "ifsc": "ANBX",
+        "bank_name": "Amreli Nagarik Sahakari Bank"
+    },
+    {
+        "ifsc": "ANDB",
+        "bank_name": "Andhra Bank"
+    },
+    {
+        "ifsc": "ANDX",
+        "bank_name": "Andarsul Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "ANMX",
+        "bank_name": "Ahmednagar Merchant's Co-operative Bank"
+    },
+    {
+        "ifsc": "ANSX",
+        "bank_name": "Andaman & Nicobar State Co-operative Bank"
+    },
+    {
+        "ifsc": "ANUX",
+        "bank_name": "Anuradha Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "ANZB",
+        "bank_name": "Australia and New Zealand Banking Group"
+    },
+    {
+        "ifsc": "APBL",
+        "bank_name": "Andhra Pradesh State Co-operative Bank"
+    },
+    {
+        "ifsc": "APCX",
+        "bank_name": "Alappuzha District Co-operative Bank"
+    },
+    {
+        "ifsc": "APGB",
+        "bank_name": "Andhra Pragathi Grameena Bank"
+    },
+    {
+        "ifsc": "APGV",
+        "bank_name": "Andhra Pradesh Grameena Vikas Bank"
+    },
+    {
+        "ifsc": "APGX",
+        "bank_name": "Andhra Pradesh Grameena Vikas Bank"
+    },
+    {
+        "ifsc": "APJX",
+        "bank_name": "Ap Janata Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "APMC",
+        "bank_name": "A.P. Mahesh Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "APMX",
+        "bank_name": "Ap Mahajan's Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "APNX",
+        "bank_name": "Apani Sahakari Bank"
+    },
+    {
+        "ifsc": "APRR",
+        "bank_name": "A.P. Raja Rajeswari Mahila Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "APRX",
+        "bank_name": "Arunachal Pradesh Rural Bank"
+    },
+    {
+        "ifsc": "APSX",
+        "bank_name": "P. D. Patilsaheb Sahakari Bank"
+    },
+    {
+        "ifsc": "ARBL",
+        "bank_name": "Arvind Sahakari Bank"
+    },
+    {
+        "ifsc": "ARCX",
+        "bank_name": "Arunachal Pradesh State Co-operative Apex Bank"
+    },
+    {
+        "ifsc": "ARMX",
+        "bank_name": "510 Army Base W/s Credit Co-operative Primary Bank"
+    },
+    {
+        "ifsc": "ARYX",
+        "bank_name": "Gramin Bank of Aryavart"
+    },
+    {
+        "ifsc": "ASBL",
+        "bank_name": "Apna Sahakari Bank"
+    },
+    {
+        "ifsc": "ASBX",
+        "bank_name": "Ahmednagar Shahar Sahakari Bank Maryadit"
+    },
+    {
+        "ifsc": "ASHX",
+        "bank_name": "Ashta People's Co-operative Bank"
+    },
+    {
+        "ifsc": "ASKX",
+        "bank_name": "Arvind Sahakari Bank"
+    },
+    {
+        "ifsc": "ASNX",
+        "bank_name": "Ashoknagar Co-operative Bank"
+    },
+    {
+        "ifsc": "ASOX",
+        "bank_name": "Associate Co-operative Bank"
+    },
+    {
+        "ifsc": "ASSX",
+        "bank_name": "Ashok Sahakari Bank"
+    },
+    {
+        "ifsc": "AUBL",
+        "bank_name": "AU Small Finance Bank"
+    },
+    {
+        "ifsc": "AUBX",
+        "bank_name": "Angul United Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AUCB",
+        "bank_name": "Almora Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AUCX",
+        "bank_name": "Ajara Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AUGX",
+        "bank_name": "Allahabad Up Gramin Bank"
+    },
+    {
+        "ifsc": "AURX",
+        "bank_name": "Aurangabad District Central Co-operative Bank, Bihar"
+    },
+    {
+        "ifsc": "AVDX",
+        "bank_name": "Amravati District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "AWCX",
+        "bank_name": "Alwaye Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AWUX",
+        "bank_name": "Alwar Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "AZAX",
+        "bank_name": "Azad Co-operative Bank"
+    },
+    {
+        "ifsc": "AZPX",
+        "bank_name": "Amravati Zilla Parishad Shikshak Sahakari Bank"
+    },
+    {
+        "ifsc": "AZSX",
+        "bank_name": "Almora Zila Bank"
+    },
+    {
+        "ifsc": "AZUX",
+        "bank_name": "Azad Urban Co-operative Bank Hubli"
+    },
+    {
+        "ifsc": "BACB",
+        "bank_name": "Bassein Catholic Co-operative Bank"
+    },
+    {
+        "ifsc": "BACX",
+        "bank_name": "Bihar Awami Co-operative Bank"
+    },
+    {
+        "ifsc": "BADX",
+        "bank_name": "Bankura District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BAGX",
+        "bank_name": "Balangir District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BALB",
+        "bank_name": "Bally Co-operative Bank"
+    },
+    {
+        "ifsc": "BALX",
+        "bank_name": "Balasinor Nagarik Sahakari Bank"
+    },
+    {
+        "ifsc": "BANX",
+        "bank_name": "Banaras Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "BARA",
+        "bank_name": "Baramati Sahakari Bank"
+    },
+    {
+        "ifsc": "BARB",
+        "bank_name": "Bank of Baroda"
+    },
+    {
+        "ifsc": "BARC",
+        "bank_name": "Barclays Bank"
+    },
+    {
+        "ifsc": "BARX",
+        "bank_name": "Baroda City Co-operative Bank"
+    },
+    {
+        "ifsc": "BASX",
+        "bank_name": "Shri Basaveshwar Sahakari Bank Nyt. Bagalkot"
+    },
+    {
+        "ifsc": "BAUX",
+        "bank_name": "Badagara Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "BAVX",
+        "bank_name": "Bavla Nagrik Sahakari Bank"
+    },
+    {
+        "ifsc": "BAWX",
+        "bank_name": "Bhawanipatna Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BBDX",
+        "bank_name": "Birbhum District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BBKM",
+        "bank_name": "Bank of Bahrain and Kuwait"
+    },
+    {
+        "ifsc": "BBLX",
+        "bank_name": "Bhingar Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BBRX",
+        "bank_name": "Bangalore Rural and Ramanagara DCCB"
+    },
+    {
+        "ifsc": "BBSX",
+        "bank_name": "Balasore Bhadrak Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BBUX",
+        "bank_name": "Bellad Bagewadi Urban Souharada Sahakari Bank Nyt"
+    },
+    {
+        "ifsc": "BBVX",
+        "bank_name": "Bhabhar Vibhag Nagrik Sahakari Bank"
+    },
+    {
+        "ifsc": "BCBM",
+        "bank_name": "Bharat Co-operative Bank"
+    },
+    {
+        "ifsc": "BCBX",
+        "bank_name": "Bantra Co-operative Bank"
+    },
+    {
+        "ifsc": "BCCB",
+        "bank_name": "Bangalore City Co-operative Bank"
+    },
+    {
+        "ifsc": "BCCX",
+        "bank_name": "Bathinda Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BCEX",
+        "bank_name": "Banswara Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BCEY",
+        "bank_name": "Bank of Ceylon"
+    },
+    {
+        "ifsc": "BCOX",
+        "bank_name": "Bapuji Co-operative Bank"
+    },
+    {
+        "ifsc": "BCUB",
+        "bank_name": "Bicholim Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BCUX",
+        "bank_name": "Baghat Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BDBB",
+        "bank_name": "Bahraich District Co-operative Bank"
+    },
+    {
+        "ifsc": "BDBL",
+        "bank_name": "Bandhan Bank"
+    },
+    {
+        "ifsc": "BDBX",
+        "bank_name": "Bellary District Co-operative Central Bank"
+    },
+    {
+        "ifsc": "BDCX",
+        "bank_name": "Bijapur District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BDDX",
+        "bank_name": "Bhadradri Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "BDIX",
+        "bank_name": "Bhandara District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BDNX",
+        "bank_name": "Bhind Nagrik Sahakari Bank Mydt"
+    },
+    {
+        "ifsc": "BDOX",
+        "bank_name": "Banda District Co-operative Bank"
+    },
+    {
+        "ifsc": "BDUX",
+        "bank_name": "Banda Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BEDX",
+        "bank_name": "Beed District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BELX",
+        "bank_name": "Belgaum District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BERX",
+        "bank_name": "Berhampore Co-operative Central Bank"
+    },
+    {
+        "ifsc": "BFUX",
+        "bank_name": "Bhagyodaya Friends Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BGBX",
+        "bank_name": "Dakshin Bihar Gramin Bank"
+    },
+    {
+        "ifsc": "BGCX",
+        "bank_name": "Balageria Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BGGX",
+        "bank_name": "Baroda Gujarat Gramin Bank"
+    },
+    {
+        "ifsc": "BGUX",
+        "bank_name": "Begusarai Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BGVX",
+        "bank_name": "Bangiya Gramin Vikash Bank"
+    },
+    {
+        "ifsc": "BHAX",
+        "bank_name": "Bhagyodaya Co-operative Bank"
+    },
+    {
+        "ifsc": "BHBX",
+        "bank_name": "Bhilai Nagarik Sahakari Bank Maryadit"
+    },
+    {
+        "ifsc": "BHCX",
+        "bank_name": "Bhuj Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "BHDX",
+        "bank_name": "Bhadohi Urban Co-operative Bank Gyanpur"
+    },
+    {
+        "ifsc": "BHEX",
+        "bank_name": "Bhel Employees Co-operative Bank"
+    },
+    {
+        "ifsc": "BHGX",
+        "bank_name": "Bhagalpur Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BHIX",
+        "bank_name": "Bhilwara Mahila Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BHJX",
+        "bank_name": "Bhuj Mercentile Co-operative Bank"
+    },
+    {
+        "ifsc": "BHMX",
+        "bank_name": "Brahmadeodada Mane Sahakari Bank Solapur"
+    },
+    {
+        "ifsc": "BHOX",
+        "bank_name": "Bhopal Co-operative Central Bank"
+    },
+    {
+        "ifsc": "BHRX",
+        "bank_name": "Bharatpur Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BHSX",
+        "bank_name": "Bharati Sahakari Bank"
+    },
+    {
+        "ifsc": "BHTX",
+        "bank_name": "Bhatkal Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BHUX",
+        "bank_name": "Bhilwara Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BHWX",
+        "bank_name": "Bhiwani Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BJUX",
+        "bank_name": "Bijnor Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BKCX",
+        "bank_name": "Bhavasara Kshatriya Co-operative Bank"
+    },
+    {
+        "ifsc": "BKDN",
+        "bank_name": "Dena Bank"
+    },
+    {
+        "ifsc": "BKDX",
+        "bank_name": "Banaskantha District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BKID",
+        "bank_name": "Bank of India"
+    },
+    {
+        "ifsc": "BKSX",
+        "bank_name": "Baran Kendriya Sahakari Bank"
+    },
+    {
+        "ifsc": "BLGX",
+        "bank_name": "Shree Basaveshwar Co-operative Bank"
+    },
+    {
+        "ifsc": "BMBL",
+        "bank_name": "Bharatiya Mahila Bank"
+    },
+    {
+        "ifsc": "BMCB",
+        "bank_name": "Bombay Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "BMCX",
+        "bank_name": "Barmer Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BMPX",
+        "bank_name": "Banaskantha Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "BMSX",
+        "bank_name": "Bhagyalakshmi Mahila Sahakari Bank"
+    },
+    {
+        "ifsc": "BNBX",
+        "bank_name": "Betul Nagrik Sahakari Bank Mydt"
+    },
+    {
+        "ifsc": "BNCX",
+        "bank_name": "Bhatpara Naihati Co-operative Bank"
+    },
+    {
+        "ifsc": "BNKX",
+        "bank_name": "Banki Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BNPA",
+        "bank_name": "BNP Paribas Bank"
+    },
+    {
+        "ifsc": "BNSB",
+        "bank_name": "Bhagini Nivedita Sahakari Bank Pune"
+    },
+    {
+        "ifsc": "BNSX",
+        "bank_name": "Bhagini Nivedita Sahakari Bank"
+    },
+    {
+        "ifsc": "BOCX",
+        "bank_name": "Boudh Co-operative Central Bank"
+    },
+    {
+        "ifsc": "BODX",
+        "bank_name": "Bagalkot District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BOFA",
+        "bank_name": "Bank of America"
+    },
+    {
+        "ifsc": "BORX",
+        "bank_name": "Boral Union Co-operative Bank"
+    },
+    {
+        "ifsc": "BOTM",
+        "bank_name": "Bank of Tokyo-Mitsubishi UFJ / MUFG Bank"
+    },
+    {
+        "ifsc": "BOTX",
+        "bank_name": "Shree Botad Mercantile Co-operative Bank"
+    },
+    {
+        "ifsc": "BPCX",
+        "bank_name": "Bhadgaon People's Co-operative Bank"
+    },
+    {
+        "ifsc": "BPSX",
+        "bank_name": "Bilagi Pattana Sahakari Bank Niyamit"
+    },
+    {
+        "ifsc": "BRCX",
+        "bank_name": "Bhavana Rishi Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "BRDX",
+        "bank_name": "Baroda Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BRGX",
+        "bank_name": "Baroda Rajasthan Kshetriya Gramin Bank"
+    },
+    {
+        "ifsc": "BRMX",
+        "bank_name": "Bramhapuri Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BRSX",
+        "bank_name": "Baran Nagrik Bank"
+    },
+    {
+        "ifsc": "BRUX",
+        "bank_name": "Bharuch District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BSBX",
+        "bank_name": "Baramati Sahakari Bank"
+    },
+    {
+        "ifsc": "BSCX",
+        "bank_name": "Baidyabati Sheoraphuli Co-operative Bank"
+    },
+    {
+        "ifsc": "BTCX",
+        "bank_name": "Balitikuri Co-operative Bank"
+    },
+    {
+        "ifsc": "BTUX",
+        "bank_name": "Balotra Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BUBX",
+        "bank_name": "Bhandara Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BUCB",
+        "bank_name": "Burdwan Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BUCL",
+        "bank_name": "Belur Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BUCX",
+        "bank_name": "Beawar Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "BUGX",
+        "bank_name": "Baroda Uttar Pradesh Gramin Bank"
+    },
+    {
+        "ifsc": "BUNX",
+        "bank_name": "Bundi Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BURX",
+        "bank_name": "Burdwan Central Co-operative Bank"
+    },
+    {
+        "ifsc": "BUSX",
+        "bank_name": "Business Co-operative Bank"
+    },
+    {
+        "ifsc": "BUZX",
+        "bank_name": "Badaun Zila Bank"
+    },
+    {
+        "ifsc": "BVNX",
+        "bank_name": "Bhavnagar District Co-operative Bank"
+    },
+    {
+        "ifsc": "BVSX",
+        "bank_name": "Bhavani Sahakari Bank"
+    },
+    {
+        "ifsc": "BWCX",
+        "bank_name": "Brahmawart Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "CALX",
+        "bank_name": "Calicut Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "CBHX",
+        "bank_name": "Central Co-operative Bank Bhilwara"
+    },
+    {
+        "ifsc": "CBIN",
+        "bank_name": "Central Bank of India"
+    },
+    {
+        "ifsc": "CCBL",
+        "bank_name": "Citizen Credit Co-operative Bank"
+    },
+    {
+        "ifsc": "CCBX",
+        "bank_name": "Citizen Co-operative Bank"
+    },
+    {
+        "ifsc": "CCCX",
+        "bank_name": "Chennai Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CCMX",
+        "bank_name": "Chanasma Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "CCOB",
+        "bank_name": "City Co-operative Bank"
+    },
+    {
+        "ifsc": "CCUX",
+        "bank_name": "Chengelpattu Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "CDCX",
+        "bank_name": "Cuddalore District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CEBX",
+        "bank_name": "Central Co-operative Bank Bikaner"
+    },
+    {
+        "ifsc": "CGBX",
+        "bank_name": "Chhattisgarh Rajya Gramin Bank"
+    },
+    {
+        "ifsc": "CGGX",
+        "bank_name": "Chaitanya Godavari Grameena Bank"
+    },
+    {
+        "ifsc": "CHAS",
+        "bank_name": "JP Morgan Chase Bank NA"
+    },
+    {
+        "ifsc": "CHAX",
+        "bank_name": "Chamoli Zila Bank"
+    },
+    {
+        "ifsc": "CHBX",
+        "bank_name": "Chamba Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CHCX",
+        "bank_name": "Churu Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CHDX",
+        "bank_name": "Chittoor District Co-operative Central Bank"
+    },
+    {
+        "ifsc": "CHIX",
+        "bank_name": "Chikhli Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CHKX",
+        "bank_name": "Chittorgarh Kendriya Sahakari Bank"
+    },
+    {
+        "ifsc": "CHPX",
+        "bank_name": "Chopda Peoples Co-operative Bank"
+    },
+    {
+        "ifsc": "CHRX",
+        "bank_name": "Cherpalcheri Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "CHSX",
+        "bank_name": "Chandigarh State Co-operative Bank"
+    },
+    {
+        "ifsc": "CHTX",
+        "bank_name": "Chitnavispura Sahakari Bank"
+    },
+    {
+        "ifsc": "CIDX",
+        "bank_name": "Chikmagalur District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CITI",
+        "bank_name": "Citibank N.A."
+    },
+    {
+        "ifsc": "CITX",
+        "bank_name": "Chitradurga District Co-operative Central Bank"
+    },
+    {
+        "ifsc": "CIUB",
+        "bank_name": "City Union Bank"
+    },
+    {
+        "ifsc": "CJAX",
+        "bank_name": "Citizens' Co-operative Bank Jammu"
+    },
+    {
+        "ifsc": "CJMX",
+        "bank_name": "Karnataka Mahila Sahakari Bank"
+    },
+    {
+        "ifsc": "CLBL",
+        "bank_name": "Capital Small Finance Bank"
+    },
+    {
+        "ifsc": "CMCB",
+        "bank_name": "Colour Merchant's Co-operative Bank"
+    },
+    {
+        "ifsc": "CMCX",
+        "bank_name": "Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "CMDX",
+        "bank_name": "Coimbatore District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CMLX",
+        "bank_name": "Commercial Co-operative Bank"
+    },
+    {
+        "ifsc": "CMPX",
+        "bank_name": "Central Madhya Pradesh Gramin Bank"
+    },
+    {
+        "ifsc": "CMSV",
+        "bank_name": "Chaitanya Mahila Sahakari Bank, Vijayapur"
+    },
+    {
+        "ifsc": "CNRB",
+        "bank_name": "Canara Bank"
+    },
+    {
+        "ifsc": "CNSX",
+        "bank_name": "Chembur Nagarik Sahakari Bank"
+    },
+    {
+        "ifsc": "COAS",
+        "bank_name": "Coastal Local Area Bank"
+    },
+    {
+        "ifsc": "COCX",
+        "bank_name": "Co-operative City Bank"
+    },
+    {
+        "ifsc": "COLX",
+        "bank_name": "Coastal Local Area Bank"
+    },
+    {
+        "ifsc": "COMX",
+        "bank_name": "Co-operative Bank of Mehsana"
+    },
+    {
+        "ifsc": "CONX",
+        "bank_name": "Contai Co-operative Bank"
+    },
+    {
+        "ifsc": "CORP",
+        "bank_name": "Corporation Bank"
+    },
+    {
+        "ifsc": "COSB",
+        "bank_name": "The Cosmos Co-operative Bank"
+    },
+    {
+        "ifsc": "CPDX",
+        "bank_name": "Chandrapur District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CRES",
+        "bank_name": "Credit Suisse AG"
+    },
+    {
+        "ifsc": "CRGB",
+        "bank_name": "Chhattisgarh Rajya Gramin Bank"
+    },
+    {
+        "ifsc": "CRLY",
+        "bank_name": "Credit Agricole Corporate and Investment Bank"
+    },
+    {
+        "ifsc": "CRSX",
+        "bank_name": "Chhattisgarh Rajya Sahakari Bank Mydt"
+    },
+    {
+        "ifsc": "CRUB",
+        "bank_name": "Shri Chhatrapati Rajashri Shahu Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CSBK",
+        "bank_name": "CSB Bank"
+    },
+    {
+        "ifsc": "CTBA",
+        "bank_name": "Commonwealth Bank of Australia"
+    },
+    {
+        "ifsc": "CTBX",
+        "bank_name": "Citizens Co-operative Bank"
+    },
+    {
+        "ifsc": "CTCB",
+        "bank_name": "Chinatrust Commercial Bank"
+    },
+    {
+        "ifsc": "CTOX",
+        "bank_name": "Central Co-operative Bank Tonk"
+    },
+    {
+        "ifsc": "CTUX",
+        "bank_name": "Chittorgarh Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CUBX",
+        "bank_name": "Catholic Co-operative Urban Bank"
+    },
+    {
+        "ifsc": "CUCX",
+        "bank_name": "Chiplun Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CURX",
+        "bank_name": "Citizens Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "CUTX",
+        "bank_name": "Cuttack Central Co-operative Bank"
+    },
+    {
+        "ifsc": "CZCX",
+        "bank_name": "Citizen Co-operative Bank"
+    },
+    {
+        "ifsc": "CZUX",
+        "bank_name": "Churu Zila Urban Co-operative Bank"
+    },
+    {
+        "ifsc": "DBSS",
+        "bank_name": "DBS Bank India"
+    },
+    {
+        "ifsc": "DCBL",
+        "bank_name": "DCB Bank"
+    },
+    {
+        "ifsc": "DEUT",
+        "bank_name": "Deutsche Bank"
+    },
+    {
+        "ifsc": "DLSC",
+        "bank_name": "Delhi State Co-operative Bank"
+    },
+    {
+        "ifsc": "DLXB",
+        "bank_name": "Dhanlaxmi Bank"
+    },
+    {
+        "ifsc": "DSCB",
+        "bank_name": "Delhi State Co-operative Bank"
+    },
+    {
+        "ifsc": "EBIL",
+        "bank_name": "Emirates NBD Bank"
+    },
+    {
+        "ifsc": "EIBI",
+        "bank_name": "Export Import Bank of India"
+    },
+    {
+        "ifsc": "ESFB",
+        "bank_name": "ESAF Small Finance Bank"
+    },
+    {
+        "ifsc": "ESMF",
+        "bank_name": "Equitas Small Finance Bank"
+    },
+    {
+        "ifsc": "FDRL",
+        "bank_name": "Federal Bank"
+    },
+    {
+        "ifsc": "FINF",
+        "bank_name": "Fincare Small Finance Bank"
+    },
+    {
+        "ifsc": "FINO",
+        "bank_name": "Fino Payments Bank"
+    },
+    {
+        "ifsc": "FIRN",
+        "bank_name": "Firstrand Bank"
+    },
+    {
+        "ifsc": "FIRX",
+        "bank_name": "Firstrand Bank"
+    },
+    {
+        "ifsc": "FSFB",
+        "bank_name": "Fincare Small Finance Bank"
+    },
+    {
+        "ifsc": "GSCB",
+        "bank_name": "Gujarat State Co-operative Bank"
+    },
+    {
+        "ifsc": "HARC",
+        "bank_name": "Haryana State Co-operative Apex Bank"
+    },
+    {
+        "ifsc": "HDFC",
+        "bank_name": "HDFC Bank"
+    },
+    {
+        "ifsc": "HPSC",
+        "bank_name": "Himachal Pradesh State Co-operative Bank"
+    },
+    {
+        "ifsc": "HPSX",
+        "bank_name": "Himachal Pradesh State Co-operative Bank"
+    },
+    {
+        "ifsc": "HSBC",
+        "bank_name": "HSBC"
+    },
+    {
+        "ifsc": "IBBK",
+        "bank_name": "PT Bank Maybank Indonesia TBK"
+    },
+    {
+        "ifsc": "IBKL",
+        "bank_name": "IDBI Bank"
+    },
+    {
+        "ifsc": "IBKO",
+        "bank_name": "Industrial Bank of Korea"
+    },
+    {
+        "ifsc": "ICBK",
+        "bank_name": "Industrial and Commercial Bank of China"
+    },
+    {
+        "ifsc": "ICIC",
+        "bank_name": "ICICI Bank"
+    },
+    {
+        "ifsc": "IDFB",
+        "bank_name": "IDFC FIRST Bank"
+    },
+    {
+        "ifsc": "IDIB",
+        "bank_name": "Indian Bank"
+    },
+    {
+        "ifsc": "INDB",
+        "bank_name": "IndusInd Bank"
+    },
+    {
+        "ifsc": "IOBA",
+        "bank_name": "Indian Overseas Bank"
+    },
+    {
+        "ifsc": "IPOS",
+        "bank_name": "India Post Payments Bank"
+    },
+    {
+        "ifsc": "IPPB",
+        "bank_name": "India Post Payments Bank"
+    },
+    {
+        "ifsc": "JAKA",
+        "bank_name": "Jammu & Kashmir Bank"
+    },
+    {
+        "ifsc": "JANA",
+        "bank_name": "Janaseva Sahakari Bank, Pune"
+    },
+    {
+        "ifsc": "JASB",
+        "bank_name": "Janaseva Sahakari Bank (Borivli)"
+    },
+    {
+        "ifsc": "JIOP",
+        "bank_name": "Jio Payments Bank"
+    },
+    {
+        "ifsc": "JIOX",
+        "bank_name": "Jila Sahakari Kendriya Bank Mydt Shahdol"
+    },
+    {
+        "ifsc": "JJSB",
+        "bank_name": "Jalgaon Janata Bank"
+    },
+    {
+        "ifsc": "JKSX",
+        "bank_name": "J&K State Co-operative Bank"
+    },
+    {
+        "ifsc": "JSFB",
+        "bank_name": "Jana Small Finance Bank"
+    },
+    {
+        "ifsc": "KARB",
+        "bank_name": "Karnataka Bank"
+    },
+    {
+        "ifsc": "KKBK",
+        "bank_name": "Kotak Mahindra Bank"
+    },
+    {
+        "ifsc": "KVBL",
+        "bank_name": "Karur Vysya Bank"
+    },
+    {
+        "ifsc": "LAVB",
+        "bank_name": "Lakshmi Vilas Bank"
+    },
+    {
+        "ifsc": "MAHB",
+        "bank_name": "Bank of Maharashtra"
+    },
+    {
+        "ifsc": "MYAX",
+        "bank_name": "Meghalaya Co-operative Apex Bank"
+    },
+    {
+        "ifsc": "MZRX",
+        "bank_name": "Mizoram Rural Bank"
+    },
+    {
+        "ifsc": "NATA",
+        "bank_name": "National Australia Bank"
+    },
+    {
+        "ifsc": "NBRD",
+        "bank_name": "National Bank for Agriculture and Development"
+    },
+    {
+        "ifsc": "NCBL",
+        "bank_name": "National Co-operative Bank"
+    },
+    {
+        "ifsc": "NESF",
+        "bank_name": "North East Small Finance Bank"
+    },
+    {
+        "ifsc": "NGSB",
+        "bank_name": "Nagpur Nagarik Sahakari Bank"
+    },
+    {
+        "ifsc": "NICB",
+        "bank_name": "New India Co-operative Bank"
+    },
+    {
+        "ifsc": "NKGS",
+        "bank_name": "NKGSB Co-operative Bank"
+    },
+    {
+        "ifsc": "NMCB",
+        "bank_name": "Nasik Merchants Co-operative Bank"
+    },
+    {
+        "ifsc": "NNSB",
+        "bank_name": "Nutan Nagarik Sahakari Bank"
+    },
+    {
+        "ifsc": "NOSC",
+        "bank_name": "Bank of Nova Scotia"
+    },
+    {
+        "ifsc": "NSCB",
+        "bank_name": "Nagaland State Co-operative Bank"
+    },
+    {
+        "ifsc": "NSPB",
+        "bank_name": "NSDL Payments Bank"
+    },
+    {
+        "ifsc": "NTBL",
+        "bank_name": "Nainital Bank"
+    },
+    {
+        "ifsc": "ODGB",
+        "bank_name": "Odisha Gramya Bank"
+    },
+    {
+        "ifsc": "ORBC",
+        "bank_name": "Oriental Bank of Commerce"
+    },
+    {
+        "ifsc": "ORCB",
+        "bank_name": "Odisha State Co-operative Bank"
+    },
+    {
+        "ifsc": "PCCB",
+        "bank_name": "Purulia Central Co-operative Bank"
+    },
+    {
+        "ifsc": "PCSX",
+        "bank_name": "Pondicherry State Co-operative Bank"
+    },
+    {
+        "ifsc": "PDCX",
+        "bank_name": "Pune District Central Co-operative Bank"
+    },
+    {
+        "ifsc": "PJSB",
+        "bank_name": "GP Parsik Sahakari Bank"
+    },
+    {
+        "ifsc": "PKGB",
+        "bank_name": "Pragathi Krishna Gramin Bank"
+    },
+    {
+        "ifsc": "PMCB",
+        "bank_name": "Punjab & Maharashtra Co-operative Bank"
+    },
+    {
+        "ifsc": "PSIB",
+        "bank_name": "Punjab & Sind Bank"
+    },
+    {
+        "ifsc": "PUNB",
+        "bank_name": "Punjab National Bank"
+    },
+    {
+        "ifsc": "PYTM",
+        "bank_name": "Paytm Payments Bank"
+    },
+    {
+        "ifsc": "RATN",
+        "bank_name": "RBL Bank"
+    },
+    {
+        "ifsc": "RBIS",
+        "bank_name": "Reserve Bank of India"
+    },
+    {
+        "ifsc": "SBIN",
+        "bank_name": "State Bank of India"
+    },
+    {
+        "ifsc": "SCBL",
+        "bank_name": "Standard Chartered Bank"
+    },
+    {
+        "ifsc": "SIBL",
+        "bank_name": "South Indian Bank"
+    },
+    {
+        "ifsc": "SPSX",
+        "bank_name": "Sandur Pattana Souharda Sahakari Bank Niyamitha"
+    },
+    {
+        "ifsc": "SRCB",
+        "bank_name": "Saraswat Co-operative Bank"
+    },
+    {
+        "ifsc": "STBP",
+        "bank_name": "State Bank of Patiala"
+    },
+    {
+        "ifsc": "STCB",
+        "bank_name": "State Bank of Travancore"
+    },
+    {
+        "ifsc": "SURY",
+        "bank_name": "Suryoday Small Finance Bank"
+    },
+    {
+        "ifsc": "SVCB",
+        "bank_name": "SVC Co-operative Bank"
+    },
+    {
+        "ifsc": "TBSX",
+        "bank_name": "Bihar State Co-operative Bank"
+    },
+    {
+        "ifsc": "TGRB",
+        "bank_name": "Telangana Grameena Bank"
+    },
+    {
+        "ifsc": "TJSB",
+        "bank_name": "TJSB Sahakari Bank"
+    },
+    {
+        "ifsc": "TMBL",
+        "bank_name": "Tamilnad Mercantile Bank"
+    },
+    {
+        "ifsc": "TNDC",
+        "bank_name": "Thiruvananthapuram District Co-operative Bank"
+    },
+    {
+        "ifsc": "TNSC",
+        "bank_name": "Tamil Nadu State Apex Co-operative Bank"
+    },
+    {
+        "ifsc": "UBIN",
+        "bank_name": "Union Bank of India"
+    },
+    {
+        "ifsc": "UCBA",
+        "bank_name": "UCO Bank"
+    },
+    {
+        "ifsc": "UJVN",
+        "bank_name": "Ujjivan Small Finance Bank"
+    },
+    {
+        "ifsc": "UTBI",
+        "bank_name": "United Bank of India"
+    },
+    {
+        "ifsc": "UTIB",
+        "bank_name": "Axis Bank"
+    },
+    {
+        "ifsc": "UTKS",
+        "bank_name": "Utkarsh Small Finance Bank"
+    },
+    {
+        "ifsc": "YESB",
+        "bank_name": "YES BANK"
+    }
+]

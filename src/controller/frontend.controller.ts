@@ -8,6 +8,7 @@ import AppError from "../middleware/error.middleware.js";
 import { request_connection_schema } from "../lib/types.js";
 import { user_service } from "../services/user.service.js";
 import { zoho_webhook_service } from "../services/zoho.webhook.service.js";
+import { pincode_service } from "../services/pincode.service.js";
 
 class FrontendControllerClass {
 
@@ -104,6 +105,27 @@ class FrontendControllerClass {
 
         } catch (error) {
             logger.error(`Error while requesting a user connection ==> `, error);
+            next(error);
+            return;
+        }
+    }
+
+    get_city_by_pincode = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const pin = (req.query.pin || req.query.pincode) as string | undefined;
+            const city = pincode_service.get_city_by_pincode(pin);
+
+            res.status(200).json({
+                success: true,
+                message: city ? "City fetched successfully" : "City not found for provided pincode",
+                city,
+                data: {
+                    city,
+                },
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in get_city_by_pincode: ", error);
             next(error);
             return;
         }
