@@ -952,7 +952,12 @@ class MfCartServiceClass {
             );
         }
 
-        const confirmed_plans = [];
+        const plans_to_confirm: Array<{
+            id: string;
+            state: "confirmed";
+            consent: { email: string; isd_code: string; mobile: string };
+        }> = [];
+
         for (const fp_plan_id of plan_ids) {
             const transaction_plan =
                 await mf_transaction_plan_service.get_by_fp_id(
@@ -979,16 +984,38 @@ class MfCartServiceClass {
                 );
             }
 
-            const updated_plan =
-                await fintech_primitive_mf_purchase_plan_service.update_purchase_plan(
-                    fp_plan_id,
-                    {
-                        email: user.email,
-                        mobile: user.phone_no,
-                        isd_code: "91",
-                    },
-                );
+            plans_to_confirm.push({
+                id: fp_plan_id,
+                state: "confirmed",
+                consent: {
+                    email: user.email,
+                    mobile: user.phone_no,
+                    isd_code: "91",
+                },
+            });
+        }
 
+        const batch_response =
+            await fintech_primitive_mf_purchase_plan_service.update_batch_purchase_plans(
+                plans_to_confirm,
+            );
+
+        const updated_plans: any[] = Array.isArray(batch_response?.data)
+            ? batch_response.data
+            : Array.isArray(batch_response)
+            ? batch_response
+            : [];
+
+        if (updated_plans.length === 0) {
+            throw new AppError(
+                "No purchase plans were confirmed by Fintech Primitives",
+                502,
+                "MF_BATCH_PLAN_CONFIRM_EMPTY_RESPONSE",
+            );
+        }
+
+        const confirmed_plans = [];
+        for (const updated_plan of updated_plans) {
             const saved_plan =
                 await mf_transaction_plan_service.upsert_from_fp(
                     user_id,
