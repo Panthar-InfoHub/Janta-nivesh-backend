@@ -109,10 +109,16 @@ class MfCatalogueServiceClass {
         // 3. Amount / SIP threshold filter & Transaction Mode Eligibility
         if (amount_type === "daily_10") {
             scheme_plan_is.sip_daily_allowed = true;
-            scheme_plan_is.sip_daily_amount_min = { lte: 10 };
+            if (!search || search.trim().length === 0) {
+                scheme_plan_is.sip_daily_amount_min = { lte: 10 };
+            }
         } else if (amount_type === "monthly_100") {
             scheme_plan_is.sip_monthly_allowed = true;
-            scheme_plan_is.sip_monthly_amount_min = { lte: 100 };
+            if (!search || search.trim().length === 0) {
+                scheme_plan_is.sip_monthly_amount_min = { lte: 100 };
+            }
+        } else if (investment_mode === "sip_daily" || investment_mode === "daily_sip") {
+            scheme_plan_is.sip_daily_allowed = true;
         } else if (investment_mode === "sip") {
             scheme_plan_is.sip_monthly_allowed = true;
         } else if (investment_mode === "lumpsum") {
@@ -121,6 +127,7 @@ class MfCatalogueServiceClass {
             scheme_plan_is.OR = [
                 { lumpsum_allowed: true },
                 { sip_monthly_allowed: true },
+                { sip_daily_allowed: true },
             ];
         } else {
             // Default "both": must allow both lumpsum and monthly SIP, ensuring 100% eligibility for cart & bundles

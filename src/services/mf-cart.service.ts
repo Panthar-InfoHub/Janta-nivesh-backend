@@ -90,6 +90,12 @@ class MfCartServiceClass {
                 ? input.frequency ?? "MONTHLY"
                 : null;
 
+        // Auto-adjust: only MONTHLY SIP has installment_day; DAILY and LUMPSUM must be null.
+        const effective_installment_day =
+            input.cart_type === "SIP" && frequency === "MONTHLY"
+                ? input.installment_day ?? null
+                : null;
+
         // 3. Validate fund-specific investment thresholds.
         if (input.cart_type === "LUMPSUM") {
             await mf_threshold_validation_service.validate_lumpsum(
@@ -104,7 +110,7 @@ class MfCartServiceClass {
                     product.isin,
                     input.amount,
                     frequency.toLowerCase() as "monthly" | "daily",
-                    input.installment_day,
+                    effective_installment_day ?? undefined,
                 );
             } else if (frequency === "WEEKLY") {
 
@@ -134,10 +140,7 @@ class MfCartServiceClass {
                 data: {
                     amount: input.amount,
                     frequency,
-                    installment_day:
-                        input.cart_type === "SIP"
-                            ? input.installment_day ?? null
-                            : null,
+                    installment_day: effective_installment_day,
                 },
                 include: {
                     mf_product: {
@@ -159,10 +162,7 @@ class MfCartServiceClass {
                 cart_type: input.cart_type,
                 amount: input.amount,
                 frequency,
-                installment_day:
-                    input.cart_type === "SIP"
-                        ? input.installment_day ?? null
-                        : null,
+                installment_day: effective_installment_day,
             },
             include: {
                 mf_product: {
@@ -242,6 +242,12 @@ class MfCartServiceClass {
                 ? input.frequency ?? "MONTHLY"
                 : null;
 
+        // Auto-adjust: only MONTHLY SIP has installment_day; DAILY and LUMPSUM must be null.
+        const effective_installment_day =
+            input.cart_type === "SIP" && frequency === "MONTHLY"
+                ? input.installment_day ?? null
+                : null;
+
         // 6. Validate fund-specific investment thresholds for each fund before writing to DB
         const prepared_items: Array<{
             mf_product_id: string;
@@ -267,7 +273,7 @@ class MfCartServiceClass {
                         product.isin,
                         per_fund_amount,
                         frequency.toLowerCase() as "monthly" | "daily",
-                        input.installment_day,
+                        effective_installment_day ?? undefined,
                     );
                 }
             }
@@ -276,10 +282,7 @@ class MfCartServiceClass {
                 mf_product_id: selection.mf_product_id,
                 amount: per_fund_amount,
                 frequency,
-                installment_day:
-                    input.cart_type === "SIP"
-                        ? input.installment_day ?? null
-                        : null,
+                installment_day: effective_installment_day,
             });
         }
 
@@ -416,15 +419,12 @@ class MfCartServiceClass {
         }
 
         if (input.installment_day !== undefined) {
-            if (existing_item.cart_type !== "SIP") {
-                throw new AppError(
-                    "Installment day can only be updated for SIP",
-                    400,
-                    "INSTALLMENT_DAY_NOT_ALLOWED",
-                );
+            if (existing_item.cart_type !== "SIP" || existing_item.frequency === "DAILY") {
+                // If not SIP or is DAILY, installment_day is not applicable and sanitized to null
+                update_data.installment_day = null;
+            } else {
+                update_data.installment_day = input.installment_day;
             }
-
-            update_data.installment_day = input.installment_day;
         }
 
         return await db.mfCartItem.update({
@@ -773,14 +773,23 @@ class MfCartServiceClass {
                 );
             }
 
+            const is_daily = frequency === "daily";
             const amount = Number(item.amount);
             const scheme = item.mf_product.isin;
+            const installment_day = is_daily ? null : (item.installment_day ?? null);
+
+            const number_of_installments =
+                await mf_threshold_validation_service.get_sip_min_installments(
+                    scheme,
+                    frequency,
+                );
 
             await mf_threshold_validation_service.validate_sip(
                 scheme,
                 amount,
                 frequency,
-                item.installment_day ?? undefined,
+                installment_day ?? undefined,
+                number_of_installments,
             );
 
             plans.push({
@@ -788,14 +797,16 @@ class MfCartServiceClass {
                 mf_investment_account: user.investment_account,
                 frequency,
                 amount,
-                installment_day:
-                    item.installment_day ?? null,
+                installment_day,
                 systematic: true as const,
                 generate_first_installment_now: true as const,
                 auto_generate_installments: true as const,
-                number_of_installments: 12,
+                number_of_installments,
                 payment_method: "mandate" as const,
                 payment_source: mandate.mandate_id,
+                gateway: "ondc" as const,
+                initiated_by: "investor" as const,
+                initiated_via: "mobile_app" as const,
                 user_ip,
             });
         }
