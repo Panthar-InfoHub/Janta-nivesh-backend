@@ -40,19 +40,21 @@ class MfThresholdValidationServiceClass {
         max: Numeric,
         multiples: Numeric,
         label: string,
+        isin?: string,
     ) => {
         const min_n = this.to_number(min);
         const max_n = this.to_number(max);
         const mult_n = this.to_number(multiples);
+        const fundLabel = isin ? `fund (${isin})` : "this fund";
 
         if (min_n !== null && amount < min_n) {
-            throw new AppError(`Minimum ${label} amount for this fund is ${min_n}`, 400, "AMOUNT_BELOW_MINIMUM");
+            throw new AppError(`Minimum ${label} amount for ${fundLabel} is ${min_n}`, 400, "AMOUNT_BELOW_MINIMUM");
         }
         if (max_n !== null && amount > max_n) {
-            throw new AppError(`Maximum ${label} amount for this fund is ${max_n}`, 400, "AMOUNT_ABOVE_MAXIMUM");
+            throw new AppError(`Maximum ${label} amount for ${fundLabel} is ${max_n}`, 400, "AMOUNT_ABOVE_MAXIMUM");
         }
         if (!this.is_multiple_of(amount, mult_n)) {
-            throw new AppError(`${label} amount must be a multiple of ${mult_n}`, 400, "AMOUNT_NOT_MULTIPLE");
+            throw new AppError(`${label} amount for ${fundLabel} must be a multiple of ${mult_n}`, 400, "AMOUNT_NOT_MULTIPLE");
         }
     }
 
@@ -63,6 +65,22 @@ class MfThresholdValidationServiceClass {
             logger.warn("No MfSchemePlan for this ISIN - skipping threshold validation", { isin });
         }
         return scheme_plan;
+    }
+
+    /** Resolves minimum number of installments for a fund and frequency (default 60 for daily, 12 for monthly). */
+    get_sip_min_installments = async (
+        isin: string,
+        frequency: "monthly" | "daily",
+    ): Promise<number> => {
+        const plan = await this.get_scheme_plan(isin);
+        if (!plan) {
+            return frequency === "daily" ? 60 : 12;
+        }
+        if (frequency === "daily") {
+            return Math.max(60, plan.sip_daily_installments_min ?? 60);
+        } else {
+            return Math.max(12, plan.sip_monthly_installments_min ?? 12);
+        }
     }
 
     /** Lumpsum purchase (mf_purchase). */
@@ -100,6 +118,7 @@ class MfThresholdValidationServiceClass {
             is_monthly ? plan.sip_monthly_amount_max : plan.sip_daily_amount_max,
             is_monthly ? plan.sip_monthly_amount_multiples : plan.sip_daily_amount_multiples,
             `${frequency} SIP`,
+            isin,
         );
 
         // The authoritative allowed-dates list, which varies by fund - this is the real constraint,

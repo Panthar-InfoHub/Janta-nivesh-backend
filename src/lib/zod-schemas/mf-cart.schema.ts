@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const add_mf_cart_item_schema = z.object({
+const base_add_mf_cart_item_schema = z.object({
     mf_product_id: z.string().min(1, "MF product id is required"),
 
     cart_type: z.enum(["LUMPSUM", "SIP"]),
@@ -38,6 +38,18 @@ export const add_mf_cart_item_schema = z.object({
         }
     }
 });
+
+export const add_mf_cart_item_schema = z.preprocess((val: any) => {
+    if (val && typeof val === "object") {
+        const copy = { ...val };
+        // Auto-adjust: DAILY frequency and LUMPSUM have no installment day
+        if (copy.frequency === "DAILY" || copy.cart_type === "LUMPSUM") {
+            delete copy.installment_day;
+        }
+        return copy;
+    }
+    return val;
+}, base_add_mf_cart_item_schema);
 
 export const update_mf_cart_item_schema = z
     .object({
@@ -178,6 +190,11 @@ export const add_bundle_to_cart_schema = z.preprocess((val: any) => {
             else if (copy.sip_freq === "D" || copy.sip_freq === "DZ")
                 copy.frequency = "DAILY";
             else copy.frequency = copy.sip_freq;
+        }
+        // Auto-adjust: DAILY frequency and LUMPSUM have no installment day
+        if (copy.frequency === "DAILY" || copy.cart_type === "LUMPSUM") {
+            delete copy.installment_day;
+            delete copy.sip_day;
         }
         return copy;
     }

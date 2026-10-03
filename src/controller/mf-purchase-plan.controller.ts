@@ -63,15 +63,19 @@ class MfPurchasePlanControllerClass {
 
             logger.info("Creating MF purchase plan", { user_id, scheme: product.isin, amount: input.amount, frequency: input.frequency, mandate_id: mandate.mandate_id });
 
+            const min_installments = await mf_threshold_validation_service.get_sip_min_installments(
+                product.isin, input.frequency
+            );
+
             // Per-fund limits before the FP call. installment_day is checked against the fund's own
             // allowed dates here - the zod bound is only a loose sanity check.
             // No-op until the scheme-plan sync populates MfSchemePlan for this fund.
             await mf_threshold_validation_service.validate_sip(
-                product.isin, input.amount, input.frequency, input.installment_day
+                product.isin, input.amount, input.frequency, input.installment_day, min_installments
             );
 
             const plan = await fintech_primitive_mf_purchase_plan_service.create_purchase_plan(
-                resolved_input, user.investment_account, mandate.mandate_id, user_ip
+                resolved_input, user.investment_account, mandate.mandate_id, user_ip, min_installments
             );
 
             if (!plan?.id) {
