@@ -30,7 +30,7 @@ export type FundCategory = (typeof FUND_CATEGORIES)[number];
 export const AMOUNT_TYPES = ["daily_10", "monthly_100"] as const;
 export type AmountType = (typeof AMOUNT_TYPES)[number];
 
-export const INVESTMENT_MODES = ["both", "sip", "lumpsum", "any"] as const;
+export const INVESTMENT_MODES = ["both", "sip", "sip_daily", "daily_sip", "lumpsum", "any"] as const;
 export type InvestmentMode = (typeof INVESTMENT_MODES)[number];
 
 // GET /api/v2/mf/funds?tag=popular&category=equity&amount_type=daily_10&investment_mode=both&search=...
