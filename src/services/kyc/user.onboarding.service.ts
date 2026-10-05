@@ -41,11 +41,12 @@ class UserOnboardingServiceClass {
         const onboarding = await this.get_or_create(user_id);
 
         // Backward-compatible reverse penny check:
-        // For existing users who already passed Penny Drop or completed onboarding, PENDING won't block them.
-        // For users going through the flow, reverse_penny_status must be VERIFIED.
+        // If reverse penny is VERIFIED/SKIPPED, or if bank account is already verified via penny drop
+        // (even if reverse penny was PENDING, IN_PROGRESS, or FAILED), onboarding is not blocked.
         const is_reverse_penny_satisfied =
-            onboarding.reverse_penny_status === "VERIFIED" ||
-            (onboarding.penny_drop_status === "VERIFIED" && onboarding.reverse_penny_status === "PENDING");
+            ["VERIFIED", "SKIPPED", "IN_PROGRESS"].includes(onboarding.reverse_penny_status) ||
+            (onboarding.penny_drop_status === "VERIFIED" &&
+                ["PENDING", "IN_PROGRESS", "SKIPPED", "FAILED"].includes(onboarding.reverse_penny_status));
 
         const is_done =
             onboarding.basic_details_status === "VERIFIED" && // strict - mandatory stage, no skip path exists
