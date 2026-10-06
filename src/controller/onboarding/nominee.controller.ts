@@ -7,6 +7,7 @@ import { user_onboarding_service } from "../../services/kyc/user.onboarding.serv
 import { user_service } from "../../services/user.service.js";
 import { fintech_primitive_related_party_service } from "../../services/fintech-primitive/related_party.service.js";
 import { sync_investment_account } from "../../services/kyc/investment-account-sync.service.js";
+import { email_service } from "../../services/email.service.js";
 
 /** Rebuilds the related_party create input from a flat Nominee DB row. */
 const to_related_party_input = (nominee: any) => ({
@@ -42,6 +43,7 @@ class NomineeControllerClass {
 
             let nominees: any[] = [];
 
+            const user = await user_service.get_user_by_id(user_id);
             if (input.skip === true) {
                 logger.info("User skipped nominee stage", { user_id });
                 await user_onboarding_service.update_stage(user_id, { nominee_status: "SKIPPED", current_stage: "COMPLETED" });
@@ -49,7 +51,6 @@ class NomineeControllerClass {
                 logger.info("Submitting nominees", { user_id, count: input.nominees.length });
                 nominees = await nominee_service.create_many(user_id, input.nominees);
 
-                const user = await user_service.get_user_by_id(user_id);
                 if (!user?.investor_profile) {
                     throw new AppError("Complete the profile stage first", 400, "INVESTOR_PROFILE_REQUIRED");
                 }
@@ -70,6 +71,9 @@ class NomineeControllerClass {
             // Create (first time) or update (e.g. adding nominees after a prior skip) the investment account either way
             await sync_investment_account(user_id);
             await user_onboarding_service.recompute_completion(user_id);
+
+            await email_service.send_welcome_mail(user.email, user.full_name)
+
 
             res.status(200).json({
                 success: true,

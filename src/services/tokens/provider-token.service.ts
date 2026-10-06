@@ -38,7 +38,7 @@ class ProviderTokenServiceClass {
         };
     }
 
-    private redis_key = (provider: Provider) => `provider_token:${provider}`;
+    private redis_key = (provider: Provider) => `${env.ENVIRONMENT}_provider_token:${provider}`;
 
     private fetch_and_cache_token = async (provider: Provider): Promise<string> => {
         const config = this.configs[provider];

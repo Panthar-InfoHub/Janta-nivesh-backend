@@ -17,6 +17,7 @@ export const env = {
     MSG91_FROM_EMAIL: process.env.MSG91_FROM_EMAIL!,
 
 
+    MSG91_WELCOME_EMAIL_TEMPLATE_ID: process.env.MSG91_WELCOME_EMAIL_TEMPLATE_ID!,
 
 
 
