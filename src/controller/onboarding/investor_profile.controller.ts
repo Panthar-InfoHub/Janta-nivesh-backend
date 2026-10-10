@@ -1,20 +1,19 @@
 import { NextFunction, Request, Response } from "express";
+import { profile_stage_schema } from "../../lib/zod-schemas/kyc-onboarding.schema.js";
 import AppError from "../../middleware/error.middleware.js";
 import logger from "../../middleware/logger.js";
-import { profile_stage_schema } from "../../lib/zod-schemas/kyc-onboarding.schema.js";
-import { fintech_primitive_investor_profile_service } from "../../services/fintech-primitive/investor_profile.service.js";
-import { fintech_primitive_address_service } from "../../services/fintech-primitive/address.service.js";
-import { fintech_primitive_phone_number_service } from "../../services/fintech-primitive/phone_number.service.js";
-import { fintech_primitive_email_address_service } from "../../services/fintech-primitive/email_address.service.js";
-import { fintech_primitive_bank_account_service } from "../../services/fintech-primitive/bank_account.service.js";
 import { cybrilla_kyc_form_service } from "../../services/cybrilla/kyc_form.service.js";
+import { fintech_primitive_address_service } from "../../services/fintech-primitive/address.service.js";
+import { fintech_primitive_email_address_service } from "../../services/fintech-primitive/email_address.service.js";
+import { fintech_primitive_investor_profile_service } from "../../services/fintech-primitive/investor_profile.service.js";
+import { fintech_primitive_phone_number_service } from "../../services/fintech-primitive/phone_number.service.js";
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
+import { build_kyc_form_patch_payload, map_pep_details_for_investor_profile } from "../../services/kyc/onboarding-field-mapper.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { user_service } from "../../services/user.service.js";
-import { user_bank_details_service } from "../../services/user-bank-details.service.js";
-import { build_kyc_form_patch_payload, map_pep_details_for_investor_profile } from "../../services/kyc/onboarding-field-mapper.js";
 
 const TERMINAL_KYC_STATUSES = ["failed", "expired", "submitted"];
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class InvestorProfileControllerClass {
 
@@ -141,7 +140,26 @@ class InvestorProfileControllerClass {
                     }
                 }
 
-                // Do NOT create FP investor_profile yet — wait for KYC webhook!
+                // Cybrilla generates the eSign document asynchronously after receiving the patch.
+                // Poll Cybrilla with a short delay (1.5s interval, up to 2 attempts) so frontend directly receives the esign_url.
+                let esign_url = kyc_form_patch_result?.esign_details?.esign_url ?? null;
+                let current_kyc_form = kyc_form_patch_result;
+
+                if (!esign_url && kyc_profile.cybrilla_kyc_form_id) {
+                    for (let attempt = 1; attempt <= 2; attempt++) {
+                        logger.info(`Polling Cybrilla for eSign URL (attempt ${attempt}/2)...`, { user_id });
+                        await sleep(1500);
+                        current_kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+                        esign_url = current_kyc_form?.esign_details?.esign_url ?? null;
+                        if (esign_url) {
+                            logger.info(`Cybrilla eSign URL ready on attempt ${attempt}`, { user_id, esign_url });
+                            await kyc_profile_service.upsert_kyc_form(user_id, current_kyc_form);
+                            break;
+                        }
+                    }
+                }
+
+                // Do NOT create FP investor_profile yet — user must eSign first!
                 await user_onboarding_service.update_stage(user_id, {
                     profile_status: "IN_PROGRESS",
                     kyc_status: "IN_PROGRESS",
@@ -151,14 +169,15 @@ class InvestorProfileControllerClass {
 
                 res.status(200).json({
                     success: true,
-                    message: "Profile details submitted. KYC is under review.",
+                    message: esign_url ? "Profile details submitted. Please proceed to eSign." : "Profile details submitted. Generating eSign link...",
                     data: {
-                        kyc_under_review: true,
-                        can_navigate_home: true,
-                        kyc_form: kyc_form_patch_result ? {
-                            status: kyc_form_patch_result.status,
-                            fields_needed: kyc_form_patch_result.requirements?.fields_needed ?? [],
-                            esign_url: kyc_form_patch_result.esign_details?.esign_url ?? null,
+                        status: current_kyc_form?.status ?? "awaiting_esign",
+                        esign_url: esign_url ?? null,
+                        next_action: esign_url ? "PROCEED_TO_ESIGN" : "POLL_KYC_STATUS",
+                        kyc_form: current_kyc_form ? {
+                            status: current_kyc_form.status,
+                            fields_needed: current_kyc_form.requirements?.fields_needed ?? [],
+                            esign_url: esign_url ?? null,
                         } : null,
                         onboarding,
                     }
