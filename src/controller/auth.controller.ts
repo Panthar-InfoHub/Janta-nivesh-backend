@@ -123,7 +123,19 @@ class AuthControllerClass {
 
             const token = generate_JWT(updated_user);
 
-            const onboarding = await user_onboarding_service.get_status_summary(updated_user.id);
+            const onboarding_row = await user_onboarding_service.get_or_create(updated_user.id);
+            const onboarding = {
+                current_stage: onboarding_row.current_stage,
+                basic_details_status: onboarding_row.basic_details_status,
+                readiness_status: onboarding_row.readiness_status,
+                kyc_status: onboarding_row.kyc_status,
+                email_status: onboarding_row.email_status,
+                profile_status: onboarding_row.profile_status,
+                penny_drop_status: onboarding_row.penny_drop_status,
+                nominee_status: onboarding_row.nominee_status,
+                is_completed: onboarding_row.is_completed,
+                is_kyc_completed: onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS",
+            };
 
             res.status(200).json({
                 success: true,
@@ -136,6 +148,7 @@ class AuthControllerClass {
                         mpin_is_setup: updated_user.mpin_is_setup
                     },
                     onboarding,
+                    is_skip: onboarding_row.basic_details_status === "SKIPPED",
                     token: token,
                     refresh_token: refresh_token
                 }

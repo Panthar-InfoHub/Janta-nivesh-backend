@@ -99,11 +99,28 @@ export const handleKycWebhook = async (
         const user_id = kyc_profile.user_id;
         await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
-        // 4. Handle Successful / Approved KYC
+        // 4. Handle Lifecycle:
+        const event_type = (body?.type || "").toLowerCase();
+
+        // A. KYC Approved / Verified (kyc_request.successful)
         const is_successful =
-            kyc_form.status === "submitted" ||
+            kyc_form.status === "successful" ||
             kyc_form.status === "approved" ||
-            kyc_form.status === "verified";
+            kyc_form.status === "verified" ||
+            event_type === "kyc_request.successful";
+
+        // B. eSign Submitted / Waiting for verification (kyc_request.submitted)
+        const is_submitted =
+            kyc_form.status === "submitted" ||
+            event_type === "kyc_request.submitted";
+
+        // C. Failed / Rejected / Expired (kyc_request.rejected, expired)
+        const is_failed =
+            kyc_form.status === "failed" ||
+            kyc_form.status === "expired" ||
+            kyc_form.status === "rejected" ||
+            event_type === "kyc_request.rejected" ||
+            event_type === "kyc_request.expired";
 
         if (is_successful) {
             logger.info("KYC approved via webhook. Creating Fintech Primitives investor profile.", { user_id });
@@ -170,12 +187,20 @@ export const handleKycWebhook = async (
             });
 
             logger.info("User stage successfully advanced to PENNY_DROP_VERIFICATION via KYC webhook", { user_id });
-        } else if (kyc_form.status === "failed" || kyc_form.status === "expired") {
-            logger.warn("KYC marked as failed/expired via webhook", { user_id, reason: kyc_form.reason });
+        } else if (is_submitted) {
+            logger.info("KYC eSign submitted via webhook, waiting for Cybrilla success webhook", { user_id });
+            await user_onboarding_service.update_stage(user_id, {
+                kyc_status: "IN_PROGRESS",
+                profile_status: "IN_PROGRESS",
+            });
+        } else if (is_failed) {
+            logger.warn("KYC marked as failed/rejected via webhook", { user_id, reason: kyc_form.reason });
             await user_onboarding_service.update_stage(user_id, {
                 kyc_status: "FAILED",
                 profile_status: "FAILED",
             });
+        } else {
+            logger.info("KYC state updated via webhook (e.g. esign_required)", { user_id, status: kyc_form.status, event_type });
         }
 
         res.status(200).json({ success: true, processed: true });
