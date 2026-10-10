@@ -72,7 +72,9 @@ class NomineeControllerClass {
             await sync_investment_account(user_id);
             await user_onboarding_service.recompute_completion(user_id);
 
-            await email_service.send_welcome_mail(user.email, user.full_name)
+            if (user?.email) {
+                await email_service.send_welcome_mail(user.email, user?.full_name ?? undefined);
+            }
 
 
             res.status(200).json({

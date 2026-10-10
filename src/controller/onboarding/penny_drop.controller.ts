@@ -7,6 +7,8 @@ import { user_onboarding_service } from "../../services/kyc/user.onboarding.serv
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { cybrilla_pan_verification_service } from "../../services/cybrilla/pan_verification.service.js";
 import { reverse_penny_service } from "../../services/kyc/reverse_penny.service.js";
+import { fintech_primitive_bank_account_service } from "../../services/fintech-primitive/bank_account.service.js";
+import { user_service } from "../../services/user.service.js";
 
 class PennyDropControllerClass {
 
@@ -46,10 +48,9 @@ class PennyDropControllerClass {
                 });
             }
 
-            // i know this is a shitty approach three db call for one this just bear with me for the compliance phase
             await user_onboarding_service.update_stage(user_id, {
                 penny_drop_status: "IN_PROGRESS",
-                current_stage: "EMAIL_VERIFICATION",
+                current_stage: "PENNY_DROP_VERIFICATION",
             });
             await user_onboarding_service.recompute_completion(user_id);
 
@@ -71,7 +72,23 @@ class PennyDropControllerClass {
                         await user_bank_details_service.sync_verification_from_pre_verification(bank_details.id, bank_accounts[0]);
 
                         if (bank_accounts[0]?.status === "verified") {
-                            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "VERIFIED" });
+                            await user_onboarding_service.update_stage(user_id, {
+                                penny_drop_status: "VERIFIED",
+                                current_stage: "NOMINEE_ADDITION",
+                            });
+
+                            const user = await user_service.get_user_by_id(user_id);
+                            if (user?.investor_profile && !bank_details.fp_bank_account_id) {
+                                const fp_bank = await fintech_primitive_bank_account_service.create_bank_account(user.investor_profile, {
+                                    primary_account_holder_name: bank_details.account_holder_name ?? kyc_profile.full_name!,
+                                    account_number: bank_details.account_no,
+                                    type: (bank_details.account_type as "savings" | "current" | "nre" | "nro") ?? "savings",
+                                    ifsc_code: bank_details.ifsc_code,
+                                });
+                                if (fp_bank?.id) {
+                                    await user_bank_details_service.set_fp_bank_account_ids(bank_details.id, fp_bank.id, fp_bank.old_id);
+                                }
+                            }
                         } else if (bank_accounts[0]?.status === "failed") {
                             await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
                         }
