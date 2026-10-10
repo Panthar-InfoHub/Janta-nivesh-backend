@@ -93,12 +93,7 @@ class KycFormControllerClass {
             const kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
             await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
-            if (kyc_form?.status === "submitted") {
-                await user_onboarding_service.update_stage(user_id, {
-                    kyc_status: "VERIFIED",
-                    current_stage: "PENNY_DROP_VERIFICATION",
-                });
-            } else if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
+            if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
                 await user_onboarding_service.update_stage(user_id, { kyc_status: "FAILED" });
             }
 
@@ -228,6 +223,13 @@ class KycFormControllerClass {
             );
             await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
+            await user_onboarding_service.update_stage(user_id, {
+                kyc_status: "IN_PROGRESS",
+                current_stage: "EMAIL_VERIFICATION",
+            });
+
+            const onboarding = await user_onboarding_service.get_status_summary(user_id);
+
             res.status(200).json({
                 success: true,
                 message: "Signature uploaded",
@@ -235,6 +237,7 @@ class KycFormControllerClass {
                     kyc_form_id: kyc_form?.id,
                     signature_provided: kyc_form?.signature_provided ?? false,
                     fields_needed: kyc_form?.requirements?.fields_needed ?? [],
+                    onboarding,
                 }
             });
             return;

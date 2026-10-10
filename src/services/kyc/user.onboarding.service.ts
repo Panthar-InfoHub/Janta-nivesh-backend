@@ -83,10 +83,10 @@ class UserOnboardingServiceClass {
                 basic_details: onboarding.basic_details_status,
                 readiness: onboarding.readiness_status,
                 kyc: onboarding.kyc_status,
-                reverse_penny: onboarding.reverse_penny_status,
-                penny_drop: onboarding.penny_drop_status,
                 email: onboarding.email_status,
                 profile: onboarding.profile_status,
+                reverse_penny: onboarding.reverse_penny_status,
+                penny_drop: onboarding.penny_drop_status,
                 nominee: onboarding.nominee_status
             },
         };

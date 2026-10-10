@@ -205,7 +205,7 @@ class PanVerificationControllerClass {
                     await user_onboarding_service.update_stage(user_id, {
                         readiness_status: "VERIFIED",
                         kyc_status: "VERIFIED",
-                        ...(onboarding_before.current_stage === "PAN_VERIFICATION" ? { current_stage: "PENNY_DROP_VERIFICATION" } : {}),
+                        ...(onboarding_before.current_stage === "PAN_VERIFICATION" ? { current_stage: "EMAIL_VERIFICATION" } : {}),
                     });
                 }
 
@@ -218,8 +218,12 @@ class PanVerificationControllerClass {
                     if (primary_bank) {
                         await user_bank_details_service.sync_verification_from_pre_verification(primary_bank.id, bank_accounts[0]);
 
+                        const onboarding_before = await user_onboarding_service.get_or_create(user_id);
                         if (bank_accounts[0]?.status === "verified") {
-                            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "VERIFIED" });
+                            await user_onboarding_service.update_stage(user_id, {
+                                penny_drop_status: "VERIFIED",
+                                ...(onboarding_before.current_stage === "PENNY_DROP_VERIFICATION" ? { current_stage: "NOMINEE_ADDITION" } : {}),
+                            });
                         } else if (bank_accounts[0]?.status === "failed") {
                             await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
                         }

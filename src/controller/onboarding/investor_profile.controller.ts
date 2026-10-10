@@ -47,118 +47,124 @@ class InvestorProfileControllerClass {
                 throw new AppError("Complete PAN verification first", 400, "PAN_VERIFICATION_REQUIRED");
             }
 
-            // 1. Create the investor profile (Fintech Primitives)
-            const ip_address = req.ip || req.socket.remoteAddress || undefined;
+            // 1. Check if user already has verified KYC (Case 1) vs. fresh KYC in progress (Case 2)
+            if (onboarding_before.kyc_status === "VERIFIED") {
+                // === CASE 1: EXISTING / VERIFIED KYC ===
+                const ip_address = req.ip || req.socket.remoteAddress || undefined;
 
-            const investor_profile = await fintech_primitive_investor_profile_service.create_investor_profile({
-                name: kyc_profile.full_name!,
-                date_of_birth: kyc_profile.dob!,
-                gender: kyc_profile.gender!,
-                occupation: kyc_profile.occupation!,
-                pan: kyc_profile.pan,
-                place_of_birth: kyc_profile.place_of_birth,
-                use_default_tax_residences: kyc_profile.use_default_tax_residences,
-                first_tax_residency: kyc_profile.first_tax_residency,
-                source_of_wealth: kyc_profile.source_of_fund!,
-                income_slab: kyc_profile.income_slab!,
-                pep_details: map_pep_details_for_investor_profile(kyc_profile.is_pep_declaration_confirmed),
-                ip_address,
-            });
-
-            if (!investor_profile?.id) {
-                logger.error("Fintech Primitives investor_profile response missing id ==> ", investor_profile);
-                throw new AppError("Failed to create investor profile", 502, "INVESTOR_PROFILE_CREATE_FAILED");
-            }
-
-            const user = await user_service.update_user(user_id, { investor_profile: investor_profile.id });
-
-            // 2. Register address/phone/email as FP objects - all mandatory-for-folio_defaults,
-            // and all require `profile` (investor_profile.id), so this is the earliest point they can exist.
-            const address = await fintech_primitive_address_service.create_address(investor_profile.id, {
-                line1: kyc_profile.address!,
-                postal_code: kyc_profile.pincode!,
-                city: kyc_profile.city!,
-                country: "IN",
-                nature: "residential",
-            });
-
-            const phone = await fintech_primitive_phone_number_service.create_phone_number(
-                investor_profile.id, "91", user.phone_no!, "self"
-            );
-
-            // user.email was written by the email verification stage - the guard at the top of this
-            // handler is what guarantees it's present and proven by the time we get here.
-            const email = await fintech_primitive_email_address_service.create_email_address(
-                investor_profile.id, user.email!, "self"
-            );
-
-            await kyc_profile_service.upsert(user_id, {
-                fp_address_id: address?.id ?? null,
-                fp_phone_id: phone?.id ?? null,
-                fp_email_id: email?.id ?? null,
-            });
-
-            // 2b. If penny drop already saved a bank account, register it with FP too (needs
-            // `profile`, so couldn't happen at penny-drop time - investor_profile didn't exist yet)
-            const primary_bank = await user_bank_details_service.get_primary(user_id);
-            if (primary_bank) {
-                const bank_account = await fintech_primitive_bank_account_service.create_bank_account(investor_profile.id, {
-                    primary_account_holder_name: primary_bank.account_holder_name ?? kyc_profile.full_name!,
-                    account_number: primary_bank.account_no,
-                    type: (primary_bank.account_type as "savings" | "current" | "nre" | "nro") ?? "savings",
-                    ifsc_code: primary_bank.ifsc_code,
+                const investor_profile = await fintech_primitive_investor_profile_service.create_investor_profile({
+                    name: kyc_profile.full_name!,
+                    date_of_birth: kyc_profile.dob!,
+                    gender: kyc_profile.gender!,
+                    occupation: kyc_profile.occupation!,
+                    pan: kyc_profile.pan,
+                    place_of_birth: kyc_profile.place_of_birth,
+                    use_default_tax_residences: kyc_profile.use_default_tax_residences,
+                    first_tax_residency: kyc_profile.first_tax_residency,
+                    source_of_wealth: kyc_profile.source_of_fund!,
+                    income_slab: kyc_profile.income_slab!,
+                    pep_details: map_pep_details_for_investor_profile(kyc_profile.is_pep_declaration_confirmed),
+                    ip_address,
                 });
 
-                if (bank_account?.id) {
-                    await user_bank_details_service.set_fp_bank_account_ids(primary_bank.id, bank_account.id, bank_account.old_id);
+                if (!investor_profile?.id) {
+                    logger.error("Fintech Primitives investor_profile response missing id ==> ", investor_profile);
+                    throw new AppError("Failed to create investor profile", 502, "INVESTOR_PROFILE_CREATE_FAILED");
                 }
-            }
 
-            // 3. If a kyc_form is still in progress, patch whatever we can now satisfy
-            let kyc_form_patch_result: any = null;
+                const user = await user_service.update_user(user_id, { investor_profile: investor_profile.id });
 
-            if (kyc_profile.cybrilla_kyc_form_id && !TERMINAL_KYC_STATUSES.includes(kyc_profile.cybrilla_status ?? "")) {
-                // const user = await user_service.get_user_by_id(user_id);
-                const latest_kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
-                const fields_needed: string[] = latest_kyc_form?.requirements?.fields_needed ?? [];
+                // Register address/phone/email as FP objects
+                const address = await fintech_primitive_address_service.create_address(investor_profile.id, {
+                    line1: kyc_profile.address!,
+                    postal_code: kyc_profile.pincode!,
+                    city: kyc_profile.city!,
+                    country: "IN",
+                    nature: "residential",
+                });
 
-                if (fields_needed.length > 0) {
-                    // const refreshed_kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
-                    const patch_payload = build_kyc_form_patch_payload(fields_needed, {
-                        user: { email: user?.email, phone_no: user?.phone_no },
-                        kyc_profile: kyc_profile!,
-                    });
+                const phone = await fintech_primitive_phone_number_service.create_phone_number(
+                    investor_profile.id, "91", user.phone_no!, "self"
+                );
 
-                    if (Object.keys(patch_payload).length > 0) {
-                        logger.debug("Patching in-progress kyc_form from profile stage data", { fields: Object.keys(patch_payload) });
-                        kyc_form_patch_result = await cybrilla_kyc_form_service.update_kyc_form(kyc_profile.cybrilla_kyc_form_id, patch_payload);
-                        await kyc_profile_service.upsert_kyc_form(user_id, kyc_form_patch_result);
+                const email = await fintech_primitive_email_address_service.create_email_address(
+                    investor_profile.id, user.email!, "self"
+                );
+
+                await kyc_profile_service.upsert(user_id, {
+                    fp_address_id: address?.id ?? null,
+                    fp_phone_id: phone?.id ?? null,
+                    fp_email_id: email?.id ?? null,
+                });
+
+                // Advance to Penny Drop stage
+                await user_onboarding_service.update_stage(user_id, {
+                    profile_status: "VERIFIED",
+                    current_stage: "PENNY_DROP_VERIFICATION",
+                });
+
+                const onboarding = await user_onboarding_service.get_status_summary(user_id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Profile stage completed",
+                    data: {
+                        investor_profile_id: investor_profile.id,
+                        next_action: "PROCEED_TO_PENNY_DROP",
+                        onboarding,
                     }
-                } else {
-                    kyc_form_patch_result = latest_kyc_form;
+                });
+                return;
+            } else {
+                // === CASE 2: FRESH KYC IN PROGRESS ===
+                // Patch in-progress Cybrilla kyc_form with profile demographic data
+                let kyc_form_patch_result: any = null;
+
+                if (kyc_profile.cybrilla_kyc_form_id && !TERMINAL_KYC_STATUSES.includes(kyc_profile.cybrilla_status ?? "")) {
+                    const user = await user_service.get_user_by_id(user_id);
+                    const latest_kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+                    const fields_needed: string[] = latest_kyc_form?.requirements?.fields_needed ?? [];
+
+                    if (fields_needed.length > 0) {
+                        const patch_payload = build_kyc_form_patch_payload(fields_needed, {
+                            user: { email: user?.email, phone_no: user?.phone_no },
+                            kyc_profile: kyc_profile!,
+                        });
+
+                        if (Object.keys(patch_payload).length > 0) {
+                            logger.debug("Patching in-progress kyc_form from profile stage data", { fields: Object.keys(patch_payload) });
+                            kyc_form_patch_result = await cybrilla_kyc_form_service.update_kyc_form(kyc_profile.cybrilla_kyc_form_id, patch_payload);
+                            await kyc_profile_service.upsert_kyc_form(user_id, kyc_form_patch_result);
+                        }
+                    } else {
+                        kyc_form_patch_result = latest_kyc_form;
+                    }
                 }
+
+                // Do NOT create FP investor_profile yet — wait for KYC webhook!
+                await user_onboarding_service.update_stage(user_id, {
+                    profile_status: "IN_PROGRESS",
+                    kyc_status: "IN_PROGRESS",
+                });
+
+                const onboarding = await user_onboarding_service.get_status_summary(user_id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Profile details submitted. KYC is under review.",
+                    data: {
+                        kyc_under_review: true,
+                        can_navigate_home: true,
+                        kyc_form: kyc_form_patch_result ? {
+                            status: kyc_form_patch_result.status,
+                            fields_needed: kyc_form_patch_result.requirements?.fields_needed ?? [],
+                            esign_url: kyc_form_patch_result.esign_details?.esign_url ?? null,
+                        } : null,
+                        onboarding,
+                    }
+                });
+                return;
             }
-
-            await user_onboarding_service.update_stage(user_id, {
-                profile_status: "VERIFIED",
-                current_stage: "NOMINEE_ADDITION",
-            });
-
-            const onboarding = await user_onboarding_service.get_status_summary(user_id);
-
-            res.status(200).json({
-                success: true,
-                message: "Profile stage completed",
-                data: {
-                    investor_profile_id: investor_profile.id,
-                    kyc_form: kyc_form_patch_result ? {
-                        status: kyc_form_patch_result.status,
-                        fields_needed: kyc_form_patch_result.requirements?.fields_needed ?? [],
-                        esign_url: kyc_form_patch_result.esign_details?.esign_url ?? null,
-                    } : null,
-                    onboarding,
-                }
-            });
             return;
         } catch (error) {
             logger.error("Error in complete_profile_stage controller:", error);
