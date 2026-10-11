@@ -112,6 +112,16 @@ class UserFinanceControllerClass {
             //     return goal;
             // }) : data.user_goals
 
+            const is_kyc_completed =
+                data?.onboarding?.kyc_status === "VERIFIED" ||
+                (data?.onboarding?.kyc_status === "IN_PROGRESS" && data?.onboarding?.profile_status === "IN_PROGRESS");
+            const kyc_under_review =
+                data?.onboarding?.kyc_status === "IN_PROGRESS" && data?.onboarding?.profile_status === "IN_PROGRESS";
+            const can_navigate_home =
+                Boolean(data?.onboarding?.is_completed) ||
+                data?.onboarding?.basic_details_status === "SKIPPED" ||
+                Boolean(kyc_under_review);
+
             res.status(200).json({
                 code: 200,
                 message: "User data fetched successfully",
@@ -119,14 +129,18 @@ class UserFinanceControllerClass {
                     ...data,
                     onboarding: data?.onboarding ? {
                         ...data.onboarding,
-                        is_kyc_completed: data.onboarding.kyc_status === "IN_PROGRESS" && data.onboarding.profile_status === "IN_PROGRESS",
+                        is_kyc_completed,
+                        kyc_under_review,
+                        can_navigate_home,
                     } : null,
                     // `onboarding` is the full UserOnboarding row (included above). is_skip is
                     // lifted out of it as a convenience flag: basic_details_status is SKIPPED only
                     // when the user skipped the onboarding flow outright (see the column comment on
                     // UserOnboarding) - a per-stage skip like nominee_status does not set it.
                     is_skip: data?.onboarding?.basic_details_status === "SKIPPED",
-                    is_kyc_completed: data?.onboarding?.kyc_status === "IN_PROGRESS" && data?.onboarding?.profile_status === "IN_PROGRESS",
+                    is_kyc_completed,
+                    kyc_under_review,
+                    can_navigate_home,
                     dashboard: {
                         portfolio_value: portfolio_aggregates.total_investments.current_value,
                         mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,

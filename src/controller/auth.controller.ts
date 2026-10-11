@@ -124,6 +124,16 @@ class AuthControllerClass {
             const token = generate_JWT(updated_user);
 
             const onboarding_row = await user_onboarding_service.get_or_create(updated_user.id);
+            const is_kyc_completed =
+                onboarding_row.kyc_status === "VERIFIED" ||
+                (onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS");
+            const kyc_under_review =
+                onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS";
+            const can_navigate_home =
+                Boolean(onboarding_row.is_completed) ||
+                onboarding_row.basic_details_status === "SKIPPED" ||
+                kyc_under_review;
+
             const onboarding = {
                 current_stage: onboarding_row.current_stage,
                 basic_details_status: onboarding_row.basic_details_status,
@@ -134,7 +144,9 @@ class AuthControllerClass {
                 penny_drop_status: onboarding_row.penny_drop_status,
                 nominee_status: onboarding_row.nominee_status,
                 is_completed: onboarding_row.is_completed,
-                is_kyc_completed: onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS",
+                is_kyc_completed,
+                kyc_under_review,
+                can_navigate_home,
             };
 
             res.status(200).json({
@@ -149,6 +161,9 @@ class AuthControllerClass {
                     },
                     onboarding,
                     is_skip: onboarding_row.basic_details_status === "SKIPPED",
+                    is_kyc_completed,
+                    kyc_under_review,
+                    can_navigate_home,
                     token: token,
                     refresh_token: refresh_token
                 }
