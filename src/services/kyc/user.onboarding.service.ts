@@ -75,10 +75,22 @@ class UserOnboardingServiceClass {
      */
     get_status_summary = async (user_id: string) => {
         const onboarding = await this.get_or_create(user_id);
+        const is_kyc_completed =
+            onboarding.kyc_status === "VERIFIED" ||
+            (onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS");
+        const kyc_under_review =
+            onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS";
+        const can_navigate_home =
+            Boolean(onboarding.is_completed) ||
+            onboarding.basic_details_status === "SKIPPED" ||
+            kyc_under_review;
 
         return {
             current_stage: onboarding.current_stage,
             is_completed: onboarding.is_completed,
+            is_kyc_completed,
+            kyc_under_review,
+            can_navigate_home,
             stages: {
                 basic_details: onboarding.basic_details_status,
                 readiness: onboarding.readiness_status,
