@@ -11,6 +11,8 @@ import { fintech_primitive_address_service } from "../../services/fintech-primit
 import { fintech_primitive_phone_number_service } from "../../services/fintech-primitive/phone_number.service.js";
 import { fintech_primitive_email_address_service } from "../../services/fintech-primitive/email_address.service.js";
 import { map_pep_details_for_investor_profile } from "../../services/kyc/onboarding-field-mapper.js";
+import { notification_producer_service } from "../../services/notification.producer.service.js";
+import { notification_type } from "../../lib/types.js";
 
 const DEDUP_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 const dedup_key = (event_id: string) => `kyc_webhook_evt:${event_id}`;
@@ -187,6 +189,19 @@ export const handleKycWebhook = async (
             });
 
             logger.info("User stage successfully advanced to PENNY_DROP_VERIFICATION via KYC webhook", { user_id });
+
+
+            await notification_producer_service.publish_notification_event(
+                kyc_profile.user.id,
+                "TRANSACTION",
+                "KYC Verification Completed",
+                `Your KYC verification is successfully completed, ${kyc_profile.user.full_name}`,
+                {
+                    txn: "kyc",
+                    sub_type: notification_type.NOTIFICATION
+                }
+            );
+
         } else if (is_submitted) {
             logger.info("KYC eSign submitted via webhook, waiting for Cybrilla success webhook", { user_id });
             await user_onboarding_service.update_stage(user_id, {
