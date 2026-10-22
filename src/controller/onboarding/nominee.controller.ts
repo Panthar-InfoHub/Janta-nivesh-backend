@@ -43,10 +43,15 @@ class NomineeControllerClass {
 
             let nominees: any[] = [];
 
+            const onboarding_before = await user_onboarding_service.get_or_create(user_id);
+            if (onboarding_before.penny_drop_status !== "VERIFIED") {
+                throw new AppError("Complete bank verification first", 400, "BANK_VERIFICATION_REQUIRED");
+            }
+
             const user = await user_service.get_user_by_id(user_id);
             if (input.skip === true) {
                 logger.info("User skipped nominee stage", { user_id });
-                await user_onboarding_service.update_stage(user_id, { nominee_status: "SKIPPED", current_stage: "COMPLETED" });
+                await user_onboarding_service.update_stage(user_id, { nominee_status: "SKIPPED" });
             } else {
                 logger.info("Submitting nominees", { user_id, count: input.nominees.length });
                 nominees = await nominee_service.create_many(user_id, input.nominees);
@@ -65,14 +70,14 @@ class NomineeControllerClass {
                     }
                 }
 
-                await user_onboarding_service.update_stage(user_id, { nominee_status: "VERIFIED", current_stage: "COMPLETED" });
+                await user_onboarding_service.update_stage(user_id, { nominee_status: "VERIFIED" });
             }
 
             // Create (first time) or update (e.g. adding nominees after a prior skip) the investment account either way
             await sync_investment_account(user_id);
-            await user_onboarding_service.recompute_completion(user_id);
+            const updated_onboarding = await user_onboarding_service.recompute_completion(user_id);
 
-            if (user?.email) {
+            if (updated_onboarding.is_completed && user?.email) {
                 await email_service.send_welcome_mail(user.email, user?.full_name ?? undefined);
             }
 
