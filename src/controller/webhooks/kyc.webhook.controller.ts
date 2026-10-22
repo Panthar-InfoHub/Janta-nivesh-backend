@@ -181,12 +181,15 @@ export const handleKycWebhook = async (
             // Advance stage cursor to PENNY_DROP_VERIFICATION
             const onboarding_before = await user_onboarding_service.get_or_create(user_id);
             await user_onboarding_service.update_stage(user_id, {
+                readiness_status: "VERIFIED",
                 kyc_status: "VERIFIED",
                 profile_status: "VERIFIED",
                 ...(onboarding_before.current_stage === "INVESTOR_PROFILE" || onboarding_before.current_stage === "KYC_VERIFICATION"
                     ? { current_stage: "PENNY_DROP_VERIFICATION" }
                     : {}),
             });
+
+            await user_onboarding_service.recompute_completion(user_id);
 
             logger.info("User stage successfully advanced to PENNY_DROP_VERIFICATION via KYC webhook", { user_id });
 

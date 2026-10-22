@@ -1,10 +1,11 @@
 import { db } from "../../server.js";
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
+import { OnboardingStage } from "../../prisma/generated/prisma/enums.js";
 import logger from "../../middleware/logger.js";
 
 // Not to be confused with `onboarding_service` (src/services/onboarding.service.ts) -
 // that one tracks the financial/goals onboarding flow via User.meta_data.
-// This one tracks the KYC/investor onboarding flow (basic details -> readiness -> kyc -> penny drop -> email -> profile).
+// This one tracks the KYC/investor onboarding flow (basic details -> readiness -> kyc -> email -> profile -> penny drop -> nominee).
 class UserOnboardingServiceClass {
 
     /**
@@ -31,11 +32,33 @@ class UserOnboardingServiceClass {
     }
 
     /**
-     * Checks all seven stage columns and flips is_completed/current_stage/completed_at once
-     * every stage is in an acceptable terminal state (VERIFIED, or SKIPPED where that's valid -
-     * kyc and nominee only). current_stage can already be ahead of an unfinished stage (e.g.
-     * NOMINEE_ADDITION while kyc is still IN_PROGRESS) since the cursor doesn't hard-block
-     * progression - this is what actually gates completion.
+     * Deterministically computes the true pending stage based on the pipeline sequence.
+     * Prevents desynchronization or corrupted stage cursors from migrations or testing skips.
+     */
+    determine_pending_stage = (onboarding: {
+        basic_details_status: string;
+        readiness_status: string;
+        kyc_status: string;
+        email_status: string;
+        profile_status: string;
+        penny_drop_status: string;
+        nominee_status: string;
+    }): OnboardingStage => {
+        if (onboarding.basic_details_status !== "VERIFIED") return "BASIC_DETAILS";
+        if (onboarding.readiness_status !== "VERIFIED" && onboarding.kyc_status === "PENDING") return "PAN_VERIFICATION";
+        if (onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "PENDING") return "KYC_VERIFICATION";
+        if (onboarding.email_status !== "VERIFIED") return "EMAIL_VERIFICATION";
+        if (onboarding.profile_status !== "VERIFIED") return "INVESTOR_PROFILE";
+        if (onboarding.penny_drop_status !== "VERIFIED") return "PENNY_DROP_VERIFICATION";
+        if (onboarding.nominee_status === "PENDING") return "NOMINEE_ADDITION";
+        return "COMPLETED";
+    };
+
+    /**
+     * Checks all stage columns and flips is_completed/current_stage/completed_at once
+     * every stage is in an acceptable terminal state (VERIFIED, or SKIPPED where that's valid).
+     * If corrupted (current_stage === COMPLETED but not all stages verified), automatically
+     * corrects current_stage back to the true pending stage.
      */
     recompute_completion = async (user_id: string) => {
         const onboarding = await this.get_or_create(user_id);
@@ -48,9 +71,14 @@ class UserOnboardingServiceClass {
             (onboarding.penny_drop_status === "VERIFIED" &&
                 ["PENDING", "IN_PROGRESS", "SKIPPED", "FAILED"].includes(onboarding.reverse_penny_status));
 
+        // Readiness is satisfied if readiness_status is VERIFIED, or if KYC is VERIFIED
+        // (Case 2 fresh KYC users failed initial readiness at KRA, but their verified Aadhaar KYC satisfies compliance)
+        const is_readiness_satisfied =
+            onboarding.readiness_status === "VERIFIED" || onboarding.kyc_status === "VERIFIED";
+
         const is_done =
             onboarding.basic_details_status === "VERIFIED" && // strict - mandatory stage, no skip path exists
-            onboarding.readiness_status === "VERIFIED" && // strict - SKIPPED here means "deferred the whole flow", never completable
+            is_readiness_satisfied &&
             ["VERIFIED", "SKIPPED"].includes(onboarding.kyc_status) &&
             is_reverse_penny_satisfied &&
             onboarding.penny_drop_status === "VERIFIED" &&
@@ -66,6 +94,16 @@ class UserOnboardingServiceClass {
             });
         }
 
+        // If corrupted: current_stage is COMPLETED but is_done is false, repair current_stage to the actual pending stage
+        if (!is_done && onboarding.current_stage === "COMPLETED") {
+            const actual_stage = this.determine_pending_stage(onboarding);
+            logger.warn("Correcting premature COMPLETED stage in onboarding", { user_id, actual_stage });
+            return await db.userOnboarding.update({
+                where: { user_id },
+                data: { current_stage: actual_stage, is_completed: false }
+            });
+        }
+
         return onboarding;
     }
 
@@ -74,7 +112,9 @@ class UserOnboardingServiceClass {
      * app knows which screen to resume on without a separate status call.
      */
     get_status_summary = async (user_id: string) => {
-        const onboarding = await this.get_or_create(user_id);
+        // Run recompute to self-heal any corrupted stage cursor (e.g. current_stage is COMPLETED while is_completed is false)
+        const onboarding = await this.recompute_completion(user_id);
+
         const is_kyc_completed =
             onboarding.kyc_status === "VERIFIED" ||
             (onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS");
