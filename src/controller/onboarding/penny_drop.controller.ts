@@ -19,6 +19,11 @@ class PennyDropControllerClass {
 
             logger.info("Saving penny drop bank details", { user_id });
 
+            const onboarding_before = await user_onboarding_service.get_or_create(user_id);
+            if (onboarding_before.profile_status !== "VERIFIED") {
+                throw new AppError("Complete investor profile stage first", 400, "INVESTOR_PROFILE_REQUIRED");
+            }
+
             const bank_details = await user_bank_details_service.save_from_penny_drop(user_id, input);
 
             const kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
