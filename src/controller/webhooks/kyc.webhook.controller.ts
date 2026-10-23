@@ -37,16 +37,14 @@ export const handleKycWebhook = async (
     try {
         const body = req.body;
 
-        logger.debug(`Kyc webhook body:${body}`)
+        logger.debug(`Kyc webhook body ==> `, body)
         const kyc_form_id =
             body?.data?.object?.id ||
             body?.kyc_form_id ||
-            body?.data?.id ||
-            body?.id;
+            body?.data?.id
         event_id =
             body?.id ||
-            body?.event_id ||
-            `kyc_evt_${kyc_form_id}_${body?.type || "update"}`;
+        body?.event_id
 
         logger.info("Received KYC webhook", {
             event_id,
@@ -61,15 +59,17 @@ export const handleKycWebhook = async (
         }
 
         // 1. Dedup using Redis SET NX
-        const claimed = await redis.set(dedup_key(event_id), "1", {
-            NX: true,
-            EX: DEDUP_TTL_SECONDS,
-        });
+        if (event_id) {
+            const claimed = await redis.set(dedup_key(event_id), "1", {
+                NX: true,
+                EX: DEDUP_TTL_SECONDS,
+            });
 
-        if (!claimed) {
-            logger.info("Duplicate KYC webhook ignored", { event_id, kyc_form_id });
-            res.status(200).json({ success: true, duplicate: true });
-            return;
+            if (!claimed) {
+                logger.info("Duplicate KYC webhook ignored", { event_id, kyc_form_id });
+                res.status(200).json({ success: true, duplicate: true });
+                return;
+            }
         }
 
         // 2. Authoritative re-fetch from Cybrilla
