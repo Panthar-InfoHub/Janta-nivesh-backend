@@ -32,6 +32,7 @@ model UserOnboarding {
   email_status         StageStatus     @default(PENDING) // VERIFIED only - email OTP is never skippable, the address lands in FP/Cybrilla compliance records
   profile_status       StageStatus     @default(PENDING)
   nominee_status       StageStatus     @default(PENDING) // VERIFIED once added, SKIPPED if "I will add nominees later"
+  has_navigated_home   Boolean         @default(false)
   is_completed         Boolean         @default(false)
   completed_at         DateTime?
   createdAt            DateTime        @default(now())
