@@ -47,7 +47,14 @@ import { extendPrismaClient } from "./lib/extended-db.js"
 import { test_router } from "./routes/test.router.js"
 
 //Configurations
-dotenv.config()
+import fs from "fs";
+const appEnv = process.env.APP_ENV;
+const envFile = appEnv === "prod" ? ".env.prod" : appEnv === "dev" ? ".env.dev" : ".env";
+if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile });
+} else {
+    dotenv.config();
+}
 const pool = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma = new PrismaClient({ adapter: pool })
 export const db = extendPrismaClient(prisma)
@@ -139,7 +146,9 @@ const PORT = process.env.PORT || 8080
 
 const server = app.listen(PORT, async () => {
     logger.debug(`Backend server started on PORT ==> ${PORT}`);
-    await connectDB()
+    await connectDB();
+    const dbName = process.env.DATABASE_URL?.split("/").pop()?.split("?")[0] || "unknown";
+    logger.info(`Server initialized in [${process.env.ENVIRONMENT || 'dev'}] mode, connected to DB: ${dbName}`);
 });
 
 // Graceful shutdown

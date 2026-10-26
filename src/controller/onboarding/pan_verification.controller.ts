@@ -29,7 +29,10 @@ class PanVerificationControllerClass {
 
             if (input.skip === true) {
                 logger.info("User skipped the PAN stage (deferring onboarding)", { user_id });
-                await user_onboarding_service.update_stage(user_id, { readiness_status: "SKIPPED" });
+                await user_onboarding_service.update_stage(user_id, {
+                    readiness_status: "SKIPPED",
+                    has_navigated_home: true,
+                });
 
                 res.status(200).json({
                     success: true,

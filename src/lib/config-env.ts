@@ -1,5 +1,19 @@
 import dotenv from "dotenv";
-dotenv.config();
+import fs from "fs";
+
+// Determine which env file to load locally based on APP_ENV
+const appEnv = process.env.APP_ENV;
+const envFile = appEnv === "prod" 
+    ? ".env.prod" 
+    : appEnv === "dev" 
+    ? ".env.dev" 
+    : ".env";
+
+if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile });
+} else {
+    dotenv.config();
+}
 
 export const env = {
 

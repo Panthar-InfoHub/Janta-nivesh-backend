@@ -110,29 +110,23 @@ class AuthControllerClass {
             //     is_onboarding_completed: false
             // });
 
-            await notification_producer_service.publish_notification_event(
-                user.id,
-                "TRANSACTION",
-                "Login Successful",
-                `Welcome to Janta Nivesh, ${user.full_name}`,
-                {
-                    txn: "login",
-                    sub_type: notification_type.NOTIFICATION
-                }
-            );
+            if (user.full_name) {
+                await notification_producer_service.publish_notification_event(
+                    user.id,
+                    "TRANSACTION",
+                    "Login Successful",
+                    `Welcome to Janta Nivesh, ${user.full_name}`,
+                    {
+                        txn: "login",
+                        sub_type: notification_type.NOTIFICATION
+                    }
+                );
+            }
 
             const token = generate_JWT(updated_user);
 
             const onboarding_row = await user_onboarding_service.get_or_create(updated_user.id);
-            const is_kyc_completed =
-                onboarding_row.kyc_status === "VERIFIED" ||
-                (onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS");
-            const kyc_under_review =
-                onboarding_row.kyc_status === "IN_PROGRESS" && onboarding_row.profile_status === "IN_PROGRESS";
-            const can_navigate_home =
-                Boolean(onboarding_row.is_completed) ||
-                onboarding_row.basic_details_status === "SKIPPED" ||
-                kyc_under_review;
+            const nav_flags = user_onboarding_service.compute_navigation_flags(onboarding_row);
 
             const onboarding = {
                 current_stage: onboarding_row.current_stage,
@@ -144,9 +138,11 @@ class AuthControllerClass {
                 penny_drop_status: onboarding_row.penny_drop_status,
                 nominee_status: onboarding_row.nominee_status,
                 is_completed: onboarding_row.is_completed,
-                is_kyc_completed,
-                kyc_under_review,
-                can_navigate_home,
+                has_navigated_home: onboarding_row.has_navigated_home,
+                is_kyc_completed: nav_flags.is_kyc_completed,
+                kyc_under_review: nav_flags.kyc_under_review,
+                can_navigate_home: nav_flags.can_navigate_home,
+                is_skip: nav_flags.is_skip,
             };
 
             res.status(200).json({
@@ -160,10 +156,10 @@ class AuthControllerClass {
                         mpin_is_setup: updated_user.mpin_is_setup
                     },
                     onboarding,
-                    is_skip: onboarding_row.basic_details_status === "SKIPPED",
-                    is_kyc_completed,
-                    kyc_under_review,
-                    can_navigate_home,
+                    is_skip: nav_flags.is_skip,
+                    is_kyc_completed: nav_flags.is_kyc_completed,
+                    kyc_under_review: nav_flags.kyc_under_review,
+                    can_navigate_home: nav_flags.can_navigate_home,
                     token: token,
                     refresh_token: refresh_token
                 }
