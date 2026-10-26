@@ -90,7 +90,12 @@ class UserOnboardingServiceClass {
             logger.info("All onboarding stages resolved, marking onboarding complete", { user_id });
             return await db.userOnboarding.update({
                 where: { user_id },
-                data: { is_completed: true, current_stage: "COMPLETED", completed_at: new Date() }
+                data: {
+                    is_completed: true,
+                    current_stage: "COMPLETED",
+                    has_navigated_home: true,
+                    completed_at: new Date()
+                }
             });
         }
 
@@ -108,6 +113,47 @@ class UserOnboardingServiceClass {
     }
 
     /**
+     * Centralized computation of user navigation and KYC progress flags.
+     * Prevents desynchronization across auth.controller, user.controller, and status summary.
+     */
+    compute_navigation_flags = (onboarding?: {
+        is_completed?: boolean | null;
+        has_navigated_home?: boolean | null;
+        kyc_status?: string | null;
+        profile_status?: string | null;
+    } | null) => {
+        if (!onboarding) {
+            return {
+                is_kyc_completed: false,
+                kyc_under_review: false,
+                can_navigate_home: false,
+                is_skip: false,
+            };
+        }
+
+        const is_kyc_completed =
+            onboarding.kyc_status === "VERIFIED" ||
+            (onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS");
+
+        const kyc_under_review =
+            onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS";
+
+        const can_navigate_home =
+            Boolean(onboarding.is_completed) ||
+            Boolean(onboarding.has_navigated_home) ||
+            kyc_under_review;
+
+        const is_skip = Boolean(onboarding.has_navigated_home) && !onboarding.is_completed;
+
+        return {
+            is_kyc_completed,
+            kyc_under_review,
+            can_navigate_home,
+            is_skip,
+        };
+    };
+
+    /**
      * Onboarding status summary shaped for the client - used in the auth response so the
      * app knows which screen to resume on without a separate status call.
      */
@@ -115,22 +161,16 @@ class UserOnboardingServiceClass {
         // Run recompute to self-heal any corrupted stage cursor (e.g. current_stage is COMPLETED while is_completed is false)
         const onboarding = await this.recompute_completion(user_id);
 
-        const is_kyc_completed =
-            onboarding.kyc_status === "VERIFIED" ||
-            (onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS");
-        const kyc_under_review =
-            onboarding.kyc_status === "IN_PROGRESS" && onboarding.profile_status === "IN_PROGRESS";
-        const can_navigate_home =
-            Boolean(onboarding.is_completed) ||
-            onboarding.basic_details_status === "SKIPPED" ||
-            kyc_under_review;
+        const flags = this.compute_navigation_flags(onboarding);
 
         return {
             current_stage: onboarding.current_stage,
             is_completed: onboarding.is_completed,
-            is_kyc_completed,
-            kyc_under_review,
-            can_navigate_home,
+            has_navigated_home: onboarding.has_navigated_home,
+            is_kyc_completed: flags.is_kyc_completed,
+            kyc_under_review: flags.kyc_under_review,
+            can_navigate_home: flags.can_navigate_home,
+            is_skip: flags.is_skip,
             stages: {
                 basic_details: onboarding.basic_details_status,
                 readiness: onboarding.readiness_status,
