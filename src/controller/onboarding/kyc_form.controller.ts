@@ -33,6 +33,18 @@ class KycFormControllerClass {
             if (kyc_profile.cybrilla_kyc_form_id && !TERMINAL_STATUSES.includes(kyc_profile.cybrilla_status ?? "")) {
                 logger.debug("Resuming existing Cybrilla kyc_form", { kyc_form_id: kyc_profile.cybrilla_kyc_form_id });
                 kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+
+                if (kyc_form?.proof_details?.status === "failed") {
+                    logger.info("Resumed KYC form proof details failed; auto-retrying proof details fetch", {
+                        user_id,
+                        kyc_form_id: kyc_profile.cybrilla_kyc_form_id,
+                    });
+                    try {
+                        kyc_form = await cybrilla_kyc_form_service.retry_proof_details_fetch(kyc_profile.cybrilla_kyc_form_id);
+                    } catch (retry_error) {
+                        logger.error("Auto-retry proof details fetch failed in initiate_kyc_form:", retry_error);
+                    }
+                }
             } else {
                 const readiness_code = (kyc_profile.pre_verification_response as any)?.readiness?.code;
                 const type = MODIFY_READINESS_CODES.includes(readiness_code) ? "modify" : "fresh";
@@ -90,7 +102,20 @@ class KycFormControllerClass {
                 throw new AppError("No KYC form found - initiate one first", 404, "KYC_FORM_NOT_FOUND");
             }
 
-            const kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+            let kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+
+            if (kyc_form?.proof_details?.status === "failed") {
+                logger.info("KYC form proof details failed; auto-retrying proof details fetch", {
+                    user_id,
+                    kyc_form_id: kyc_profile.cybrilla_kyc_form_id,
+                });
+                try {
+                    kyc_form = await cybrilla_kyc_form_service.retry_proof_details_fetch(kyc_profile.cybrilla_kyc_form_id);
+                } catch (retry_error) {
+                    logger.error("Auto-retry proof details fetch failed in check_kyc_form_status:", retry_error);
+                }
+            }
+
             await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
             if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
@@ -110,6 +135,7 @@ class KycFormControllerClass {
                     reason: kyc_form?.reason ?? null,
                     fields_needed: kyc_form?.requirements?.fields_needed ?? [],
                     proof_details: kyc_form?.proof_details ?? null,
+                    proof_fetch_url: kyc_form?.proof_details?.fetch_url ?? null,
                     identity_proof_type: kyc_form?.identity?.proof_type ?? null,
                     address_proof_type: kyc_form?.address?.proof_type ?? null,
                     signature_provided: kyc_form?.signature_provided ?? false,

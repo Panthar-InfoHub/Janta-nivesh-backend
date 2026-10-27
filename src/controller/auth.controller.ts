@@ -3,22 +3,13 @@ import { notification_type } from "../lib/types.js";
 import AppError from "../middleware/error.middleware.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import logger from "../middleware/logger.js";
-import { deviceParamsSchema, req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
+import { req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
 import { auth_service } from "../services/auth.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
 
 class AuthControllerClass {
-
-    private extract_device_params(req: Request) {
-        const validation = deviceParamsSchema.safeParse(req.query);
-        if (!validation.success) {
-            logger.error("Invalid device parameters:", validation.error.format());
-            throw new AppError("Invalid device parameters", 400, "INVALID_DEVICE_PARAMS");
-        }
-        return validation.data;
-    }
 
     auth_req_otp = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -173,123 +164,7 @@ class AuthControllerClass {
         }
     }
 
-    auth_login_invId = async (req: Request, res: Response, next: NextFunction) => {
-        try {
 
-            const device_params = this.extract_device_params(req);
-
-            const inv_id = parseInt(req.body.inv_id as string);
-
-            if (!inv_id) {
-                logger.error("Invoice ID is required for login");
-                throw new AppError("Invoice ID is required", 400, "NOT_INV_ID_PROVIDED");
-            }
-
-            const user = await user_service.get_user_by_invId(inv_id);
-            if (!user) {
-                logger.error("User not found for inv Id during login");
-                throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
-            }
-
-            logger.info(`Login Attempt for User with InvId: ${inv_id}, Device: ${device_params.did}`);
-            const auth_res = await auth_service.login_invId(device_params, inv_id, user.phone_no ?? undefined, "");
-
-            logger.debug("Login response from auth service ==> ", auth_res);
-
-
-            if (auth_res.code !== 1) {
-                throw new AppError("Login validation failed", 401, "LOGIN_VALIDATION_FAILED");
-            }
-
-            const updated_user = await user_service.update_user(user.id, {
-                // usr: auth_res.results.usr,
-                // pwd: auth_res.results.pwd,
-                // inv_id: auth_res.results.invid
-            });
-
-            const token = generate_JWT(updated_user);
-            const refresh_token = generate_JWT(updated_user, "30d");
-            res.status(200).json({
-                success: true,
-                message: "Login successful",
-                data: {
-                    user: {
-                        user_id: updated_user.id,
-                        phone_no: updated_user.phone_no,
-                    },
-                    token: token,
-                    refresh_token: refresh_token
-                }
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in auth_login_invId:", error);
-            next(error);
-            return;
-        }
-    }
-
-    auth_login_creds = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const device_params = this.extract_device_params(req);
-
-            logger.debug("Request Body for Login: ", req.body);
-
-            const usr = req.body.usr as string || "";
-            const pwd = req.body.pwd as string || "";
-            if (!usr || !pwd) {
-                logger.error("Username and Password are required for login");
-                throw new AppError("Username and Password are required", 400, "NOT_CREDENTIALS_PROVIDED");
-            }
-
-            const user = await user_service.get_user_by_usr(usr);
-            if (!user) {
-                logger.error("User not found for username during login");
-                throw new AppError(`User not found for username : ${usr}`, 404, "USER_NOT_FOUND");
-            }
-
-            logger.info(`Login Attempt for User: ${usr}, Device: ${device_params.did}`);
-
-            const auth_res = await auth_service.login_creds(usr, pwd, device_params);
-            logger.debug("Auth response for creds ==> ", auth_res)
-            if (auth_res.code !== 1) {
-                throw new AppError("Login validation failed", 401, "LOGIN_VALIDATION_FAILED");
-            }
-
-            const updated_user = await user_service.update_user(user.id, {
-                // usr: auth_res.results.usr,
-                // pwd: auth_res.results.pwd,
-                // inv_id: auth_res.results.invid
-            });
-
-            const token = generate_JWT(updated_user);
-            const refresh_token = generate_JWT(updated_user, "30d");
-
-            res.status(200).json({
-                success: true,
-                message: "OTP validated successfully",
-                data: {
-                    user: {
-                        user_id: updated_user.id,
-                        phone_no: updated_user.phone_no,
-                        metadata: updated_user.meta_data ?? {
-                            onboarding_stage: 0,
-                            is_onboarding_completed: false,
-                        }
-                    },
-                    token: token,
-                    refresh_token
-                }
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in auth_login_creds:", error);
-            next(error);
-            return;
-        }
-    }
 
 
     refresh_token = async (req: Request, res: Response, next: NextFunction) => {
