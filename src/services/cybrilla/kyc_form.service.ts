@@ -103,7 +103,7 @@ class CybrillaKycFormServiceClass {
             const response = await axios.post(
                 `${this.base_url}/poa/kyc_forms/${kyc_form_id}/retry_proof_details_fetch`,
                 {},
-                { headers: await this.auth_headers() }
+                { headers: await this.auth_headers({ "Content-Type": "application/json" }) }
             );
 
             logger.debug("Cybrilla retry proof fetch response ==> ", response.data);

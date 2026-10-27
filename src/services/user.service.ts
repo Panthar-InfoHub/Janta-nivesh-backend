@@ -1,4 +1,3 @@
-import axios from "axios";
 import { UserFireReportData, UserWithAllData, pagination } from "../lib/types.js";
 import {
     FdTransactionOrderByWithRelationInput,
@@ -6,7 +5,6 @@ import {
     UserCreateInput
 } from "../prisma/generated/prisma/models.js";
 import { db } from "../server.js";
-import { env } from "../lib/config-env.js";
 import { user_finance_service } from "./onboarding/user.finance.service.js";
 import { user_assets_service } from "./onboarding/user.assets.service.js";
 import { user_insurance_service } from "./onboarding/user.insurance.service.js";
@@ -39,12 +37,6 @@ type GetAllUserDataOptions = {
 
 
 class UserServiceClass {
-
-    private finnsys_base_url: string;
-
-    constructor() {
-        this.finnsys_base_url = `${env.finsys_base_api}`;
-    }
 
     async create_user(data: UserCreateInput) {
 
@@ -165,13 +157,7 @@ class UserServiceClass {
         });
     }
 
-    async get_user_by_invId(inv_id: number) {
-        return await db.user.findUnique({
-            where: {
-                id: inv_id.toString()
-            }
-        });
-    }
+
 
     async get_user_by_id(user_id: string) {
         return await db.user.findUnique({
@@ -286,16 +272,7 @@ class UserServiceClass {
         });
     }
 
-    async get_user_cart_finnsys(user_log: string, user_pwd: string) {
-        const response = await axios.get(`${this.finnsys_base_url}/finnsys/app/master.service.asp`, {
-            params: {
-                log: user_log,
-                pwd: user_pwd,
-                svc: "getcart"
-            }
-        })
-        return response.data;
-    }
+
 
 
     async get_user_fd_data({ pagination, user_id, order, query }: GetUserFdDataInput) {
