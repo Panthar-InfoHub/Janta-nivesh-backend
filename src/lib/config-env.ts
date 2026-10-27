@@ -75,17 +75,11 @@ export const env = {
 
 
 
-    finsys_base_api: process.env.FINSYS_BASE_API!,
     ENVIRONMENT: process.env.ENVIRONMENT!,
     JWT_SECRET: process.env.JWT_SECRET!,
-    MF_LATEST_URL: process.env.MF_LATEST_URL!,
     MFAPI_BASE_URL: process.env.MFAPI_BASE_URL || "https://api.mfapi.in", // NAV source (scheme master + per-fund latest NAV)
-    KYC_BASE_URL: process.env.KYC_BASE_URL!,
-    ARN: process.env.ARN!,
-    EUIN: process.env.EUIN!,
-    FINNSYS_MASTER_URL: process.env.FINNSYS_MASTER_URL!,
-    FINNSYS_USERNAME: process.env.FINNSYS_USERNAME!,
-    FINNSYS_PASSWORD: process.env.FINNSYS_PASSWORD!,
+    ARN: process.env.ARN || "",
+    EUIN: process.env.EUIN || "",
 
     // NSE Headers
     NSE_MEMBER_ID: process.env.NSE_MEMBER_ID!,
@@ -110,10 +104,7 @@ export const env = {
     BLOSTEM_ENCRYPTION_SALT: process.env.BLOSTEM_ENCRYPTION_SALT!,
     BLOSTEM_MASTER_URL: process.env.BLOSTEM_MASTER_URL!,
 
-    // Testing creds
-    TEST_USR: process.env.TEST_USR!,
-    TEST_PASS: process.env.TEST_PASS!,
-    TEST_INV: process.env.TEST_INV!,
+
 
     // Redis Config
     REDIS_HOST: process.env.REDIS_HOST!,

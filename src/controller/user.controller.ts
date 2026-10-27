@@ -2,12 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { user_patch_schema, verify_mpin_schema } from "../lib/zod-schemas/user.schema.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
-// import { fire_report_service } from "../services/fire.report.service.js";
-import { user_finnsys_service } from "../services/user.finnsys.service.js";
-import { user_savings_service } from "../services/user.savings.service.js";
 import { user_service } from "../services/user.service.js";
-import { pending_orders_service } from "../services/pending_orders.service.js";
-import { wrapper_service } from "../services/wrapper.service.js";
 import { Prisma, UserGoals } from "../prisma/generated/prisma/client.js";
 import { MfTransactionState } from "../prisma/generated/prisma/enums.js";
 import { user_goal_controller } from "./user.goal.controller.js";
@@ -271,67 +266,7 @@ class UserFinanceControllerClass {
         }
     }
 
-    get_user_iin = async (req: Request, res: Response, next: NextFunction) => {
-        try {
 
-            const user = req.user!;
-            logger.info(`Fetching user iin for User ID: ${user.id}`);
-
-            const user_iin_finnsys_res = await user_finnsys_service.get_user_iin_finnsys(user.log!, user.pwd!)
-
-            logger.debug(`User iin fetched from Finnsys successfully ==> `, user_iin_finnsys_res);
-
-            if (user_iin_finnsys_res.code != 1) {
-                logger.warn(`Failed to fetch user iin from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_iin_finnsys_res.code}`);
-                throw new AppError("Failed to fetch user iin from Finnsys", 502, "FINNSYS_IIN_FETCH_FAILED");
-            }
-
-            const iin_data = user_iin_finnsys_res.results[0].INV_IIN_LIST || [];
-
-            res.status(200).json({
-                code: 200,
-                message: "User iin fetched successfully",
-                data: iin_data
-            });
-            return;
-
-        } catch (error) {
-            logger.error(`Error in getting user iin: `, error);
-            next(error);
-            return;
-        }
-    }
-
-
-    get_pending_orders = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const usr = req.user;
-            logger.info(`Fetching pending orders for User ID: ${usr.id}`);
-
-            const user = await user_service.get_user_by_id(usr.id);
-
-            if (!user) {
-                throw new AppError("User Finnsys credentials or client code not found", 400, "MISSING_FINNSYS_CREDENTIALS");
-            }
-
-            const data = await pending_orders_service.get_pending_orders(
-                usr.log!,
-                usr.pwd!,
-                user.investor_profile
-            );
-
-            res.status(200).json({
-                code: 200,
-                message: "Pending orders fetched successfully",
-                data
-            });
-            return;
-        } catch (error) {
-            logger.error(`Error in get_pending_orders: `, error);
-            next(error);
-            return;
-        }
-    }
 
 
     get_user_portfolio = async (req: Request, res: Response, next: NextFunction) => {
@@ -680,102 +615,7 @@ class UserFinanceControllerClass {
         }
     }
 
-    get_investment_rate = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const user = req.user!;
-            logger.info(`Fetching investment rate data for User ID: ${user.id}`);
 
-            // Step 1: Fetch portfolio data (reuse existing portfolio logic)
-            let user_portfolio_finnsys_res = await wrapper_service.get_user_portfolio_cached(user.id, user.log!, user.pwd!);
-
-            if (!user_portfolio_finnsys_res || (user_portfolio_finnsys_res.code != 1 && user_portfolio_finnsys_res.code != 0)) {
-                logger.warn(
-                    `Failed to fetch user portfolio from Finnsys for User ID: ${user.id}. Finnsys response code: ${user_portfolio_finnsys_res?.code}`
-                );
-                throw new AppError("Failed to fetch user portfolio from Finnsys", 502, "FINNSYS_PORTFOLIO_FETCH_FAILED");
-            }
-
-            const user_mf_data = user_portfolio_finnsys_res.results || [];
-
-            // Calculate investment data same as portfolio endpoint
-            const investment_data = user_mf_data.length > 0
-                ? user_mf_data.reduce(
-                    (acc: any, item: any) => {
-                        const invested = this.toNumber(item.purcost);
-                        const current = this.toNumber(item.currval);
-                        const pl = this.toNumber(item.pl);
-
-                        acc.invested_amount += invested;
-                        acc.current_value += current;
-                        acc.total_returns += pl;
-                        return acc;
-                    },
-                    {
-                        current_value: 0,
-                        invested_amount: 0,
-                        total_returns: 0,
-                    }
-                )
-                : {
-                    current_value: 0,
-                    invested_amount: 0,
-                    total_returns: 0,
-                };
-
-            investment_data.current_value = Number(investment_data.current_value.toFixed(2));
-            investment_data.invested_amount = Number(investment_data.invested_amount.toFixed(2));
-            investment_data.total_returns = Number(investment_data.total_returns.toFixed(2));
-            investment_data.return_percent = Number(
-                ((investment_data.total_returns / investment_data.invested_amount) * 100).toFixed(2)
-            );
-
-            // Map MF data to portfolio structure
-            const mf_investment_items = user_mf_data.length > 0
-                ? user_mf_data.map((item: any) => ({
-                    id: item.schemeid,
-                    title: item.schemename,
-                    category: item.schemetype,
-                    amount: Number(item.purcost.replace(/,/g, "")),
-                    is_sip: item.sip,
-                    start_date: item.stdt,
-                    return_percentage: item.abs,
-                    return: this.toNumber(item.pl),
-                    xirr: item.xirr,
-                    current_nav: this.toNumber(item.currnav),
-                    avg_nav: this.toNumber(item.avgcost),
-                    folio: item.folio,
-                    balance_units: item.balunits,
-                }))
-                : [];
-
-            logger.debug("Investment data ==> ", investment_data);
-            // Build portfolio data structure for savings service
-            const portfolio_data = {
-                investment_data,
-                mutual_funds: mf_investment_items,
-            };
-
-            // Step 2: Call savings service with portfolio data
-            const dashboard_data = await user_savings_service.calculate_monthly_metrics(
-                user.id,
-                portfolio_data,
-                6 // last 6 months
-            );
-
-            logger.debug("Investment rate data calculated successfully", dashboard_data);
-
-            res.status(200).json({
-                code: 200,
-                message: "Investment rate data fetched successfully",
-                data: dashboard_data,
-            });
-            return;
-        } catch (error) {
-            logger.error(`Error in getting investment rate: `, error);
-            next(error);
-            return;
-        }
-    }
 
     patch_user = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -849,19 +689,7 @@ class UserFinanceControllerClass {
 
     // ================================ HELPER FUNCTIONS ================================
 
-    private extract_cart_items = (finnsys_cart_response: any) => {
-        const sip_items: any = [];
-        const lump_sum_items: any = [];
 
-        finnsys_cart_response.results.length > 0 ? finnsys_cart_response.results.map((item: any) => {
-            if (item.sub_txn_type === "S") {
-                sip_items.push(item);
-            } else {
-                lump_sum_items.push(item);
-            }
-        }) : null;
-        return { sip_items, lump_sum_items };
-    }
 
 
     private calculate_kyc_progress = (kyc_types: { status: string, kyc_type: string }[]): number => {
