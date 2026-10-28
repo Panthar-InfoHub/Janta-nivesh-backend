@@ -11,6 +11,7 @@ import { user_snapshot_service } from "./user/user.snapshot.service.js";
 import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.service.js";
 import { mf_scheme_v1_sync_service } from "./mutual-funds/mf-scheme-v1-sync.service.js";
 import { mf_holding_sync_service } from "./mutual-funds/mf-holding-sync.service.js";
+import { kyc_approval_service } from "./kyc/kyc-approval.service.js";
 
 class JobServiceClass {
 
@@ -801,6 +802,61 @@ class JobServiceClass {
             return { success: false, success_count: 0 }
         }
     }
+
+    kyc_verification_poll_job = async () => {
+        logger.info("Starting KYC verification batch poll job...");
+
+        const pending_profiles = await db.kycProfile.findMany({
+            where: {
+                OR: [
+                    { kyc_poll_status: "PENDING" },
+                    {
+                        kyc_poll_status: null,
+                        cybrilla_status: "submitted",
+                    }
+                ]
+            },
+            select: {
+                user_id: true,
+                kyc_poll_pre_verification_id: true,
+                kyc_poll_status: true,
+                kyc_poll_submitted_at: true,
+            },
+            take: 50,
+        });
+
+        logger.info(`[KYC POLL JOB] Found ${pending_profiles.length} pending KYC profiles to check`);
+
+        let verified = 0;
+        let still_pending = 0;
+        let failed = 0;
+
+        for (const profile of pending_profiles) {
+            try {
+                const res = await kyc_approval_service.sync_submitted_kyc_status(profile.user_id);
+                if (res?.status === "VERIFIED") {
+                    verified++;
+                } else if (res?.status === "FAILED") {
+                    failed++;
+                } else {
+                    still_pending++;
+                }
+            } catch (err) {
+                logger.error(`Error polling KYC for user ${profile.user_id}:`, err);
+                still_pending++;
+            }
+        }
+
+        const summary = {
+            total_checked: pending_profiles.length,
+            verified,
+            still_pending,
+            failed,
+        };
+
+        logger.info("KYC verification batch poll completed", summary);
+        return summary;
+    };
 }
 
 export const job_service = new JobServiceClass();

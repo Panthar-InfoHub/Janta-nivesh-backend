@@ -131,6 +131,12 @@ model KycProfile {
   failed_at              DateTime?
   expires_at             DateTime?
 
+  // Post-submission KRA readiness check (Cybrilla doesn't send an approval webhook for kyc_form)
+  kyc_poll_pre_verification_id     String?   @unique
+  kyc_poll_status                  String?   // PENDING | VERIFIED | FAILED
+  kyc_poll_submitted_at            DateTime?
+  kyc_poll_response                Json?
+
   raw_kyc_form_response Json? // full raw Cybrilla payload, forward-compat escape hatch
 
   createdAt DateTime @default(now())

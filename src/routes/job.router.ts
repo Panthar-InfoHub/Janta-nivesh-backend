@@ -64,3 +64,9 @@ job_router.post("/mf-holdings-sync", job_controller.mf_holding_sync_job);
  * to velvet server to send janta nivesh back the updated interest rates as response
  */
 job_router.post("/get-fd-rates", job_controller.get_fd_rates_job);
+
+/**
+ * Periodic KYC verification poll - queries all pending KYC submissions,
+ * checks their pre-verification readiness with Cybrilla/KRA, and advances them to PENNY_DROP_VERIFICATION.
+ */
+job_router.post("/kyc-verification-poll", job_controller.kyc_verification_poll_job);
