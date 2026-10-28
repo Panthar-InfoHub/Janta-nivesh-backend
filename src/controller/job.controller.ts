@@ -448,6 +448,32 @@ class JobControllerClass {
         }
     };
 
+    kyc_verification_poll_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+
+            if (scheduler_token !== secret) {
+                logger.warn(`[SECURITY] Unauthorized attempt to access kyc verification poll job with token: ${scheduler_token}`);
+                throw new AppError("Unauthorized: Invalid or missing scheduler token", 401, "Unauthorized");
+            }
+
+            logger.info("KYC verification batch poll job initiated via scheduler...");
+            const data = await job_service.kyc_verification_poll_job();
+
+            res.status(200).json({
+                success: true,
+                message: "KYC verification poll job completed successfully",
+                data,
+            });
+            return;
+        } catch (error: any) {
+            logger.error("Error in kyc_verification_poll_job controller:", error);
+            next(error);
+            return;
+        }
+    };
+
 }
 
 export const job_controller = new JobControllerClass();

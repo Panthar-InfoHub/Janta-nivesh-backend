@@ -4,6 +4,7 @@ import logger from "../../middleware/logger.js";
 import { kyc_form_update_schema } from "../../lib/zod-schemas/kyc-onboarding.schema.js";
 import { cybrilla_kyc_form_service } from "../../services/cybrilla/kyc_form.service.js";
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
+import { kyc_approval_service } from "../../services/kyc/kyc-approval.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { user_service } from "../../services/user.service.js";
 
@@ -122,9 +123,17 @@ class KycFormControllerClass {
                 await user_onboarding_service.update_stage(user_id, { kyc_status: "FAILED" });
             }
 
+            // If kyc_form is submitted, initiate/poll Cybrilla pre-verification to check KRA readiness
+            if (kyc_form?.status === "submitted") {
+                await kyc_approval_service.sync_submitted_kyc_status(user_id);
+            }
+
             await user_onboarding_service.recompute_completion(user_id);
 
-            const onboarding = await user_onboarding_service.get_status_summary(user_id);
+            const [onboarding, fresh_kyc_profile] = await Promise.all([
+                user_onboarding_service.get_status_summary(user_id),
+                kyc_profile_service.get_by_user_id(user_id),
+            ]);
 
             res.status(200).json({
                 success: true,
@@ -140,6 +149,7 @@ class KycFormControllerClass {
                     address_proof_type: kyc_form?.address?.proof_type ?? null,
                     signature_provided: kyc_form?.signature_provided ?? false,
                     esign_details: kyc_form?.esign_details ?? null,
+                    kyc_poll_status: fresh_kyc_profile?.kyc_poll_status ?? null,
                     onboarding,
                 }
             });
