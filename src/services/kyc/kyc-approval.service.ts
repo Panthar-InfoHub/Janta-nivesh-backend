@@ -176,6 +176,7 @@ class KycApprovalServiceClass {
                 kyc_profile.kyc_poll_pre_verification_id
             );
 
+            logger.info(`Pre verification poll : `, pre_verification)
             const is_processing_complete = !!pre_verification?.completed_at;
             const readiness = pre_verification?.readiness;
 
