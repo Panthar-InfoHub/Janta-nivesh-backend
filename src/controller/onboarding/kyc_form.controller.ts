@@ -105,6 +105,7 @@ class KycFormControllerClass {
 
             let kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
 
+            // Retry if proof details status got "failed"
             if (kyc_form?.proof_details?.status === "failed") {
                 logger.info("KYC form proof details failed; auto-retrying proof details fetch", {
                     user_id,

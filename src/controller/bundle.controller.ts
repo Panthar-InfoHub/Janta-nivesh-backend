@@ -92,6 +92,12 @@ class BundleControllerClass {
                     ) {
                         tag = "mid_cap";
                     } else if (
+                        normalized === "balanced_advantage" ||
+                        normalized === "multi_asset" ||
+                        normalized === "dynamic_asset_allocation"
+                    ) {
+                        tag = "hybrid";
+                    } else if (
                         normalized === "index" ||
                         normalized === "gold" ||
                         normalized === "silver" ||
