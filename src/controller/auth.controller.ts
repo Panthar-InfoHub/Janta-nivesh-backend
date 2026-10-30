@@ -3,22 +3,13 @@ import { notification_type } from "../lib/types.js";
 import AppError from "../middleware/error.middleware.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import logger from "../middleware/logger.js";
-import { deviceParamsSchema, req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
+import { req_otp_schema, validateOtpSchema } from "../schemas/auth.schema.js";
 import { auth_service } from "../services/auth.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
 
 class AuthControllerClass {
-
-    private extract_device_params(req: Request) {
-        const validation = deviceParamsSchema.safeParse(req.query);
-        if (!validation.success) {
-            logger.error("Invalid device parameters:", validation.error.format());
-            throw new AppError("Invalid device parameters", 400, "INVALID_DEVICE_PARAMS");
-        }
-        return validation.data;
-    }
 
     auth_req_otp = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -110,20 +101,40 @@ class AuthControllerClass {
             //     is_onboarding_completed: false
             // });
 
-            await notification_producer_service.publish_notification_event(
-                user.id,
-                "TRANSACTION",
-                "Login Successful",
-                `Welcome to Janta Nivesh, ${user.full_name}`,
-                {
-                    txn: "login",
-                    sub_type: notification_type.NOTIFICATION
-                }
-            );
+            if (user.full_name) {
+                await notification_producer_service.publish_notification_event(
+                    user.id,
+                    "TRANSACTION",
+                    "Login Successful",
+                    `Welcome to Janta Nivesh, ${user.full_name}`,
+                    {
+                        txn: "login",
+                        sub_type: notification_type.NOTIFICATION
+                    }
+                );
+            }
 
             const token = generate_JWT(updated_user);
 
-            const onboarding = await user_onboarding_service.get_status_summary(updated_user.id);
+            const onboarding_row = await user_onboarding_service.get_or_create(updated_user.id);
+            const nav_flags = user_onboarding_service.compute_navigation_flags(onboarding_row);
+
+            const onboarding = {
+                current_stage: onboarding_row.current_stage,
+                basic_details_status: onboarding_row.basic_details_status,
+                readiness_status: onboarding_row.readiness_status,
+                kyc_status: onboarding_row.kyc_status,
+                email_status: onboarding_row.email_status,
+                profile_status: onboarding_row.profile_status,
+                penny_drop_status: onboarding_row.penny_drop_status,
+                nominee_status: onboarding_row.nominee_status,
+                is_completed: onboarding_row.is_completed,
+                has_navigated_home: onboarding_row.has_navigated_home,
+                is_kyc_completed: nav_flags.is_kyc_completed,
+                kyc_under_review: nav_flags.kyc_under_review,
+                can_navigate_home: nav_flags.can_navigate_home,
+                is_skip: nav_flags.is_skip,
+            };
 
             res.status(200).json({
                 success: true,
@@ -136,6 +147,10 @@ class AuthControllerClass {
                         mpin_is_setup: updated_user.mpin_is_setup
                     },
                     onboarding,
+                    is_skip: nav_flags.is_skip,
+                    is_kyc_completed: nav_flags.is_kyc_completed,
+                    kyc_under_review: nav_flags.kyc_under_review,
+                    can_navigate_home: nav_flags.can_navigate_home,
                     token: token,
                     refresh_token: refresh_token
                 }
@@ -149,123 +164,7 @@ class AuthControllerClass {
         }
     }
 
-    auth_login_invId = async (req: Request, res: Response, next: NextFunction) => {
-        try {
 
-            const device_params = this.extract_device_params(req);
-
-            const inv_id = parseInt(req.body.inv_id as string);
-
-            if (!inv_id) {
-                logger.error("Invoice ID is required for login");
-                throw new AppError("Invoice ID is required", 400, "NOT_INV_ID_PROVIDED");
-            }
-
-            const user = await user_service.get_user_by_invId(inv_id);
-            if (!user) {
-                logger.error("User not found for inv Id during login");
-                throw new AppError("User not found, Sign up first", 404, "USER_NOT_FOUND");
-            }
-
-            logger.info(`Login Attempt for User with InvId: ${inv_id}, Device: ${device_params.did}`);
-            const auth_res = await auth_service.login_invId(device_params, inv_id, user.phone_no ?? undefined, "");
-
-            logger.debug("Login response from auth service ==> ", auth_res);
-
-
-            if (auth_res.code !== 1) {
-                throw new AppError("Login validation failed", 401, "LOGIN_VALIDATION_FAILED");
-            }
-
-            const updated_user = await user_service.update_user(user.id, {
-                // usr: auth_res.results.usr,
-                // pwd: auth_res.results.pwd,
-                // inv_id: auth_res.results.invid
-            });
-
-            const token = generate_JWT(updated_user);
-            const refresh_token = generate_JWT(updated_user, "30d");
-            res.status(200).json({
-                success: true,
-                message: "Login successful",
-                data: {
-                    user: {
-                        user_id: updated_user.id,
-                        phone_no: updated_user.phone_no,
-                    },
-                    token: token,
-                    refresh_token: refresh_token
-                }
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in auth_login_invId:", error);
-            next(error);
-            return;
-        }
-    }
-
-    auth_login_creds = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const device_params = this.extract_device_params(req);
-
-            logger.debug("Request Body for Login: ", req.body);
-
-            const usr = req.body.usr as string || "";
-            const pwd = req.body.pwd as string || "";
-            if (!usr || !pwd) {
-                logger.error("Username and Password are required for login");
-                throw new AppError("Username and Password are required", 400, "NOT_CREDENTIALS_PROVIDED");
-            }
-
-            const user = await user_service.get_user_by_usr(usr);
-            if (!user) {
-                logger.error("User not found for username during login");
-                throw new AppError(`User not found for username : ${usr}`, 404, "USER_NOT_FOUND");
-            }
-
-            logger.info(`Login Attempt for User: ${usr}, Device: ${device_params.did}`);
-
-            const auth_res = await auth_service.login_creds(usr, pwd, device_params);
-            logger.debug("Auth response for creds ==> ", auth_res)
-            if (auth_res.code !== 1) {
-                throw new AppError("Login validation failed", 401, "LOGIN_VALIDATION_FAILED");
-            }
-
-            const updated_user = await user_service.update_user(user.id, {
-                // usr: auth_res.results.usr,
-                // pwd: auth_res.results.pwd,
-                // inv_id: auth_res.results.invid
-            });
-
-            const token = generate_JWT(updated_user);
-            const refresh_token = generate_JWT(updated_user, "30d");
-
-            res.status(200).json({
-                success: true,
-                message: "OTP validated successfully",
-                data: {
-                    user: {
-                        user_id: updated_user.id,
-                        phone_no: updated_user.phone_no,
-                        metadata: updated_user.meta_data ?? {
-                            onboarding_stage: 0,
-                            is_onboarding_completed: false,
-                        }
-                    },
-                    token: token,
-                    refresh_token
-                }
-            });
-            return;
-
-        } catch (error) {
-            logger.error("Error in auth_login_creds:", error);
-            next(error);
-            return;
-        }
-    }
 
 
     refresh_token = async (req: Request, res: Response, next: NextFunction) => {

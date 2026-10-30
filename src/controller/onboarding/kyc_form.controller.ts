@@ -4,6 +4,7 @@ import logger from "../../middleware/logger.js";
 import { kyc_form_update_schema } from "../../lib/zod-schemas/kyc-onboarding.schema.js";
 import { cybrilla_kyc_form_service } from "../../services/cybrilla/kyc_form.service.js";
 import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
+import { kyc_approval_service } from "../../services/kyc/kyc-approval.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { user_service } from "../../services/user.service.js";
 
@@ -33,6 +34,18 @@ class KycFormControllerClass {
             if (kyc_profile.cybrilla_kyc_form_id && !TERMINAL_STATUSES.includes(kyc_profile.cybrilla_status ?? "")) {
                 logger.debug("Resuming existing Cybrilla kyc_form", { kyc_form_id: kyc_profile.cybrilla_kyc_form_id });
                 kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+
+                if (kyc_form?.proof_details?.status === "failed") {
+                    logger.info("Resumed KYC form proof details failed; auto-retrying proof details fetch", {
+                        user_id,
+                        kyc_form_id: kyc_profile.cybrilla_kyc_form_id,
+                    });
+                    try {
+                        kyc_form = await cybrilla_kyc_form_service.retry_proof_details_fetch(kyc_profile.cybrilla_kyc_form_id);
+                    } catch (retry_error) {
+                        logger.error("Auto-retry proof details fetch failed in initiate_kyc_form:", retry_error);
+                    }
+                }
             } else {
                 const readiness_code = (kyc_profile.pre_verification_response as any)?.readiness?.code;
                 const type = MODIFY_READINESS_CODES.includes(readiness_code) ? "modify" : "fresh";
@@ -90,21 +103,38 @@ class KycFormControllerClass {
                 throw new AppError("No KYC form found - initiate one first", 404, "KYC_FORM_NOT_FOUND");
             }
 
-            const kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+            let kyc_form = await cybrilla_kyc_form_service.get_kyc_form(kyc_profile.cybrilla_kyc_form_id);
+
+            // Retry if proof details status got "failed"
+            if (kyc_form?.proof_details?.status === "failed") {
+                logger.info("KYC form proof details failed; auto-retrying proof details fetch", {
+                    user_id,
+                    kyc_form_id: kyc_profile.cybrilla_kyc_form_id,
+                });
+                try {
+                    kyc_form = await cybrilla_kyc_form_service.retry_proof_details_fetch(kyc_profile.cybrilla_kyc_form_id);
+                } catch (retry_error) {
+                    logger.error("Auto-retry proof details fetch failed in check_kyc_form_status:", retry_error);
+                }
+            }
+
             await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
-            if (kyc_form?.status === "submitted") {
-                await user_onboarding_service.update_stage(user_id, {
-                    kyc_status: "VERIFIED",
-                    current_stage: "PENNY_DROP_VERIFICATION",
-                });
-            } else if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
+            if (kyc_form?.status === "failed" || kyc_form?.status === "expired") {
                 await user_onboarding_service.update_stage(user_id, { kyc_status: "FAILED" });
+            }
+
+            // If kyc_form is submitted, initiate/poll Cybrilla pre-verification to check KRA readiness
+            if (kyc_form?.status === "submitted") {
+                await kyc_approval_service.sync_submitted_kyc_status(user_id);
             }
 
             await user_onboarding_service.recompute_completion(user_id);
 
-            const onboarding = await user_onboarding_service.get_status_summary(user_id);
+            const [onboarding, fresh_kyc_profile] = await Promise.all([
+                user_onboarding_service.get_status_summary(user_id),
+                kyc_profile_service.get_by_user_id(user_id),
+            ]);
 
             res.status(200).json({
                 success: true,
@@ -115,10 +145,12 @@ class KycFormControllerClass {
                     reason: kyc_form?.reason ?? null,
                     fields_needed: kyc_form?.requirements?.fields_needed ?? [],
                     proof_details: kyc_form?.proof_details ?? null,
+                    proof_fetch_url: kyc_form?.proof_details?.fetch_url ?? null,
                     identity_proof_type: kyc_form?.identity?.proof_type ?? null,
                     address_proof_type: kyc_form?.address?.proof_type ?? null,
                     signature_provided: kyc_form?.signature_provided ?? false,
                     esign_details: kyc_form?.esign_details ?? null,
+                    kyc_poll_status: fresh_kyc_profile?.kyc_poll_status ?? null,
                     onboarding,
                 }
             });
@@ -228,6 +260,13 @@ class KycFormControllerClass {
             );
             await kyc_profile_service.upsert_kyc_form(user_id, kyc_form);
 
+            await user_onboarding_service.update_stage(user_id, {
+                kyc_status: "IN_PROGRESS",
+                current_stage: "EMAIL_VERIFICATION",
+            });
+
+            const onboarding = await user_onboarding_service.get_status_summary(user_id);
+
             res.status(200).json({
                 success: true,
                 message: "Signature uploaded",
@@ -235,6 +274,7 @@ class KycFormControllerClass {
                     kyc_form_id: kyc_form?.id,
                     signature_provided: kyc_form?.signature_provided ?? false,
                     fields_needed: kyc_form?.requirements?.fields_needed ?? [],
+                    onboarding,
                 }
             });
             return;

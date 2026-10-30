@@ -16,15 +16,13 @@ export function generateFundReportHTML(d: JnReportData): string {
     ${has(inv.name) ? `<div><span class="k">Investor</span><span class="v">${inv.name}</span></div>` : ''}
     ${has(f.folio_number) ? `<div><span class="k">Folio</span><span class="v">${f.folio_number}</span></div>` : ''}
     ${has(f.isin) ? `<div><span class="k">ISIN</span><span class="v">${f.isin}</span></div>` : ''}
-    ${has(f.category) ? `<div><span class="k">Category</span><span class="v">${f.category}${f.sub_category ? ' — ' + f.sub_category : ''}</span></div>` : ''}
+    ${has(f.category) ? `<div><span class="k">Category</span><span class="v">${F.fmtCategory(f.category, f.sub_category)}</span></div>` : ''}
     ${has(d.meta && d.meta.as_of) ? `<div><span class="k">As on</span><span class="v">${F.fmtDate(d.meta.as_of)}</span></div>` : ''}
   </div>`;
 
     const badges = [
         has(f.amc) ? `<span class="badge">${f.amc}</span>` : '',
-        has(f.riskometer) ? `<span class="badge risk">Riskometer: ${f.riskometer}</span>` : '',
         (f.sip && has(f.sip.mandate_status)) ? `<span class="badge ok">SIP ${f.sip.mandate_status}</span>` : '',
-        has(f.benchmark) ? `<span class="badge">Benchmark: ${f.benchmark}</span>` : '',
         isNum(f.expense_ratio) ? `<span class="badge">Expense ratio ${F.pctPlain(f.expense_ratio, 2)}</span>` : '',
     ].filter(Boolean).join(' ');
     const tags = badges ? `<div style="margin:-2px 0 14px;display:flex;gap:8px;flex-wrap:wrap">${badges}</div>` : '';
@@ -60,9 +58,7 @@ export function generateFundReportHTML(d: JnReportData): string {
     const factRows = [
         kvRow(has(f.scheme_name), 'Scheme', f.scheme_name),
         kvRow(has(f.amc), 'AMC', f.amc),
-        kvRow(has(f.category), 'Category', `${f.category || ''}${f.sub_category ? ' — ' + f.sub_category : ''}`),
-        kvRow(has(f.benchmark), 'Benchmark', f.benchmark),
-        kvRow(has(f.riskometer), 'Riskometer', f.riskometer),
+        kvRow(has(f.category), 'Category', F.fmtCategory(f.category, f.sub_category)),
         kvRow(isNum(f.expense_ratio), 'Expense ratio', F.pctPlain(f.expense_ratio, 2)),
         kvRow(isNum(f.units), 'Units held', F.num(f.units)),
         kvRow(isNum(f.average_nav), 'Avg cost NAV', '₹' + F.num(f.average_nav, 2)),
@@ -75,9 +71,10 @@ export function generateFundReportHTML(d: JnReportData): string {
     let sipCard = '';
     if (f.sip) {
         const s = f.sip;
+        const isDaily = (s.frequency || '').toLowerCase() === 'daily';
         const sipRows = [
             kvRow(isNum(s.amount), 'Installment', F.inr(s.amount) + (s.frequency ? ' / ' + s.frequency : '')),
-            kvRow(has(s.sip_date), 'SIP date', s.sip_date + ' of every month'),
+            kvRow(!isDaily && has(s.sip_date), 'SIP date', s.sip_date + ' of every month'),
             kvRow(has(s.start_date), 'Started', F.fmtDate(s.start_date)),
             kvRow(isNum(s.installments_done), 'Installments paid', s.installments_done),
             kvRow(has(s.next_installment), 'Next installment', F.fmtDate(s.next_installment)),
@@ -124,7 +121,7 @@ export function generateFundReportHTML(d: JnReportData): string {
       <td class="l">${F.fmtDate(t.date)}</td><td class="l">${t.type}</td><td>${F.inr(t.amount)}</td>
       <td>${F.num(t.units)}</td><td>${isNum(t.nav) ? F.num(t.nav, 2) : '—'}</td>
       <td class="l">${t.status ? `<span class="badge ok" style="font-size:8px">${t.status}</span>` : '—'}</td></tr>`).join('');
-        txCard = `<div class="card flow">${sectionTitle('Transaction History', 'This scheme')}
+        txCard = `<div class="card" style="break-inside: avoid; page-break-inside: avoid;">${sectionTitle('Transaction History', 'This scheme')}
       <table class="tbl"><thead><tr><th class="l">Date</th><th class="l">Type</th><th>Amount</th><th>Units</th><th>NAV</th><th class="l">Status</th></tr></thead>
       <tbody>${txRows}</tbody></table></div>`;
     }
@@ -137,7 +134,7 @@ export function generateFundReportHTML(d: JnReportData): string {
       <td class="l">${F.fmtDate(g.purchase_date)} → ${F.fmtDate(g.sell_date)}</td>
       <td>${F.num(g.units)}</td><td>${F.inr(g.purchase_value)}</td><td>${F.inr(g.sale_value)}</td>
       <td class="${F.signClass(g.gain)}">${F.inr(g.gain)}</td></tr>`).join('');
-        rgCard = `<div class="card flow">${sectionTitle('Realised Gains', 'This scheme')}
+        rgCard = `<div class="card" style="break-inside: avoid; page-break-inside: avoid;">${sectionTitle('Realised Gains', 'This scheme')}
       <table class="tbl"><thead><tr><th class="l">Term</th><th class="l">Holding period</th><th>Units</th><th>Cost</th><th>Sale</th><th>Gain</th></tr></thead>
       <tbody>${rgRows}</tbody></table></div>`;
     }

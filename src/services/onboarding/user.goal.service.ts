@@ -614,13 +614,7 @@ class UserGoalServiceClass {
         return created_goals;
     };
 
-    /**
-     * Kept for backwards compatibility with onboarding service (now a no-op since FinSys is removed).
-     */
-    sync_finsys = async (_user: any, _goals: any, _db_goals?: any) => {
-        logger.debug("sync_finsys called: FinSys sync disabled for Goals v2");
-        return;
-    };
+
 
     /**
      * Delete all goals for a user.

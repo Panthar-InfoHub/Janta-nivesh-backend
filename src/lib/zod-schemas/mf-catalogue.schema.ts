@@ -7,6 +7,7 @@ export const MF_SECTION_TAGS = [
     "small_cap",
     "flexi_cap",
     "multi_cap",
+    "hybrid",
     "others",
     "debt",
 ] as const;
@@ -20,6 +21,7 @@ export const MF_SECTION_TITLES: Record<MfSectionTag, string> = {
     small_cap: "Small Cap",
     flexi_cap: "Flexi Cap",
     multi_cap: "Multi Cap",
+    hybrid: "Hybrid",
     others: "Other",
     debt: "Debt",
 };

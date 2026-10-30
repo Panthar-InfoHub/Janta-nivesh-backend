@@ -1,21 +1,12 @@
-import axios from "axios";
-import { AuthResponse, DeviceDetails } from "../lib/types.js";
 import logger from "../middleware/logger.js";
 import { env } from "../lib/config-env.js";
 import { sms_service } from "./sms.service.js";
 import AppError from "../middleware/error.middleware.js";
-
-
 import { redis } from "../lib/redis.js";
 
 const OTP_EXPIRY_SECONDS = 10 * 60; // 10 minutes
 
 class AuthServiceClass {
-    finsys_api: string;
-
-    constructor() {
-        this.finsys_api = `${env.finsys_base_api}/finnsys/app/master.login.asp`;
-    }
 
     private generate_4Digit_otp = (): string => {
         return Math.floor(1000 + Math.random() * 9000).toString();
@@ -95,100 +86,7 @@ class AuthServiceClass {
         }
     }
 
-    login_invId = async (
-        device: DeviceDetails,
-        invid: number,
-        mobile?: string,
-        otp?: string,
-    ): Promise<AuthResponse> => {
-        const request_start = Date.now();
-        const iso_start = new Date().toISOString();
-        logger.info(`[LOGIN_INVID_TIMING_START] Calling Finnsys API at ${iso_start}`);
 
-        try {
-            const res = await axios.get(this.finsys_api, {
-                params: {
-                    ...device,
-                    mob: mobile,
-                    otp: otp,
-                    invid: invid,
-                },
-                timeout: 3000,
-            });
-
-            const request_duration = Date.now() - request_start;
-            logger.info(`[LOGIN_INVID_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms`);
-            return res.data;
-        } catch (error: any) {
-
-            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
-                logger.warn("First path cold, retrying immediately...");
-                return await axios.get(this.finsys_api, {
-                    params: {
-                        ...device,
-                        mob: mobile,
-                        otp: otp,
-                        invid: invid,
-                    },
-                    timeout: 15000 // Standard timeout
-                });
-            }
-
-            const request_duration = Date.now() - request_start;
-            logger.error(`[LOGIN_INVID_TIMING_FAILED] Finnsys timeout after ${request_duration}ms - Error: ${error.code}`);
-            if (request_duration >= 30000) {
-                logger.error(`[LOGIN_INVID_PROOF] ⚠️ FINNSYS IS SLOW: ${request_duration}ms`);
-            }
-            throw error;
-        }
-    }
-
-    login_creds = async (
-        usr: string,
-        pwd: string,
-        device: DeviceDetails
-    ): Promise<AuthResponse> => {
-        const request_start = Date.now();
-        const iso_start = new Date().toISOString();
-        logger.info(`[LOGIN_CREDS_TIMING_START] Calling Finnsys API at ${iso_start}`);
-
-        try {
-            const res = await axios.get(this.finsys_api, {
-                params: {
-                    ...device,
-                    mob: "",
-                    usr: usr,
-                    pwd: pwd,
-                },
-                timeout: 3000,
-            });
-
-            const request_duration = Date.now() - request_start;
-            logger.info(`[LOGIN_CREDS_TIMING_SUCCESS] Finnsys responded in ${request_duration}ms`);
-            return res.data;
-        } catch (error: any) {
-
-            if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
-                logger.warn("First path cold, retrying immediately...");
-                return await axios.get(this.finsys_api, {
-                    params: {
-                        ...device,
-                        mob: "",
-                        usr: usr,
-                        pwd: pwd,
-                    },
-                    timeout: 15000 // Standard timeout
-                });
-            }
-
-            const request_duration = Date.now() - request_start;
-            logger.error(`[LOGIN_CREDS_TIMING_FAILED] Finnsys timeout after ${request_duration}ms - Error: ${error.code}`);
-            if (request_duration >= 30000) {
-                logger.error(`[LOGIN_CREDS_PROOF] ⚠️ FINNSYS IS SLOW: ${request_duration}ms`);
-            }
-            throw error;
-        }
-    }
 }
 
 export const auth_service = new AuthServiceClass();
