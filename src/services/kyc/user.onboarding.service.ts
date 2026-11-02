@@ -55,18 +55,19 @@ class UserOnboardingServiceClass {
         if (onboarding.profile_status !== "VERIFIED") return "INVESTOR_PROFILE";
         if (onboarding.penny_drop_status !== "VERIFIED") return "PENNY_DROP_VERIFICATION";
         if (onboarding.nominee_status === "PENDING") return "NOMINEE_ADDITION";
-        if (onboarding.finance_status === "PENDING") return "FINANCE_DETAILS";
-        if (onboarding.assets_status === "PENDING") return "ASSET_DETAILS";
-        if (onboarding.loan_status === "PENDING") return "LOAN_DETAILS";
-        if (onboarding.insurance_status === "PENDING") return "INSURANCE_DETAILS";
+
+        // Financial stages
+        if (onboarding.finance_status !== "VERIFIED") return "FINANCE_DETAILS";
+        if (onboarding.assets_status !== "VERIFIED") return "ASSET_DETAILS";
+        if (onboarding.loan_status !== "VERIFIED") return "LOAN_DETAILS";
+        if (onboarding.insurance_status !== "VERIFIED") return "INSURANCE_DETAILS";
+
         return "COMPLETED";
     };
 
     /**
-     * Checks all stage columns and flips is_completed/current_stage/completed_at once
-     * every stage is in an acceptable terminal state (VERIFIED, or SKIPPED where that's valid).
-     * If corrupted (current_stage === COMPLETED but not all stages verified), automatically
-     * corrects current_stage back to the true pending stage.
+     * Checks all stage columns and flips is_completed once compliance stages are met,
+     * and flips is_fire_completed once financial stages are met.
      */
     recompute_completion = async (user_id: string) => {
         const onboarding = await this.get_or_create(user_id);
@@ -84,7 +85,8 @@ class UserOnboardingServiceClass {
         const is_readiness_satisfied =
             onboarding.readiness_status === "VERIFIED" || onboarding.kyc_status === "VERIFIED";
 
-        const is_done =
+        // 1. Regulatory KYC Compliance (Janta Stages 1 to 7)
+        const is_compliance_done =
             onboarding.basic_details_status === "VERIFIED" && // strict - mandatory stage, no skip path exists
             is_readiness_satisfied &&
             ["VERIFIED", "SKIPPED"].includes(onboarding.kyc_status) &&
@@ -92,43 +94,55 @@ class UserOnboardingServiceClass {
             onboarding.penny_drop_status === "VERIFIED" &&
             onboarding.email_status === "VERIFIED" &&
             onboarding.profile_status === "VERIFIED" &&
-            ["VERIFIED", "SKIPPED"].includes(onboarding.nominee_status) &&
+            ["VERIFIED", "SKIPPED"].includes(onboarding.nominee_status);
 
-            // Velvet financial stages
+        // 2. Velvet Financial Profiling (FIRE Stages 8 to 11)
+        const is_fire_done =
             onboarding.finance_status === "VERIFIED" &&
             onboarding.assets_status === "VERIFIED" &&
             onboarding.loan_status === "VERIFIED" &&
             onboarding.insurance_status === "VERIFIED" &&
+            ["VERIFIED", "SKIPPED", "PENDING"].includes(onboarding.goals_status);
 
-            // Goals are deferred to a separate ticket.
-            ["VERIFIED", "SKIPPED", "PENDING"].includes(
-                onboarding.goals_status,
-            );
+        const update_data: Record<string, any> = {};
 
-        if (is_done && !onboarding.is_completed) {
-            logger.info(
-                "All onboarding stages resolved, marking onboarding complete",
-                { user_id },
-            );
+        // Compliance complete: flips is_completed and allows navigation to Home
+        if (is_compliance_done && !onboarding.is_completed) {
+            logger.info("Compliance KYC stages resolved, marking is_completed: true", { user_id });
+            update_data.is_completed = true;
+            update_data.has_navigated_home = true;
+            update_data.completed_at = new Date();
 
-            return await db.userOnboarding.update({
-                where: { user_id },
-                data: {
-                    is_completed: true,
-                    current_stage: "COMPLETED",
-                    has_navigated_home: true,
-                    completed_at: new Date(),
-                },
-            });
+            const compliance_stages: string[] = [
+                "BASIC_DETAILS", "PAN_VERIFICATION", "KYC_VERIFICATION",
+                "EMAIL_VERIFICATION", "INVESTOR_PROFILE", "PENNY_DROP_VERIFICATION",
+                "NOMINEE_ADDITION"
+            ];
+            if (compliance_stages.includes(onboarding.current_stage)) {
+                update_data.current_stage = "FINANCE_DETAILS";
+            }
         }
 
-        // If corrupted: current_stage is COMPLETED but is_done is false, repair current_stage to the actual pending stage
-        if (!is_done && onboarding.current_stage === "COMPLETED") {
+        // Velvet FIRE complete: flips is_fire_completed and marks COMPLETED
+        if (is_fire_done && !onboarding.is_fire_completed) {
+            logger.info("Velvet FIRE financial stages resolved, marking is_fire_completed: true", { user_id });
+            update_data.is_fire_completed = true;
+            update_data.fire_completed_at = new Date();
+            update_data.current_stage = "COMPLETED";
+        }
+
+        // If corrupted: current_stage is COMPLETED but is_fire_done is false, repair current_stage
+        if (!is_fire_done && onboarding.current_stage === "COMPLETED" && !update_data.current_stage) {
             const actual_stage = this.determine_pending_stage(onboarding);
             logger.warn("Correcting premature COMPLETED stage in onboarding", { user_id, actual_stage });
+            update_data.current_stage = actual_stage;
+            update_data.is_fire_completed = false;
+        }
+
+        if (Object.keys(update_data).length > 0) {
             return await db.userOnboarding.update({
                 where: { user_id },
-                data: { current_stage: actual_stage, is_completed: false }
+                data: update_data,
             });
         }
 
@@ -189,6 +203,7 @@ class UserOnboardingServiceClass {
         return {
             current_stage: onboarding.current_stage,
             is_completed: onboarding.is_completed,
+            is_fire_completed: onboarding.is_fire_completed,
             has_navigated_home: onboarding.has_navigated_home,
             is_kyc_completed: flags.is_kyc_completed,
             kyc_under_review: flags.kyc_under_review,

@@ -21,12 +21,8 @@ class LoansOnboardingControllerClass {
                 );
             }
 
-            const loans_data = Array.isArray(req.body)
-                ? req.body
-                : req.body?.loans ?? req.body;
-
             const validation_result =
-                onboarding_loans_schema.safeParse(loans_data);
+                onboarding_loans_schema.safeParse(req.body);
 
             if (!validation_result.success) {
                 throw new AppError(
@@ -36,9 +32,36 @@ class LoansOnboardingControllerClass {
                 );
             }
 
+            if ("skip" in validation_result.data && validation_result.data.skip === true) {
+                await user_onboarding_service.update_stage(
+                    user.id,
+                    {
+                        loan_status: "SKIPPED",
+                        current_stage: "LOAN_DETAILS",
+                    },
+                );
+
+                await user_onboarding_service.recompute_completion(user.id);
+                const onboarding = await user_onboarding_service.get_status_summary(user.id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Loan stage skipped",
+                    data: null,
+                    onboarding,
+                });
+                return;
+            }
+
+            const loans_to_sync = Array.isArray(validation_result.data)
+                ? validation_result.data
+                : "loans" in validation_result.data
+                    ? validation_result.data.loans
+                    : [];
+
             await user_loan_service.sync(
                 user.id,
-                validation_result.data,
+                loans_to_sync,
             );
 
             await user_onboarding_service.update_stage(
@@ -61,7 +84,7 @@ class LoansOnboardingControllerClass {
             res.status(200).json({
                 success: true,
                 message: "Loan details saved successfully",
-                data: validation_result.data,
+                data: loans_to_sync,
                 onboarding,
             });
         } catch (error) {

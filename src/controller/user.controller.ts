@@ -108,7 +108,7 @@ class UserFinanceControllerClass {
             //     return goal;
             // }) : data.user_goals
 
-            const nav_flags = user_onboarding_service.compute_navigation_flags(data?.onboarding);
+            const onboarding_summary = await user_onboarding_service.get_status_summary(user_id);
 
             res.status(200).json({
                 code: 200,
@@ -117,15 +117,14 @@ class UserFinanceControllerClass {
                     ...data,
                     onboarding: data?.onboarding ? {
                         ...data.onboarding,
-                        is_kyc_completed: nav_flags.is_kyc_completed,
-                        kyc_under_review: nav_flags.kyc_under_review,
-                        can_navigate_home: nav_flags.can_navigate_home,
-                        is_skip: nav_flags.is_skip,
-                    } : null,
-                    is_skip: nav_flags.is_skip,
-                    is_kyc_completed: nav_flags.is_kyc_completed,
-                    kyc_under_review: nav_flags.kyc_under_review,
-                    can_navigate_home: nav_flags.can_navigate_home,
+                        ...onboarding_summary,
+                    } : onboarding_summary,
+                    is_skip: onboarding_summary.is_skip,
+                    is_kyc_completed: onboarding_summary.is_kyc_completed,
+                    kyc_under_review: onboarding_summary.kyc_under_review,
+                    can_navigate_home: onboarding_summary.can_navigate_home,
+                    is_completed: onboarding_summary.is_completed,
+                    is_fire_completed: onboarding_summary.is_fire_completed,
                     dashboard: {
                         portfolio_value: portfolio_aggregates.total_investments.current_value,
                         mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,

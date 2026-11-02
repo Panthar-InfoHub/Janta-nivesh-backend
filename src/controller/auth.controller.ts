@@ -116,25 +116,7 @@ class AuthControllerClass {
 
             const token = generate_JWT(updated_user);
 
-            const onboarding_row = await user_onboarding_service.get_or_create(updated_user.id);
-            const nav_flags = user_onboarding_service.compute_navigation_flags(onboarding_row);
-
-            const onboarding = {
-                current_stage: onboarding_row.current_stage,
-                basic_details_status: onboarding_row.basic_details_status,
-                readiness_status: onboarding_row.readiness_status,
-                kyc_status: onboarding_row.kyc_status,
-                email_status: onboarding_row.email_status,
-                profile_status: onboarding_row.profile_status,
-                penny_drop_status: onboarding_row.penny_drop_status,
-                nominee_status: onboarding_row.nominee_status,
-                is_completed: onboarding_row.is_completed,
-                has_navigated_home: onboarding_row.has_navigated_home,
-                is_kyc_completed: nav_flags.is_kyc_completed,
-                kyc_under_review: nav_flags.kyc_under_review,
-                can_navigate_home: nav_flags.can_navigate_home,
-                is_skip: nav_flags.is_skip,
-            };
+            const onboarding = await user_onboarding_service.get_status_summary(updated_user.id);
 
             res.status(200).json({
                 success: true,
@@ -147,10 +129,12 @@ class AuthControllerClass {
                         mpin_is_setup: updated_user.mpin_is_setup
                     },
                     onboarding,
-                    is_skip: nav_flags.is_skip,
-                    is_kyc_completed: nav_flags.is_kyc_completed,
-                    kyc_under_review: nav_flags.kyc_under_review,
-                    can_navigate_home: nav_flags.can_navigate_home,
+                    is_skip: onboarding.is_skip,
+                    is_kyc_completed: onboarding.is_kyc_completed,
+                    kyc_under_review: onboarding.kyc_under_review,
+                    can_navigate_home: onboarding.can_navigate_home,
+                    is_completed: onboarding.is_completed,
+                    is_fire_completed: onboarding.is_fire_completed,
                     token: token,
                     refresh_token: refresh_token
                 }

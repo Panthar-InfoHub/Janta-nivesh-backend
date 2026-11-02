@@ -32,6 +32,27 @@ class FinanceOnboardingControllerClass {
                 );
             }
 
+            if ("skip" in validation_result.data && validation_result.data.skip === true) {
+                await user_onboarding_service.update_stage(
+                    user.id,
+                    {
+                        finance_status: "SKIPPED",
+                        current_stage: "FINANCE_DETAILS",
+                    },
+                );
+
+                await user_onboarding_service.recompute_completion(user.id);
+                const onboarding = await user_onboarding_service.get_status_summary(user.id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Finance stage skipped",
+                    data: null,
+                    onboarding,
+                });
+                return;
+            }
+
             const finance =
                 await user_finance_service.create(
                     user.id,

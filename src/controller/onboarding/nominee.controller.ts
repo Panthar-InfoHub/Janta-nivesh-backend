@@ -49,7 +49,9 @@ class NomineeControllerClass {
             }
 
             const user = await user_service.get_user_by_id(user_id);
-            const next_stage = onboarding_before.is_completed ? "COMPLETED" : "FINANCE_DETAILS";
+            const next_stage = (onboarding_before.is_completed && onboarding_before.is_fire_completed) || onboarding_before.current_stage === "COMPLETED"
+                ? "COMPLETED"
+                : "FINANCE_DETAILS";
 
             if (input.skip === true) {
                 logger.info("User skipped nominee stage", { user_id });
