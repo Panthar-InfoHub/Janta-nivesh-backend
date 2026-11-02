@@ -13,22 +13,22 @@ export const bundle_category_schema = z.object({
     slots: z.array(bundle_slot_schema).min(1, "At least one slot is required in a category"),
 });
 
+export const bundle_type_schema = z.object({
+    investment_type: z.enum(["DAILY_SIP", "MONTHLY_SIP", "LUMPSUM"]),
+    start_amount: z.number().min(0, "Start amount must be positive"),
+    categories: z.array(bundle_category_schema).min(1, "At least one category is required in a bundle type"),
+});
+
 export const create_bundle_zod_schema = z.object({
     bundle_name: z.string().min(1, "Bundle name is required"),
     bundle_description: z.string().min(1, "Bundle description is required"),
+    is_published: z.boolean().optional().default(false),
     equity_percentage: z.number().min(0).max(100).optional().default(0),
     hybrid_percentage: z.number().min(0).max(100).optional().default(0),
     commodity_percentage: z.number().min(0).max(100).optional().default(0),
     debt_percentage: z.number().min(0).max(100).optional().default(0),
-    meta_data: z.object({
-        risk_level: z.string(),
-        investment_growth: z.string(),
-        investment_time: z.string(),
-        start_amount: z.number().optional(),
-        daily_start_amount: z.number().optional(),
-        monthly_start_amount: z.number().optional(),
-    }).passthrough(),
-    categories: z.array(bundle_category_schema).min(1, "At least one category is required in a bundle"),
+    meta_data: z.record(z.string(), z.any()).optional().nullable(),
+    types: z.array(bundle_type_schema).min(1, "At least one bundle type is required"),
 });
 
 export type CreateBundleInput = z.infer<typeof create_bundle_zod_schema>;
