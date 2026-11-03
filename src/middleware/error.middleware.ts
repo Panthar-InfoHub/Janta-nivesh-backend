@@ -2,9 +2,10 @@ import { ErrorRequestHandler } from "express";
 import { Prisma } from "../prisma/generated/prisma/client.js";
 import logger from "./logger.js";
 import { ZodError } from "zod";
+import { capture_exception } from "../lib/posthog.js";
+import { env } from "../lib/config-env.js";
 
-
-class AppError extends Error {
+export class AppError extends Error {
     public readonly statusCode: number;
     public readonly errorType: string;
     public readonly isOperational: boolean;
@@ -19,7 +20,6 @@ class AppError extends Error {
     ) {
         super(message);
 
-        // Backward compatibility: allow the 4th argument to be isOperational boolean.
         if (typeof details === "boolean") {
             isOperational = details;
             details = undefined;
@@ -38,42 +38,15 @@ export default AppError;
 
 export const errorHandler: ErrorRequestHandler = (
     err,
-    _req,
+    req,
     res,
     _next
 ) => {
     let error = err;
 
     if (!(error instanceof AppError)) {
-        // Mongo duplicate key
-        if (error.name === "MongoServerError" && error.code === 11000) {
-            error = new AppError(
-                `Duplicate field value entered: ${Object.keys(error.keyValue || {})}`,
-                409,
-                "DuplicateKeyError"
-            );
-        }
-
-        // Mongo error code 27
-        else if (error.name === "MongoServerError" && error.code === 27) {
-            error = new AppError(
-                `Product not found ==> ${error.errorResponse?.errmsg}`,
-                409,
-                "MongoError"
-            );
-        }
-
-        // Mongoose validation error
-        else if (error.name === "ValidationError") {
-            const message = Object.values(error.errors || {})
-                .map((val: any) => `${val.path}: ${val.message}`)
-                .join(", ");
-
-            error = new AppError(message, 400, "ValidationError");
-        }
-
         // Zod validation error
-        else if (error instanceof ZodError) {
+        if (error instanceof ZodError) {
             error = new AppError(
                 "Validation failed",
                 400,
@@ -85,138 +58,105 @@ export const errorHandler: ErrorRequestHandler = (
                 }))
             );
         }
-
-        // CastError (invalid ObjectId)
-        else if (error.name === "CastError") {
+        // Body parser invalid JSON syntax error
+        else if (error instanceof SyntaxError && "body" in error) {
             error = new AppError(
-                `Invalid ${error.path}: ${error.value}`,
+                "Malformed JSON request body",
                 400,
-                "CastError"
+                "INVALID_JSON_SYNTAX"
             );
         }
-
-        // JWT errors
-        else if (error.name === "JsonWebTokenError") {
-            error = new AppError(
-                "Invalid token. Please log in again!",
-                401,
-                "TokenError"
-            );
-        }
-
-        else if (error.name === "TokenExpiredError") {
-            error = new AppError(
-                "Your token has expired! Please log in again.",
-                401,
-                "TokenExpiredError"
-            );
-        }
-
-        // Prisma known request errors (P2xxx codes)
+            // Prisma known errors
         else if (error instanceof Prisma.PrismaClientKnownRequestError) {
             switch (error.code) {
                 case "P2002": {
-                    const target =
-                        (error.meta?.target as string[] | undefined) ??
-                        ((error.meta?.driverAdapterError as any)?.cause?.constraint?.fields as string[] | undefined);
-                    const friendlyFieldMessages: Record<string, string> = {
-                        email: "An account with this email already exists.",
-                        email_hash: "An account with this email already exists.",
-                        phone: "An account with this phone number already exists.",
-                        phone_hash: "An account with this phone number already exists.",
-                        username: "This username is already taken.",
-                    };
-                    const fieldKey = target?.find((f) => f in friendlyFieldMessages);
-                    const message = fieldKey
-                        ? friendlyFieldMessages[fieldKey]
-                        : "A record with the provided details already exists.";
-                    error = new AppError(message, 409, "PrismaUniqueConstraintError");
+                    const target = (error.meta?.target as string[])?.join(", ") || "field";
+                    error = new AppError(
+                        `Unique constraint failed on: ${target}`,
+                        409,
+                        "DUPLICATE_KEY_ERROR",
+                        { target }
+                    );
                     break;
                 }
-                case "P2003":
+                case "P2025": {
                     error = new AppError(
-                        `Foreign key constraint failed on field: ${error.meta?.field_name}`,
-                        409,
-                        "PrismaForeignKeyError"
-                    );
-                    break;
-                case "P2025":
-                    error = new AppError(
-                        `Record not found: ${error.meta?.cause ?? "The requested resource does not exist"}`,
+                        (error.meta?.cause as string) || "Record not found",
                         404,
-                        "PrismaNotFoundError"
+                        "NOT_FOUND"
                     );
                     break;
-                case "P2034":
+                }
+                case "P2003": {
+                    const field = error.meta?.field_name as string;
                     error = new AppError(
-                        "Transaction conflict, please retry",
-                        409,
-                        "PrismaTransactionConflict"
+                        `Foreign key constraint failed${field ? ` on field ${field}` : ""}`,
+                        400,
+                        "FOREIGN_KEY_VIOLATION"
                     );
                     break;
+                }
                 default:
                     error = new AppError(
-                        `Database error (${error.code}): ${error.message}`,
+                        `Database operation failed: ${error.message}`,
                         500,
-                        "PrismaKnownError"
+                        "DATABASE_ERROR"
                     );
             }
         }
-
-        // Prisma raw query / unknown DB errors (e.g. PostgreSQL code 21000)
-        else if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-            const rawCode = error.message.match(/Code: `(\w+)`/)?.[1];
-            error = new AppError(
-                `Raw query failed${rawCode ? ` (DB code: ${rawCode})` : ""}: ${error.message}`,
-                500,
-                "PrismaRawQueryError"
-            );
-        }
-
-        // Prisma validation error (wrong types / missing required fields passed to Prisma)
+            // Prisma validation error
         else if (error instanceof Prisma.PrismaClientValidationError) {
             error = new AppError(
-                "Invalid data sent to database",
+                "Invalid parameters sent to database",
                 400,
-                "PrismaValidationError"
+                "DATABASE_VALIDATION_ERROR"
             );
         }
-
-        // Prisma connection / initialisation error
+            // Prisma connection error
         else if (error instanceof Prisma.PrismaClientInitializationError) {
             error = new AppError(
-                "Database connection failed",
+                "Database connection unavailable",
                 503,
-                "PrismaConnectionError",
+                "DATABASE_CONNECTION_ERROR",
                 false
             );
         }
-
-        // Unknown / programming error
+            // Unknown unexpected server error
         else {
             error = new AppError(
-                "Internal Server Error",
-                500,
-                "ServerError",
+                error.message || "Internal Server Error",
+                error.status || error.statusCode || 500,
+                "INTERNAL_SERVER_ERROR",
+                undefined,
                 false
             );
         }
     }
 
     if (!error.isOperational) {
-        // logger.error("UNEXPECTED ERROR:", err);
+        logger.error("UNEXPECTED SYSTEM ERROR ==> ", err);
     }
 
-    // 3. Unified response
+    const distinctId =
+        req.user?.id ||
+        (req.headers["x-forwarded-for"] as string) ||
+        req.ip ||
+        "anonymous";
+
+    capture_exception(err, distinctId, {
+        path: req.originalUrl || req.url,
+        method: req.method,
+        errorType: error.errorType,
+        message: error.message,
+        statusCode: error.statusCode,
+    });
+
     res.status(error.statusCode).json({
         success: false,
-        error: {
-            type: error.errorType,
-            message: error.message,
-            ...(error.details && { details: error.details }),
-            ...(process.env.NODE_ENV === "development" && {
-                stack: error.stack
-            })
-        }
+        message: error.message,
+        data: null,
+        errorCode: error.errorType,
+        ...(error.details ? { details: error.details } : {}),
+        ...(env.ENVIRONMENT === "dev" ? { stack: error.stack } : {}),
     });
 };

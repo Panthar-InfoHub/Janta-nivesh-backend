@@ -1,38 +1,44 @@
 import { z } from "zod";
-import { user_goal_zod_schema } from "./goal.schema.js";
 import { user_loan_zod_schema } from "./loan.schema.js";
 
-const onboarding_profile_schema = z.object({
-    full_name: z.string().min(1).optional(),
-    city: z.string().min(1).optional(),
-    dob: z.coerce.date().optional(),
-    email: z.string().email().optional(),
-    phone: z.string().min(10).max(15).optional(),
-});
+export const onboarding_finance_schema = z.union([
+    z.object({
+        skip: z.literal(true),
+    }),
+    z.object({
+        annual_income: z.number().min(0),
+        expense_house: z.number().min(0),
+        expense_food: z.number().min(0),
+        expense_transportation: z.number().min(0),
+        expense_others: z.number().min(0),
+    }),
+]);
 
-const onboarding_finance_schema = z.object({
-    annual_income: z.number().min(0),
-    expense_house: z.number().min(0),
-    expense_food: z.number().min(0),
-    expense_transportation: z.number().min(0),
-    expense_others: z.number().min(0),
-});
+export const onboarding_assets_schema = z.union([
+    z.object({
+        skip: z.literal(true),
+    }),
+    z.object({
+        mutual_funds: z.number().min(0),
+        stocks: z.number().min(0),
+        fd: z.number().min(0),
+        real_estate: z.number().min(0),
+        gold: z.number().min(0),
+        cash_saving: z.number().min(0),
+    }),
+]);
 
-const onboarding_assets_schema = z.object({
-    mutual_funds: z.number().min(0),
-    stocks: z.number().min(0),
-    fd: z.number().min(0),
-    real_estate: z.number().min(0),
-    gold: z.number().min(0),
-    cash_saving: z.number().min(0),
-});
+export const onboarding_insurance_schema = z.union([
+    z.object({
+        skip: z.literal(true),
+    }),
+    z.object({
+        life_insurance: z.number().min(0),
+        health_insurance: z.number().min(0),
+    }),
+]);
 
-const onboarding_insurance_schema = z.object({
-    life_insurance: z.number().min(0),
-    health_insurance: z.number().min(0),
-});
-
-const onboarding_loans_schema = z.array(user_loan_zod_schema).superRefine((loans, ctx) => {
+const loan_array_schema = z.array(user_loan_zod_schema).superRefine((loans, ctx) => {
     const loan_types = new Set<string>();
 
     for (let i = 0; i < loans.length; i++) {
@@ -48,22 +54,12 @@ const onboarding_loans_schema = z.array(user_loan_zod_schema).superRefine((loans
     }
 });
 
-const onboarding_goals_schema = z.array(user_goal_zod_schema).superRefine((goals, ctx) => {
-    const goal_types = new Set<number>();
-
-    for (let i = 0; i < goals.length; i++) {
-        const goal_type = goals[i].goal_type_id;
-        goal_types.add(goal_type);
-    }
-});
-
-export const complete_onboarding_zod_schema = z.object({
-    profile: onboarding_profile_schema.optional(),
-    finance: onboarding_finance_schema.optional(),
-    assets: onboarding_assets_schema.optional(),
-    insurance: onboarding_insurance_schema.optional(),
-    loans: onboarding_loans_schema.optional(),
-    goals: onboarding_goals_schema.optional(),
-});
-
-export type CompleteOnboardingInput = z.infer<typeof complete_onboarding_zod_schema>;
+export const onboarding_loans_schema = z.union([
+    z.object({
+        skip: z.literal(true),
+    }),
+    z.object({
+        loans: loan_array_schema,
+    }),
+    loan_array_schema,
+]);

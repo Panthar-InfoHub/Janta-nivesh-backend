@@ -187,16 +187,50 @@ class MfCartServiceClass {
             throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
         }
 
-        // 2. Selection count must match the bundle's total slot count
-        const total_slots = bundle.categories.reduce(
-            (sum, cat) => sum + cat.slots.length,
+        // Determine target investment type based on cart_type and frequency
+        const frequency =
+            input.cart_type === "SIP"
+                ? input.frequency ?? "MONTHLY"
+                : null;
+
+        const target_investment_type =
+            input.cart_type === "LUMPSUM"
+                ? "LUMPSUM"
+                : frequency === "DAILY"
+                    ? "DAILY_SIP"
+                    : "MONTHLY_SIP";
+
+        const bundle_type = (bundle.types || []).find(
+            (t) => t.investment_type === target_investment_type,
+        );
+
+        if (!bundle_type) {
+            throw new AppError(
+                `Bundle "${bundle.bundle_name}" does not support ${target_investment_type}`,
+                400,
+                "INVESTMENT_TYPE_NOT_SUPPORTED",
+            );
+        }
+
+        // 2. Selection count must match the bundle type's total slot count
+        const total_slots = (bundle_type.categories || []).reduce(
+            (sum, cat) => sum + (cat.slots?.length || 0),
             0,
         );
         if (input.selections.length !== total_slots) {
             throw new AppError(
-                `Bundle requires exactly ${total_slots} fund selection(s), got ${input.selections.length}`,
+                `Bundle requires exactly ${total_slots} fund selection(s) for ${target_investment_type}, got ${input.selections.length}`,
                 400,
                 "SELECTION_COUNT_MISMATCH",
+            );
+        }
+
+        // 2b. Validate minimum investment amount against bundle_type.start_amount
+        if (input.amount < bundle_type.start_amount) {
+            throw new AppError(
+                `Minimum investment amount for ${target_investment_type} is ₹${bundle_type.start_amount}`,
+                400,
+                "AMOUNT_BELOW_MINIMUM",
             );
         }
 
@@ -236,11 +270,7 @@ class MfCartServiceClass {
 
         const product_map = new Map(products.map((p) => [p.id, p]));
 
-        // 5. Apply application-level default for SIP
-        const frequency =
-            input.cart_type === "SIP"
-                ? input.frequency ?? "MONTHLY"
-                : null;
+
 
         // Auto-adjust: only MONTHLY SIP has installment_day; DAILY and LUMPSUM must be null.
         const effective_installment_day =

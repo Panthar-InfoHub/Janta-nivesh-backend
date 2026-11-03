@@ -6,6 +6,11 @@ enum OnboardingStage {
   EMAIL_VERIFICATION
   INVESTOR_PROFILE
   NOMINEE_ADDITION
+  FINANCE_DETAILS
+  ASSET_DETAILS
+  LOAN_DETAILS
+  INSURANCE_DETAILS
+  GOAL_DETAILS
   COMPLETED
 }
 
@@ -32,9 +37,16 @@ model UserOnboarding {
   email_status         StageStatus     @default(PENDING) // VERIFIED only - email OTP is never skippable, the address lands in FP/Cybrilla compliance records
   profile_status       StageStatus     @default(PENDING)
   nominee_status       StageStatus     @default(PENDING) // VERIFIED once added, SKIPPED if "I will add nominees later"
+  finance_status       StageStatus     @default(PENDING)
+  assets_status        StageStatus     @default(PENDING)
+  loan_status          StageStatus     @default(PENDING)
+  insurance_status     StageStatus     @default(PENDING)
+  goals_status         StageStatus     @default(PENDING)
   has_navigated_home   Boolean         @default(false)
   is_completed         Boolean         @default(false)
   completed_at         DateTime?
+  is_fire_completed    Boolean         @default(false)
+  fire_completed_at    DateTime?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @default(now()) @updatedAt
   user                 User            @relation(fields: [user_id], references: [id], onDelete: Cascade)

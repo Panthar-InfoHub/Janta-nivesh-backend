@@ -34,6 +34,9 @@ export const env = {
     MSG91_WELCOME_EMAIL_TEMPLATE_ID: process.env.MSG91_WELCOME_EMAIL_TEMPLATE_ID!,
 
 
+    // Post hog envs :
+    POSTHOG_API_KEY: process.env.POSTHOG_API_KEY!,
+    POSTHOG_HOST: process.env.POSTHOG_HOST!,
 
 
 
