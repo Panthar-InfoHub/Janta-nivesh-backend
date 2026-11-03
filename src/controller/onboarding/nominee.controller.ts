@@ -49,9 +49,13 @@ class NomineeControllerClass {
             }
 
             const user = await user_service.get_user_by_id(user_id);
+            const next_stage = (onboarding_before.is_completed && onboarding_before.is_fire_completed) || onboarding_before.current_stage === "COMPLETED"
+                ? "COMPLETED"
+                : "FINANCE_DETAILS";
+
             if (input.skip === true) {
                 logger.info("User skipped nominee stage", { user_id });
-                await user_onboarding_service.update_stage(user_id, { nominee_status: "SKIPPED" });
+                await user_onboarding_service.update_stage(user_id, { nominee_status: "SKIPPED", current_stage: next_stage });
             } else {
                 logger.info("Submitting nominees", { user_id, count: input.nominees.length });
                 nominees = await nominee_service.create_many(user_id, input.nominees);
@@ -70,7 +74,7 @@ class NomineeControllerClass {
                     }
                 }
 
-                await user_onboarding_service.update_stage(user_id, { nominee_status: "VERIFIED" });
+                await user_onboarding_service.update_stage(user_id, { nominee_status: "VERIFIED", current_stage: next_stage });
             }
 
             // Create (first time) or update (e.g. adding nominees after a prior skip) the investment account either way

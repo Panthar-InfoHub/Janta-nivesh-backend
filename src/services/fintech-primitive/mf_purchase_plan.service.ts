@@ -6,7 +6,7 @@ import { provider_token_service } from "../tokens/provider-token.service.js";
 import type { ResolvedMfPurchasePlanInput } from "../../lib/zod-schemas/mf-purchase-plan.schema.js";
 
 // 1-year plan - 12 monthly installments (or 12 daily ones, if daily frequency is picked)
-const NUMBER_OF_INSTALLMENTS = 12;
+const NUMBER_OF_INSTALLMENTS = 999;
 
 type BatchPurchasePlanItem = {
     scheme: string;
@@ -57,7 +57,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
     ) => {
         const is_daily = input.frequency === "daily";
         const installments =
-            number_of_installments ?? (is_daily ? 60 : NUMBER_OF_INSTALLMENTS);
+            number_of_installments ?? (is_daily ? 9999 : NUMBER_OF_INSTALLMENTS);
 
         const payload = {
             mf_investment_account,
