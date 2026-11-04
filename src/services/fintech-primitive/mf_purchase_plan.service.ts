@@ -57,7 +57,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
     ) => {
         const is_daily = input.frequency === "daily";
         const installments =
-            number_of_installments ?? (is_daily ? 9999 : NUMBER_OF_INSTALLMENTS);
+            number_of_installments ?? (is_daily ? 1200 : NUMBER_OF_INSTALLMENTS);
 
         const payload = {
             mf_investment_account,
