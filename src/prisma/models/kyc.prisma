@@ -42,8 +42,11 @@ model UserOnboarding {
   loan_status          StageStatus     @default(PENDING)
   insurance_status     StageStatus     @default(PENDING)
   goals_status         StageStatus     @default(PENDING)
+  has_navigated_home   Boolean         @default(false)
   is_completed         Boolean         @default(false)
   completed_at         DateTime?
+  is_fire_completed    Boolean         @default(false)
+  fire_completed_at    DateTime?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @default(now()) @updatedAt
   user                 User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -139,6 +142,12 @@ model KycProfile {
   submitted_at           DateTime?
   failed_at              DateTime?
   expires_at             DateTime?
+
+  // Post-submission KRA readiness check (Cybrilla doesn't send an approval webhook for kyc_form)
+  kyc_poll_pre_verification_id     String?   @unique
+  kyc_poll_status                  String?   // PENDING | VERIFIED | FAILED
+  kyc_poll_submitted_at            DateTime?
+  kyc_poll_response                Json?
 
   raw_kyc_form_response Json? // full raw Cybrilla payload, forward-compat escape hatch
 

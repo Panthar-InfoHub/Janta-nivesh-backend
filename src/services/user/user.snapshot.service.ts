@@ -1,6 +1,5 @@
 import logger from "../../middleware/logger.js";
 import { user_service } from "../user.service.js";
-import { user_finnsys_service } from "../user.finnsys.service.js";
 import { db } from "../../server.js";
 
 class UserSnapshotServiceClass {
@@ -9,7 +8,7 @@ class UserSnapshotServiceClass {
     /**
      * Calculates and saves the net worth snapshot for a single user
      */
-    async capture_user_snapshot(user_id: string, log?: string, pwd?: string) {
+    async capture_user_snapshot(user_id: string) {
         try {
             logger.info(`Capturing net worth snapshot for user: ${user_id}`);
 
@@ -24,23 +23,16 @@ class UserSnapshotServiceClass {
                 return;
             }
 
-            // 2. Get Live Mutual Fund Data from Finnsys (if credentials provided)
-            let mf_current_value = 0;
-            if (log && pwd) {
-                try {
-                    const portfolio = await user_finnsys_service.get_user_portfolio_finnsys(log, pwd);
-                    if (portfolio.code === 1 && portfolio.results) {
-                        mf_current_value = portfolio.results.reduce(
-                            (sum: number, item: any) => sum + this.toNumber(item.currval),
-                            0
-                        );
-                    }
-                } catch (err) {
-                    logger.error(`Error fetching Finnsys portfolio for snapshot (User: ${user_id}):`, err);
-                    // Fallback to stored user_assets mutual_funds value if API fails
-                    mf_current_value = this.toNumber(user_data.user_assets?.mutual_funds);
-                }
-            } else {
+            // 2. Get Live Mutual Fund Data from database (mfHolding) with fallback to stored assets
+            const holdings = await db.mfHolding.findMany({
+                where: { user_id },
+                select: { current_value: true },
+            });
+            let mf_current_value = holdings.reduce(
+                (sum: number, h) => sum + this.toNumber(h.current_value),
+                0
+            );
+            if (mf_current_value === 0 && user_data.user_assets?.mutual_funds) {
                 mf_current_value = this.toNumber(user_data.user_assets?.mutual_funds);
             }
 

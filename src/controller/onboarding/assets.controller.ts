@@ -32,6 +32,27 @@ class AssetsOnboardingControllerClass {
                 );
             }
 
+            if ("skip" in validation_result.data && validation_result.data.skip === true) {
+                await user_onboarding_service.update_stage(
+                    user.id,
+                    {
+                        assets_status: "SKIPPED",
+                        current_stage: "ASSET_DETAILS",
+                    },
+                );
+
+                await user_onboarding_service.recompute_completion(user.id);
+                const onboarding = await user_onboarding_service.get_status_summary(user.id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Assets stage skipped",
+                    data: null,
+                    onboarding,
+                });
+                return;
+            }
+
             const assets =
                 await user_assets_service.create(
                     user.id,

@@ -418,6 +418,7 @@ class JnReportServiceClass {
             let sipInfo = undefined;
             if (activePlan) {
                 const freq = activePlan.frequency ? (activePlan.frequency.charAt(0).toUpperCase() + activePlan.frequency.slice(1).toLowerCase()) : 'Monthly';
+                const isDaily = freq.toLowerCase() === 'daily';
                 const paidCount = (activePlan.number_of_installments && activePlan.remaining_installments != null)
                     ? (activePlan.number_of_installments - activePlan.remaining_installments)
                     : (schemeTransactions.filter(t => t.type.includes('SIP')).length || 1);
@@ -425,7 +426,7 @@ class JnReportServiceClass {
                 sipInfo = {
                     amount: activePlan.amount ? Number(activePlan.amount) : undefined,
                     frequency: freq,
-                    sip_date: activePlan.installment_day || (activePlan.start_date ? new Date(activePlan.start_date).getDate() : 5),
+                    sip_date: isDaily ? undefined : (activePlan.installment_day || (activePlan.start_date ? new Date(activePlan.start_date).getDate() : 5)),
                     start_date: activePlan.start_date ? activePlan.start_date.toISOString() : (activePlan.createdAt ? activePlan.createdAt.toISOString() : undefined),
                     installments_done: paidCount,
                     next_installment: activePlan.next_installment_date ? activePlan.next_installment_date.toISOString() : undefined,
@@ -434,45 +435,13 @@ class JnReportServiceClass {
                 };
             }
 
-            // 2. Resolve Benchmark, Riskometer, and Returns vs Benchmark
-            const cat = (targetHolding.category || '').toUpperCase();
-            const subCat = (targetHolding.sub_category || '').toUpperCase();
-            const name = (targetHolding.scheme_name || '').toUpperCase();
-
-            let benchmarkName = 'Nifty 100 TRI';
-            let benchReturns = { y1: 19.8, y3: 16.2, y5: 15.5, inception: 14.1 };
-            let riskometer = 'Very High';
-
-            if (name.includes('GOLD') || cat.includes('COMMODITY')) {
-                benchmarkName = 'Domestic Price of Gold';
-                benchReturns = { y1: 32.4, y3: 18.6, y5: 14.8, inception: 12.5 };
-                riskometer = 'High';
-            } else if (cat.includes('DEBT') || subCat.includes('DEBT')) {
-                benchmarkName = 'CRISIL Composite Bond Index';
-                benchReturns = { y1: 7.8, y3: 6.9, y5: 7.2, inception: 7.5 };
-                riskometer = 'Moderate';
-            } else if (cat.includes('LIQUID') || subCat.includes('LIQUID')) {
-                benchmarkName = 'CRISIL Liquid Debt Index';
-                benchReturns = { y1: 6.9, y3: 6.2, y5: 5.8, inception: 6.5 };
-                riskometer = 'Low to Moderate';
-            } else if (subCat.includes('MID') || name.includes('MID CAP') || name.includes('MIDCAP')) {
-                benchmarkName = 'Nifty Midcap 150 TRI';
-                benchReturns = { y1: 28.4, y3: 22.1, y5: 19.8, inception: 16.5 };
-            } else if (subCat.includes('SMALL') || name.includes('SMALL CAP') || name.includes('SMALLCAP')) {
-                benchmarkName = 'Nifty Smallcap 250 TRI';
-                benchReturns = { y1: 31.2, y3: 24.5, y5: 21.2, inception: 17.0 };
-            } else if (subCat.includes('FLEXI') || subCat.includes('MULTI') || cat.includes('EQUITY')) {
-                benchmarkName = 'Nifty 500 TRI';
-                benchReturns = { y1: 21.5, y3: 17.4, y5: 16.2, inception: 14.5 };
-            }
-
             const firstTx = schemeTransactions[schemeTransactions.length - 1];
             const firstInvestedOn = firstTx?.date || rawTargetHolding?.createdAt?.toISOString();
 
             fund = {
                 ...targetHolding,
-                benchmark: benchmarkName,
-                riskometer,
+                benchmark: undefined,
+                riskometer: undefined,
                 expense_ratio: undefined,
                 first_invested_on: firstInvestedOn,
                 sip: sipInfo,

@@ -34,6 +34,27 @@ class InsuranceOnboardingControllerClass {
                 );
             }
 
+            if ("skip" in validation_result.data && validation_result.data.skip === true) {
+                await user_onboarding_service.update_stage(
+                    user.id,
+                    {
+                        insurance_status: "SKIPPED",
+                        current_stage: "INSURANCE_DETAILS",
+                    },
+                );
+
+                await user_onboarding_service.recompute_completion(user.id);
+                const onboarding = await user_onboarding_service.get_status_summary(user.id);
+
+                res.status(200).json({
+                    success: true,
+                    message: "Insurance stage skipped",
+                    data: null,
+                    onboarding,
+                });
+                return;
+            }
+
             const insurance =
                 await user_insurance_service.create(
                     user.id,
@@ -44,7 +65,6 @@ class InsuranceOnboardingControllerClass {
                 user.id,
                 {
                     insurance_status: "VERIFIED",
-                    current_stage: "COMPLETED",
                 },
             );
 

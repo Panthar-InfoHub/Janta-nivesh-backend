@@ -1,0 +1,83 @@
+name : Staging & Prod Pipeline
+
+# Trigger: ALways run whenever code is pushed to stagging_v2
+on:
+  push:
+    branches:
+      - staging_v2
+
+# Permissions : Push to branch and create PRs
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Jobs
+jobs:
+
+  # Job 1: Verify Code on stagging branch (CI)
+  verify_on_stagging:
+    name: Verify Typescript & Prisma build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Test Build by GCP Build Script
+        run: npm run gcp-build
+
+    # JOB 2: Auto-deploy Staging & Raise Prod PR (CD - Continuous Delivery)
+  deploy_stagging_and_prod_pr:
+      name: Auto-deploy Staging & Raise Prod PR
+      needs: verify_on_stagging  # This job runs ONLY if job 1 passes
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Checkout repo with full giithub history
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 0  # IMPORTANT: This fetches the entire git history
+        
+        - name: Configure Git
+          run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        - name: Step A :Sync staging_v2 into janta-v2
+          run: |
+            git checkout janta-v2
+            git merge origin/staging_v2 --ff-only || git merge origin/staging_v2 -m "chore: sync staging_v2 into janta-v2"
+            git push origin janta-v2
+
+        - name: Step B:Ensure Pull Request to janta-v2-prod Exists
+          env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            # Check if an open PR from janta-v2 to janta-v2-prod already exists
+            EXISTING_PR=$(gh pr list --base janta-v2-prod --head janta-v2 --state open --json number -q '.[0].number')
+            
+            if [ -n "$EXISTING_PR" ]; then
+              echo "PR #$EXISTING_PR is already open. GitHub has automatically updated it with the latest commits!"
+            else
+              echo "Creating a new PR for production..."
+              gh pr create \
+                --base janta-v2-prod \
+                --head janta-v2 \
+                --title "Release to Production (from janta-v2)" \
+                --body "### Automated Production Release PR
+            This PR was automatically opened by GitHub Actions because new changes were merged into \`janta-v2\` (Staging).
+            
+            **Action Required:**
+            1. Verify changes on the Staging environment.
+            2. When ready, click **Merge pull request** to deploy to Production."
+            fi
+            

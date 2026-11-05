@@ -1,24 +1,46 @@
+enum BundleInvestmentType {
+  DAILY_SIP
+  MONTHLY_SIP
+  LUMPSUM
+}
+
 model Bundle {
   id                   String           @id @default(cuid())
   bundle_name          String
   bundle_description   String
+  is_published         Boolean          @default(false)
   equity_percentage    Float?           @default(0)
   commodity_percentage Float?           @default(0)
   debt_percentage      Float?           @default(0)
   hybrid_percentage    Float?           @default(0)
   img_url              String?
+  hex                  String?
   meta_data            Json?
-  categories           BundleCategory[]
+  types                BundleType[]
+}
+
+model BundleType {
+  id              String               @id @default(cuid())
+  bundle_id       String
+  investment_type BundleInvestmentType
+  start_amount    Float
+  bundle          Bundle               @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
+  categories      BundleCategory[]
+
+  @@unique([bundle_id, investment_type])
+  @@index([bundle_id])
 }
 
 model BundleCategory {
   id               String               @id @default(cuid())
-  bundle_id        String
+  bundle_type_id   String
   category_name    String
   display_name     String
   total_percentage Float
-  bundle           Bundle               @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
+  bundle_type      BundleType           @relation(fields: [bundle_type_id], references: [id], onDelete: Cascade)
   slots            BundleCategorySlot[]
+
+  @@index([bundle_type_id])
 }
 
 model BundleCategorySlot {

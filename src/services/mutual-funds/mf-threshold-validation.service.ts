@@ -74,12 +74,12 @@ class MfThresholdValidationServiceClass {
     ): Promise<number> => {
         const plan = await this.get_scheme_plan(isin);
         if (!plan) {
-            return frequency === "daily" ? 60 : 12;
+            return frequency === "daily" ? 1200 : 999;
         }
         if (frequency === "daily") {
-            return Math.max(60, plan.sip_daily_installments_min ?? 60);
+            return Math.max(1200, plan.sip_daily_installments_min ?? 1200);
         } else {
-            return Math.max(12, plan.sip_monthly_installments_min ?? 12);
+            return Math.max(999, plan.sip_monthly_installments_min ?? 999);
         }
     }
 

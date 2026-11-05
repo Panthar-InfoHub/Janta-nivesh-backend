@@ -142,23 +142,25 @@ body {
 .kpi-chip.pos { background: rgba(18,135,90,.12); }
 .kpi-chip.neg { background: rgba(214,69,69,.12); }
 
-.sec { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 9px; }
+.sec { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 9px; break-after: avoid; page-break-after: avoid; }
 .sec-t { font-size: 12.5px; font-weight: 800; color: ${BRAND.navy}; letter-spacing: .01em; }
 .sec-n { font-size: 9.5px; color: ${BRAND.muted}; }
 
-.card { border: 1px solid ${BRAND.line}; border-radius: 10px; padding: 14px; background: ${BRAND.surface}; break-inside: avoid; }
+.card { border: 1px solid ${BRAND.line}; border-radius: 10px; padding: 14px; background: ${BRAND.surface}; break-inside: avoid; page-break-inside: avoid; }
 .card.flow { break-inside: auto; }
 .grid2 { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: center; }
 .grid-2c { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .row { display: flex; gap: 14px; }
 
 table.tbl { width: 100%; border-collapse: collapse; font-size: 10px; }
+table.tbl thead { display: table-header-group; }
 table.tbl thead th { background: ${BRAND.paper}; color: ${BRAND.navy}; font-weight: 700; text-align: right;
   padding: 7px 8px; border-bottom: 1.5px solid ${BRAND.line}; font-size: 9px; letter-spacing: .03em; text-transform: uppercase; }
 table.tbl thead th.l, table.tbl td.l { text-align: left; }
+table.tbl tbody { display: table-row-group; }
 table.tbl tbody td { padding: 7px 8px; border-bottom: 1px solid ${BRAND.line}; text-align: right; }
 table.tbl tbody tr:nth-child(even) { background: #FBFCFE; }
-table.tbl tbody tr { break-inside: avoid; }
+table.tbl tbody tr { break-inside: avoid; page-break-inside: avoid; }
 table.tbl tfoot td { padding: 8px; font-weight: 800; border-top: 2px solid ${BRAND.navy}; text-align: right; background: ${BRAND.paper}; }
 table.tbl tfoot td.l { text-align: left; }
 table.tbl tr.totalrow td { padding: 8px; font-weight: 800; border-top: 2px solid ${BRAND.navy}; text-align: right; background: ${BRAND.paper}; }
@@ -196,7 +198,7 @@ export const footerTemplate = (reportName: string): string => `
 <div style="font-family:'Inter',Arial,sans-serif;font-size:8px;color:#9AA3B5;width:100%;
      padding:0 12mm;display:flex;justify-content:space-between;align-items:center;">
   <span>Janta Nivesh &nbsp;·&nbsp; ${reportName}</span>
-  <span>Confidential — for the named investor only</span>
+  <span>Confidential - for the named investor only</span>
   <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
 </div>`;
 

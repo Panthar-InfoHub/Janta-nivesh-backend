@@ -69,7 +69,7 @@ export function generatePortfolioReportHTML(d: JnReportData): string {
     const H = Array.isArray(d.holdings) ? d.holdings : [];
     const rows = H.map(h => `<tr>
     <td class="l"><div class="scheme-name">${h.scheme_name}</div>
-      <div class="scheme-sub">${[h.amc, h.category && (h.category + (h.sub_category ? ' — ' + h.sub_category : '')), h.folio_number && ('Folio ' + h.folio_number)].filter(Boolean).join(' · ')}</div></td>
+      <div class="scheme-sub">${[h.amc, F.fmtCategory(h.category, h.sub_category), h.folio_number && ('Folio ' + h.folio_number)].filter(Boolean).join(' · ')}</div></td>
     <td>${F.num(h.units)}</td>
     <td>${isNum(h.average_nav) ? F.num(h.average_nav, 2) : '—'}</td>
     <td>${isNum(h.current_nav) ? F.num(h.current_nav, 2) : '—'}</td>
@@ -141,7 +141,7 @@ export function generatePortfolioReportHTML(d: JnReportData): string {
       <td class="l">${F.fmtDate(s.purchase_date)} → ${F.fmtDate(s.sell_date)}</td>
       <td>${F.num(s.units)}</td><td>${F.inr(s.purchase_value)}</td><td>${F.inr(s.sale_value)}</td>
       <td class="${F.signClass(s.gain)}">${F.inr(s.gain)}</td></tr>`).join('');
-        srcCard = `<div class="card flow">
+        srcCard = `<div class="card" style="break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid;">
       ${sectionTitle('Capital Gains — Transaction Detail', cg.financial_year ? `FY ${cg.financial_year}` : '')}
       <table class="tbl">
         <thead><tr><th class="l">Scheme</th><th class="l">Term</th><th class="l">Holding period</th><th>Units</th><th>Cost</th><th>Sale</th><th>Gain</th></tr></thead>
@@ -149,7 +149,7 @@ export function generatePortfolioReportHTML(d: JnReportData): string {
       </table></div><div class="spacer"></div>`;
     }
 
-    // Recent transactions
+    // Recent transactions — always starts on the next page (or follows capital gains on page 2), never splits heading from table
     let rtCard = '';
     if (Array.isArray(d.transactions) && d.transactions.length) {
         const rtRows = d.transactions.map(t => `<tr>
@@ -157,7 +157,10 @@ export function generatePortfolioReportHTML(d: JnReportData): string {
       <td class="l">${(t.scheme_name || '').replace(/ - Growth$/, '')}</td>
       <td>${F.inr(t.amount)}</td><td>${F.num(t.units)}</td><td>${isNum(t.nav) ? F.num(t.nav, 2) : '—'}</td>
       <td class="l">${t.status ? `<span class="badge ok" style="font-size:8px">${t.status}</span>` : '—'}</td></tr>`).join('');
-        rtCard = `<div class="card flow">
+        const pageBreakStyle = srcCard
+            ? 'break-inside: avoid; page-break-inside: avoid;'
+            : 'break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid;';
+        rtCard = `<div class="card" style="${pageBreakStyle}">
       ${sectionTitle('Recent Transactions', `${d.transactions.length} shown`)}
       <table class="tbl">
         <thead><tr><th class="l">Date</th><th class="l">Type</th><th class="l">Scheme</th><th>Amount</th><th>Units</th><th>NAV</th><th class="l">Status</th></tr></thead>

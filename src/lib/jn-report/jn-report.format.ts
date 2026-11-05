@@ -57,3 +57,22 @@ export const maskPan = (p: string | undefined | null): string =>
 /** Sign class for +/- colouring: 'pos' | 'neg' | 'zero' */
 export const signClass = (n: number | string | undefined | null): string =>
     (Number(n) > 0 ? 'pos' : Number(n) < 0 ? 'neg' : 'zero');
+
+/** Format category with small hyphen (-) only if sub_category is distinct. Avoids "DEBT - Debt". */
+export function fmtCategory(category?: string | null, subCategory?: string | null): string {
+    const cat = (category || '').trim();
+    const sub = (subCategory || '').trim();
+    if (!cat && !sub) return 'Other';
+    if (!cat) return sub;
+    if (!sub) return cat;
+
+    const catUpper = cat.toUpperCase();
+    const subUpper = sub.toUpperCase();
+
+    // If sub-category is identical, or redundant like "DEBT FUND" / "EQUITY FUND" / "OTHER"
+    if (subUpper === catUpper || subUpper === `${catUpper} FUND` || subUpper === 'OTHER') {
+        return cat;
+    }
+
+    return `${cat} - ${sub}`;
+}
