@@ -1,5 +1,9 @@
 import { db } from "../../server.js";
 import type { pagination } from "../../lib/types.js";
+import logger from "../../middleware/logger.js";
+import AppError from "../../middleware/error.middleware.js";
+import { redis, redis_buffer_client } from "../../lib/redis.js";
+import { compress_json, decompressAndFilter } from "../../lib/utils.js";
 
 export {
     MF_SECTION_TAGS,
@@ -204,6 +208,200 @@ class MfCatalogueServiceClass {
             }])
         );
     }
+
+    /**
+     * Fetch mutual fund product details by ID or ISIN with metrics and scheme plan.
+     */
+    get_mutual_fund_by_id = async (id: string) => {
+        const cache_key = `mf:id:${id}`;
+
+        try {
+            const cached = await redis.get(cache_key);
+            if (cached) {
+                logger.debug(`Cache Hit for MF ID: ${id}`);
+                return JSON.parse(cached as string);
+            }
+        } catch (err: any) {
+            logger.warn(`Redis get failed for ${cache_key}: ${err?.message}`);
+        }
+
+        logger.debug(`Cache Miss for MF ID: ${id}. Fetching from DB...`);
+
+        const product = await db.mfProduct.findFirst({
+            where: {
+                OR: [
+                    { id },
+                    { isin: id }
+                ]
+            },
+            include: {
+                metrics: {
+                    select: {
+                        id: true,
+                        return_30d: true,
+                        return_90d: true,
+                        return_6m: true,
+                        return_1y: true,
+                        return_3y: true,
+                        return_5y: true,
+                        nav_change_pct: true,
+                        updatedAt: true,
+                    }
+                },
+                scheme_plan: {
+                    select: {
+                        id: true,
+                        scheme_name: true,
+                        fund_name: true,
+                        gateway: true,
+                        plan_type: true,
+                        option: true,
+                        idcw_option: true,
+                        active: true,
+                        lumpsum_allowed: true,
+                        lumpsum_amount_min: true,
+                        lumpsum_amount_max: true,
+                        lumpsum_amount_multiples: true,
+                        lumpsum_additional_amount_min: true,
+                        withdrawal_allowed: true,
+                        withdrawal_amount_min: true,
+                        withdrawal_amount_max: true,
+                        withdrawal_amount_multiples: true,
+                        withdrawal_units_min: true,
+                        withdrawal_units_multiples: true,
+                        sip_daily_allowed: true,
+                        sip_daily_amount_min: true,
+                        sip_daily_amount_max: true,
+                        sip_daily_amount_multiples: true,
+                        sip_daily_installments_min: true,
+                        sip_monthly_allowed: true,
+                        sip_monthly_amount_min: true,
+                        sip_monthly_amount_max: true,
+                        sip_monthly_amount_multiples: true,
+                        sip_monthly_installments_min: true,
+                        sip_monthly_dates: true,
+                        fund_category: true,
+                        sub_category: true,
+                        amfi_code: true,
+                        amc_id: true,
+                        close_ended: true,
+                        lock_in: true,
+                        lock_in_period: true,
+                        purchase_allowed_v1: true,
+                        redemption_allowed_v1: true,
+                        instant_redemption_allowed: true,
+                        sip_allowed: true,
+                        stp_in_allowed: true,
+                        stp_out_allowed: true,
+                        switch_in_allowed: true,
+                        switch_in_amount_min: true,
+                        switch_in_amount_multiples: true,
+                        switch_out_allowed: true,
+                        switch_out_amount_min: true,
+                        switch_out_amount_multiples: true,
+                        switch_out_units_min: true,
+                        switch_out_unit_multiples: true,
+                        sip_frequency_data: true,
+                        stp_frequency_data: true,
+                        last_synced_at: true,
+                        v1_synced_at: true,
+                    }
+                }
+            }
+        });
+
+        if (!product) {
+            throw new AppError("Mutual fund not found", 404, "MF_PRODUCT_NOT_FOUND");
+        }
+
+        try {
+            await redis.set(`mf:id:${product.id}`, JSON.stringify(product), { EX: 3600 });
+            if (product.isin && product.isin !== product.id) {
+                await redis.set(`mf:id:${product.isin}`, JSON.stringify(product), { EX: 3600 });
+            }
+        } catch (err: any) {
+            logger.warn(`Redis set failed for MF ID ${product.id}: ${err?.message}`);
+        }
+
+        return product;
+    };
+
+    /**
+     * Fetch mutual fund NAV history by ID or ISIN, filtered by period (1m, 3m, 6m, 1y, 3y, 5y, all).
+     * Uses Redis buffer compression (gzip) for O(1) high-performance delivery.
+     */
+    get_mutual_fund_history = async (id: string, period = "5y") => {
+        // Resolve product to get true product_id if an ISIN was passed
+        const product = await db.mfProduct.findFirst({
+            where: {
+                OR: [
+                    { id },
+                    { isin: id }
+                ]
+            },
+            select: { id: true, isin: true, name: true }
+        });
+
+        if (!product) {
+            throw new AppError("Mutual fund not found", 404, "MF_PRODUCT_NOT_FOUND");
+        }
+
+        const productId = product.id;
+        const history_key = `mf:h:${productId}`;
+        logger.info(`Fetching history for MF: ${productId} (${product.name}), period: ${period}`);
+
+        let compressedHistory: Buffer | null = null;
+        try {
+            compressedHistory = await redis_buffer_client.get(history_key) as Buffer | null;
+        } catch (err: any) {
+            logger.warn(`Redis get failed for ${history_key}: ${err?.message}`);
+        }
+
+        if (compressedHistory) {
+            logger.debug(`Cache Hit for History: ${productId}`);
+            const nav_history = await decompressAndFilter(compressedHistory, period);
+            return nav_history;
+        }
+
+        logger.debug(`Cache Miss for History: ${productId}. Fetching from DB...`);
+
+        const mf_nav_history = await db.mfNavHistory.findMany({
+            where: { mf_product_id: productId },
+            orderBy: { nav_date: 'desc' },
+            select: {
+                nav: true,
+                nav_date: true,
+                daily_change: true,
+            }
+        });
+
+        if (mf_nav_history.length === 0) {
+            return [];
+        }
+
+        try {
+            const compressed = await compress_json(mf_nav_history);
+            await redis_buffer_client.set(history_key, compressed, { EX: 86400 });
+            const filtered_history = await decompressAndFilter(compressed, period);
+            return filtered_history;
+        } catch (err: any) {
+            logger.warn(`Redis set or compression failed for ${history_key}: ${err?.message}`);
+            // Fallback: in-memory filter if compression encounters issues
+            const now = new Date();
+            const cutoffDate = new Date();
+            switch (period) {
+                case "1m": cutoffDate.setMonth(now.getMonth() - 1); break;
+                case "3m": cutoffDate.setMonth(now.getMonth() - 3); break;
+                case "6m": cutoffDate.setMonth(now.getMonth() - 6); break;
+                case "1y": cutoffDate.setFullYear(now.getFullYear() - 1); break;
+                case "3y": cutoffDate.setFullYear(now.getFullYear() - 3); break;
+                case "5y": cutoffDate.setFullYear(now.getFullYear() - 5); break;
+            }
+            if (period === "all" || !period) return mf_nav_history;
+            const cutoffTimestamp = cutoffDate.getTime();
+            return mf_nav_history.filter((entry: any) => new Date(entry.nav_date).getTime() >= cutoffTimestamp);
+        }
+    };
 }
 
 export const mf_catalogue_service = new MfCatalogueServiceClass();
