@@ -47,6 +47,7 @@ class UserOnboardingServiceClass {
         assets_status?: string;
         loan_status?: string;
         insurance_status?: string;
+        goals_status?: string;
     }): OnboardingStage => {
         if (onboarding.basic_details_status !== "VERIFIED") return "BASIC_DETAILS";
         if (onboarding.readiness_status !== "VERIFIED" && onboarding.kyc_status === "PENDING") return "PAN_VERIFICATION";
@@ -61,6 +62,7 @@ class UserOnboardingServiceClass {
         if (onboarding.assets_status !== "VERIFIED") return "ASSET_DETAILS";
         if (onboarding.loan_status !== "VERIFIED") return "LOAN_DETAILS";
         if (onboarding.insurance_status !== "VERIFIED") return "INSURANCE_DETAILS";
+        if (!onboarding.goals_status || !["VERIFIED", "SKIPPED"].includes(onboarding.goals_status)) return "GOAL_DETAILS";
 
         return "COMPLETED";
     };
@@ -96,13 +98,13 @@ class UserOnboardingServiceClass {
             onboarding.profile_status === "VERIFIED" &&
             ["VERIFIED", "SKIPPED"].includes(onboarding.nominee_status);
 
-        // 2. Velvet Financial Profiling (FIRE Stages 8 to 11)
+        // 2. Velvet Financial Profiling (FIRE Stages 8 to 12)
         const is_fire_done =
             onboarding.finance_status === "VERIFIED" &&
             onboarding.assets_status === "VERIFIED" &&
             onboarding.loan_status === "VERIFIED" &&
             onboarding.insurance_status === "VERIFIED" &&
-            ["VERIFIED", "SKIPPED", "PENDING"].includes(onboarding.goals_status);
+            ["VERIFIED", "SKIPPED"].includes(onboarding.goals_status);
 
         const update_data: Record<string, any> = {};
 

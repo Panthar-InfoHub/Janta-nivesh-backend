@@ -40,6 +40,67 @@ class MfCatalogueControllerClass {
             return;
         }
     }
+
+    /**
+     * Get specific mutual fund product by ID or ISIN.
+     * Returns product details, images, metrics, scheme plan rules, and transaction eligibility.
+     */
+    get_mutual_fund_by_id = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const id = req.params.id as string;
+            if (!id || id.trim().length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: "Product ID is required",
+                });
+                return;
+            }
+
+            const data = await mf_catalogue_service.get_mutual_fund_by_id(id.trim());
+
+            res.status(200).json({
+                success: true,
+                message: "Mutual fund details fetched successfully",
+                data,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in get_mutual_fund_by_id controller:", error);
+            next(error);
+            return;
+        }
+    }
+
+    /**
+     * Get mutual fund NAV history by ID or ISIN, filtered by period (1m, 3m, 6m, 1y, 3y, 5y, all).
+     */
+    get_mutual_fund_history = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const id = req.params.id as string;
+            if (!id || id.trim().length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: "Product ID is required",
+                });
+                return;
+            }
+
+            const period = (req.query.period as string) || "5y";
+
+            const data = await mf_catalogue_service.get_mutual_fund_history(id.trim(), period);
+
+            res.status(200).json({
+                success: true,
+                message: "Mutual fund history fetched successfully",
+                data,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in get_mutual_fund_history controller:", error);
+            next(error);
+            return;
+        }
+    }
 }
 
 export const mf_catalogue_controller = new MfCatalogueControllerClass();
