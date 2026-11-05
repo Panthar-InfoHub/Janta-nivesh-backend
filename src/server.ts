@@ -36,6 +36,7 @@ import { finance_router } from "./routes/onboarding_routers/finance.router.js";
 import { assets_router } from "./routes/onboarding_routers/assets.router.js";
 import { loans_router } from "./routes/onboarding_routers/loans.router.js";
 import { insurance_router } from "./routes/onboarding_routers/insurance.router.js";
+import { goals_router } from "./routes/onboarding_routers/goals.router.js";
 import { fd_router } from "./routes/fd.router.js"
 import { webhook_router as fd_webhook_router } from "./routes/webhook.validation.router.js"
 import { bundle_router } from "./routes/bundle.router.js"
@@ -91,6 +92,7 @@ app.use("/api/v2/onboarding/finance", finance_router);
 app.use("/api/v2/onboarding/assets", assets_router);
 app.use("/api/v2/onboarding/loans", loans_router);
 app.use("/api/v2/onboarding/insurance", insurance_router);
+app.use("/api/v2/onboarding/goals", goals_router);
 app.use("/api/v2/mandate", mandate_router)
 app.use("/api/v2/webhook/mandate", mandate_webhook_router)
 app.use("/api/v2/webhook/fp", fp_webhook_router)
@@ -101,10 +103,6 @@ app.use("/api/v2/mf-scheme", mf_scheme_router)
 app.use("/api/v2/mf", mf_router)
 app.use("/api/v2/frontend", frontend_router)
 app.use("/api/v2/user", user_router)
-app.use("/api/v2/user-assets", user_assets_router)
-app.use("/api/v2/user-finance", user_finance_router)
-app.use("/api/v2/user-loan", user_loan_router)
-app.use("/api/v2/user-insurance", user_insurance_router)
 app.use("/api/v2/user-goal", user_goal_router)
 app.use("/api/v2/report", report_router)
 app.use("/api/v2/bundles", bundle_router)

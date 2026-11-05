@@ -26,12 +26,12 @@ export const fire_report_controller = {
 
             const reports = await fire_report_service.get_fire_report(user_id, projection_years);
 
-            await zoho_webhook_service.send_event({
-                event_type: "FIRE_REPORT_GENERATED",
-                timestamp: new Date().toISOString(),
-                user_id: user_id,
-                projection_years: Number(projection_years)
-            });
+            // await zoho_webhook_service.send_event({
+            //     event_type: "FIRE_REPORT_GENERATED",
+            //     timestamp: new Date().toISOString(),
+            //     user_id: user_id,
+            //     projection_years: Number(projection_years)
+            // });
 
             res.status(200).json({
                 code: 200,
@@ -63,12 +63,12 @@ export const fire_report_controller = {
                 "Content-Length": buffer.length.toString(),
             });
 
-            await zoho_webhook_service.send_event({
-                event_type: "FIRE_REPORT_DOWNLOADED",
-                timestamp: new Date().toISOString(),
-                user_id: user_id,
-                pdf_filename: `velvet-wealth-report-${user_id}.pdf`
-            });
+            // await zoho_webhook_service.send_event({
+            //     event_type: "FIRE_REPORT_DOWNLOADED",
+            //     timestamp: new Date().toISOString(),
+            //     user_id: user_id,
+            //     pdf_filename: `velvet-wealth-report-${user_id}.pdf`
+            // });
 
             res.send(buffer);
         } catch (error) {
