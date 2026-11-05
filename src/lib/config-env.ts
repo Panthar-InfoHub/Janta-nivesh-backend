@@ -120,6 +120,9 @@ export const env = {
     DB_ENCRYPTION_KEY: process.env.DB_ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     BLIND_INDEX_KEY: process.env.BLIND_INDEX_KEY || "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 
+    // App Branding
+    APP_NAME: process.env.APP_NAME || "Velvet",
+
     // Zoho Webhook
     ZOHO_API_KEY: process.env.ZOHO_API_KEY!
 };

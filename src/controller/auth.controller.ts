@@ -8,6 +8,7 @@ import { auth_service } from "../services/auth.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { user_service } from "../services/user.service.js";
+import { env } from "../lib/config-env.js";
 
 class AuthControllerClass {
 
@@ -102,16 +103,16 @@ class AuthControllerClass {
             // });
 
             if (user.full_name) {
-                await notification_producer_service.publish_notification_event(
+                notification_producer_service.publish_notification_event(
                     user.id,
                     "TRANSACTION",
                     "Login Successful",
-                    `Welcome to Janta Nivesh, ${user.full_name}`,
+                    `Welcome to ${env.APP_NAME}, ${user.full_name}`,
                     {
                         txn: "login",
                         sub_type: notification_type.NOTIFICATION
                     }
-                );
+                ).catch((err) => logger.error("Error publishing login notification:", err));
             }
 
             const token = generate_JWT(updated_user);
