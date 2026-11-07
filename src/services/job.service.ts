@@ -12,6 +12,16 @@ import { mf_scheme_plan_sync_service } from "./mutual-funds/mf-scheme-plan-sync.
 import { mf_scheme_v1_sync_service } from "./mutual-funds/mf-scheme-v1-sync.service.js";
 import { mf_holding_sync_service } from "./mutual-funds/mf-holding-sync.service.js";
 import { kyc_approval_service } from "./kyc/kyc-approval.service.js";
+import { fintech_primitive_mf_purchase_plan_service } from "./fintech-primitive/mf_purchase_plan.service.js";
+import { fintech_primitive_mf_purchase_service } from "./fintech-primitive/mf_purchase.service.js";
+import { fintech_primitive_mf_redemption_plan_service } from "./fintech-primitive/mf_redemption_plan.service.js";
+import { fintech_primitive_mf_redemption_service } from "./fintech-primitive/mf_redemption.service.js";
+import { fintech_primitive_mf_switch_plan_service } from "./fintech-primitive/mf_switch_plan.service.js";
+import { fintech_primitive_mf_switch_service } from "./fintech-primitive/mf_switch.service.js";
+import { mf_transaction_plan_service } from "./mf-transaction-plan.service.js";
+import type { MfPlanType } from "./mf-transaction-plan.service.js";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class JobServiceClass {
 
@@ -855,6 +865,197 @@ class JobServiceClass {
         };
 
         logger.info("KYC verification batch poll completed", summary);
+        return summary;
+    };
+
+    /**
+     * Polls and syncs MfTransactionPlan rows with live FP states.
+     * Default behavior targets in-flight states: ["PENDING", "CONFIRMED", "SUBMITTED", "REVIEW_COMPLETED", "UNDER_REVIEW"].
+     * Options allow targeting specific states (e.g., state: "ACTIVE"), all states (all: true), or only active non-terminal (only_active: true).
+     */
+    mf_transactions_sync_job = async (options: {
+        user_id?: string;
+        fp_id?: string;
+        state?: string;
+        only_active?: boolean;
+        all?: boolean;
+        dry_run?: boolean;
+        force?: boolean;
+    } = {}) => {
+        logger.info("Starting MF transactions sync job...", options);
+
+        const IN_FLIGHT_STATES = [
+            "PENDING",
+            "CONFIRMED",
+            "SUBMITTED",
+            "REVIEW_COMPLETED",
+            "UNDER_REVIEW",
+        ];
+
+        const where: Prisma.MfTransactionPlanWhereInput = {};
+
+        if (options.fp_id) {
+            where.fp_id = options.fp_id;
+        }
+
+        if (options.user_id) {
+            where.user_id = options.user_id;
+        }
+
+        if (options.state) {
+            where.state = options.state as any;
+        } else if (options.all) {
+            // No state filter - inspect all transactions
+        } else if (options.only_active) {
+            // Exclude terminal states: FAILED, CANCELLED, REVERSED, COMPLETED
+            where.state = {
+                notIn: ["FAILED", "CANCELLED", "REVERSED", "COMPLETED"],
+            };
+        } else {
+            // Default: in-flight states only
+            where.state = {
+                in: IN_FLIGHT_STATES as any,
+            };
+        }
+
+        const transactions = await db.mfTransactionPlan.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            select: {
+                id: true,
+                user_id: true,
+                fp_id: true,
+                plan_type: true,
+                systematic: true,
+                state: true,
+                amount: true,
+                scheme: true,
+                createdAt: true,
+            },
+        });
+
+        logger.info(`[MF TXN SYNC] Found ${transactions.length} transactions in DB to sync`);
+
+        let updated_count = 0;
+        let unchanged_count = 0;
+        let failed_count = 0;
+        const changes: Array<{
+            fp_id: string;
+            user_id: string;
+            scheme: string;
+            from: string;
+            to: string;
+        }> = [];
+        const failures: Array<{
+            fp_id: string;
+            error: string;
+        }> = [];
+
+        const limit = pLimit(3);
+
+        await Promise.all(
+            transactions.map((txn, index) =>
+                limit(async () => {
+                    const tag = `[${index + 1}/${transactions.length}] [${txn.fp_id}]`;
+                    try {
+                        let livePlan: any = null;
+                        let planType: MfPlanType = txn.plan_type as MfPlanType;
+                        let systematic = txn.systematic;
+
+                        if (txn.fp_id.startsWith("mfpp_")) {
+                            // Systematic Purchase Plan (SIP)
+                            livePlan = await fintech_primitive_mf_purchase_plan_service.get_purchase_plan(txn.fp_id);
+                            planType = "PURCHASE";
+                            systematic = true;
+                        } else if (txn.fp_id.startsWith("mfp_")) {
+                            // One-shot Purchase (Lumpsum)
+                            livePlan = await fintech_primitive_mf_purchase_service.get_purchase(txn.fp_id);
+                            planType = "PURCHASE";
+                            systematic = false;
+                        } else if (txn.fp_id.startsWith("mfrp_")) {
+                            // Systematic Redemption Plan (SWP)
+                            livePlan = await fintech_primitive_mf_redemption_plan_service.get_redemption_plan(txn.fp_id);
+                            planType = "REDEMPTION";
+                            systematic = true;
+                        } else if (txn.fp_id.startsWith("mfr_")) {
+                            // One-shot Redemption
+                            livePlan = await fintech_primitive_mf_redemption_service.get_redemption(txn.fp_id);
+                            planType = "REDEMPTION";
+                            systematic = false;
+                        } else if (txn.fp_id.startsWith("mfsp_") || txn.fp_id.startsWith("mfstp_") || txn.fp_id.startsWith("mfswp_")) {
+                            // Systematic Switch Plan (STP)
+                            livePlan = await fintech_primitive_mf_switch_plan_service.get_switch_plan(txn.fp_id);
+                            planType = "SWITCH";
+                            systematic = true;
+                        } else if (txn.fp_id.startsWith("mfs_") || txn.fp_id.startsWith("mfsw_")) {
+                            // One-shot Switch
+                            livePlan = await fintech_primitive_mf_switch_service.get_switch(txn.fp_id);
+                            planType = "SWITCH";
+                            systematic = false;
+                        } else {
+                            logger.warn(`${tag} Unknown ID prefix, skipping.`);
+                            failed_count++;
+                            failures.push({ fp_id: txn.fp_id, error: "Unknown ID prefix" });
+                            return;
+                        }
+
+                        if (!livePlan || !livePlan.state) {
+                            logger.warn(`${tag} No live state returned from FP`);
+                            failed_count++;
+                            failures.push({ fp_id: txn.fp_id, error: "No live state returned from FP" });
+                            return;
+                        }
+
+                        const liveStateUpper = livePlan.state.toUpperCase();
+                        const stateChanged = txn.state !== liveStateUpper;
+
+                        if (stateChanged || options.force) {
+                            logger.info(`${tag} State changed or force update: ${txn.state} -> ${liveStateUpper}`);
+                            if (stateChanged) {
+                                changes.push({
+                                    fp_id: txn.fp_id,
+                                    user_id: txn.user_id,
+                                    scheme: txn.scheme,
+                                    from: txn.state,
+                                    to: liveStateUpper,
+                                });
+                            }
+
+                            if (!options.dry_run) {
+                                await mf_transaction_plan_service.upsert_from_fp(
+                                    txn.user_id,
+                                    planType,
+                                    livePlan,
+                                    systematic
+                                );
+                            }
+                            updated_count++;
+                        } else {
+                            unchanged_count++;
+                        }
+
+                        await sleep(100);
+                    } catch (err: any) {
+                        const errMsg = err?.response?.data?.message || err?.message || "Unknown error";
+                        logger.error(`${tag} Sync FAILED:`, errMsg);
+                        failed_count++;
+                        failures.push({ fp_id: txn.fp_id, error: errMsg });
+                    }
+                })
+            )
+        );
+
+        const summary = {
+            total: transactions.length,
+            updated: updated_count,
+            unchanged: unchanged_count,
+            failed: failed_count,
+            dry_run: !!options.dry_run,
+            changes,
+            failures: failures.slice(0, 50),
+        };
+
+        logger.info("[MF TXN SYNC] Completed", summary);
         return summary;
     };
 }

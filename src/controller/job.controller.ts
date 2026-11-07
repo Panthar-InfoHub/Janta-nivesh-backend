@@ -474,6 +474,101 @@ class JobControllerClass {
         }
     };
 
+    mf_transactions_sync_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"] || req.headers["x-admin-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+
+            if (scheduler_token !== secret) {
+                logger.warn(
+                    `[SECURITY] Unauthorized attempt to access MF transactions sync job with token: ${scheduler_token}`
+                );
+                throw new AppError(
+                    "Unauthorized: Invalid or missing scheduler token",
+                    401,
+                    "Unauthorized"
+                );
+            }
+
+            logger.info("MF transactions sync job initiated via controller...");
+
+            const user_id = (req.body?.user_id || req.query?.user_id) as string | undefined;
+            const fp_id = (req.body?.fp_id || req.query?.fp_id) as string | undefined;
+            const state = (req.body?.state || req.query?.state) as string | undefined;
+            const only_active = req.body?.only_active === true || req.query?.only_active === "true";
+            const all = req.body?.all === true || req.query?.all === "true";
+            const dry_run = req.body?.dry_run === true || req.query?.dry_run === "true";
+            const force = req.body?.force === true || req.query?.force === "true";
+
+            const data = await job_service.mf_transactions_sync_job({
+                user_id,
+                fp_id,
+                state,
+                only_active,
+                all,
+                dry_run,
+                force,
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "MF transactions sync job completed successfully",
+                data,
+            });
+            return;
+        } catch (error: any) {
+            logger.error("Error in mf_transactions_sync_job controller:", error);
+            next(error);
+            return;
+        }
+    };
+
+    /**
+     * Dedicated low-frequency job to reconcile ACTIVE systematic plans (SIP/SWP/STP).
+     * Checks if any active plan was cancelled externally by AMC/user or finished all installments.
+     */
+    mf_active_plans_sync_job = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-scheduler-token"] || req.headers["x-admin-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+
+            if (scheduler_token !== secret) {
+                logger.warn(
+                    `[SECURITY] Unauthorized attempt to access MF active plans sync job with token: ${scheduler_token}`
+                );
+                throw new AppError(
+                    "Unauthorized: Invalid or missing scheduler token",
+                    401,
+                    "Unauthorized"
+                );
+            }
+
+            logger.info("MF active plans sync job initiated via controller...");
+
+            const user_id = (req.body?.user_id || req.query?.user_id) as string | undefined;
+            const dry_run = req.body?.dry_run === true || req.query?.dry_run === "true";
+            const force = req.body?.force === true || req.query?.force === "true";
+
+            const data = await job_service.mf_transactions_sync_job({
+                user_id,
+                state: "ACTIVE",
+                dry_run,
+                force,
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "MF active plans sync job completed successfully",
+                data,
+            });
+            return;
+        } catch (error: any) {
+            logger.error("Error in mf_active_plans_sync_job controller:", error);
+            next(error);
+            return;
+        }
+    };
+
 }
 
 export const job_controller = new JobControllerClass();

@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { renderPDF } from "../lib/fire-report.renderer.js";
+import { renderPDF, getChromeExecutablePath } from "../lib/fire-report.renderer.js";
 import { generateFireReportHTML } from "../lib/fire-report.template.js";
 import { to_report_view_data } from "../lib/fire-report.transformer.js";
 import logger from "../middleware/logger.js";
@@ -83,14 +83,14 @@ export const fire_report_controller = {
 
 async function checkChromeDependencies() {
     if (hasCheckedChrome) return;
-    const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || "/workspace/.cache/puppeteer/chrome/linux-146.0.7680.66/chrome-linux64/chrome";
+    const chromePath = getChromeExecutablePath();
 
     try {
-        if (!fs.existsSync(chromePath)) {
+        if (!chromePath || !fs.existsSync(chromePath)) {
             hasCheckedChrome = true;
             return;
         }
-        logger.info("Starting dependency check for Chrome...");
+        logger.info("Starting dependency check for Chrome...", { chromePath });
         // ldd lists all shared library dependencies and their status
         const { stdout, stderr } = await execPromise(`ldd ${chromePath}`);
 
