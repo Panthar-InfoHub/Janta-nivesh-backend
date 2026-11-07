@@ -4,6 +4,7 @@ import { env } from "../lib/config-env.js";
 import AppError from "../middleware/error.middleware.js";
 import logger from "../middleware/logger.js";
 import { job_service } from "../services/job.service.js";
+import { db } from "../server.js";
 
 class JobControllerClass {
 
@@ -443,6 +444,33 @@ class JobControllerClass {
             return;
         } catch (error: any) {
             logger.error("CRITICAL: FD Sync Job Failed. Rollback executed.", error.response?.data ?? error.message);
+            next(error);
+            return;
+        }
+    };
+
+    send_daily_fd_rates = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const startOfDay = new Date();
+            startOfDay.setUTCHours(0, 0, 0, 0);
+
+            // Fetch the rates updated from the start of the day until now
+            const todayRates = await db.fdInterestRate.findMany({
+                where: {
+                    updatedAt: {
+                        gte: startOfDay,
+                    },
+                },
+            });
+
+            // Send the data straight back in the HTTP response
+            return res.status(200).json({
+                success: true,
+                count: todayRates.length,
+                rates: todayRates,
+            });
+        } catch (error) {
+            logger.error(`Error fetching and sending fd rates ==> `, error);
             next(error);
             return;
         }

@@ -71,6 +71,7 @@ job_router.post("/mf-active-plans-sync", job_controller.mf_active_plans_sync_job
  * to velvet server to send janta nivesh back the updated interest rates as response
  */
 job_router.post("/get-fd-rates", job_controller.get_fd_rates_job);
+job_router.post("/send-daily-fd-rates", job_controller.send_daily_fd_rates);
 
 /**
  * Periodic KYC verification poll - queries all pending KYC submissions,
