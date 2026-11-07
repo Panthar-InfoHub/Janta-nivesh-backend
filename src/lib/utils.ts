@@ -282,13 +282,15 @@ export const decompressAndFilter = async (buffer: Buffer, period?: string) => {
 
     const nav_history = JSON.parse(decompressed.toString("utf-8"));
 
-    if (period === "all" || !period) return nav_history;
+    const normalizedPeriod = period ? period.toLowerCase().trim() : undefined;
+    if (normalizedPeriod === "all" || normalizedPeriod === "max" || !normalizedPeriod) return nav_history;
 
-    // Filtering logic based on period : 3,6,1y,3y, 5y, all
+    // Filtering logic based on period : 1m, 3m, 6m, 1y, 3y, 5y, all
     const now = new Date();
     const cutoffDate = new Date();
 
-    switch (period) {
+    switch (normalizedPeriod) {
+        case "1m": cutoffDate.setMonth(now.getMonth() - 1); break;
         case "3m": cutoffDate.setMonth(now.getMonth() - 3); break;
         case "6m": cutoffDate.setMonth(now.getMonth() - 6); break;
         case "1y": cutoffDate.setFullYear(now.getFullYear() - 1); break;

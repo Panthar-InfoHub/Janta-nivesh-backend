@@ -10,6 +10,7 @@ import { redis } from "../lib/redis.js";
 import { db } from "../server.js";
 import { mf_cart_service } from "../services/mf-cart.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
+import { fire_report_service } from "../services/fire.report.service.js";
 class UserFinanceControllerClass {
 
 
@@ -33,6 +34,8 @@ class UserFinanceControllerClass {
 
             const user_id: string = req.user!.id;
             logger.info(`Fetching user data for User ID: ${user_id}`);
+
+            const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
             const data = await user_service.get_all_user_data(user_id, {
                 user_goals: true,
@@ -147,12 +150,12 @@ class UserFinanceControllerClass {
                     //     return acc;
                     // }, {}) || {},
                     // kyc_progress: this.calculate_kyc_progress(data?.kyc_types || []),
-                    // user_home_data: {
-                    //     fire_number,
-                    //     net_worth,
-                    //     total_expenses,
-                    //     fire_percentage
-                    // }
+                    user_home_data: {
+                        fire_number,
+                        net_worth,
+                        total_expenses,
+                        fire_percentage
+                    }
                 }
             });
             return;

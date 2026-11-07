@@ -9,6 +9,8 @@
     "dev:dev": "APP_ENV=dev nodemon --watch src --ext ts --exec \"npm run build && APP_ENV=dev node ./dist/server.js\"",
     "dev:prod": "APP_ENV=prod nodemon --watch src --ext ts --exec \"npm run build && APP_ENV=prod node ./dist/server.js\"",
     "env:dev": "cp .env.dev .env && echo 'Switched root .env to DEV'",
+    "env:velvet_dev": "cp .env.velvet_dev .env && echo 'Switched root .env to Velvet DEV'",
+    "env:velvet_prod": "cp .env.velvet_prod .env && echo 'Switched root .env to Velvet PROD'",
     "env:prod": "cp .env.prod .env && echo 'Switched root .env to PROD'",
     "gcp-build": "DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate && npm run build",
     "start": "npx prisma migrate deploy && node dist/server.js",

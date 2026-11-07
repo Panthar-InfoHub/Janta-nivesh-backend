@@ -56,6 +56,13 @@ job_router.post("/mf-logo-sync", job_controller.mf_logo_sync_job);
 // mf_holding_sync_service.sync_account right after a transaction succeeds, not wired up yet.
 job_router.post("/mf-holdings-sync", job_controller.mf_holding_sync_job);
 
+// Sync MF transaction plans/orders with FP live state (SIP, Lumpsum, SWP, STP) - defaults to in-flight
+job_router.post("/mf-transactions-sync", job_controller.mf_transactions_sync_job);
+job_router.post("/mf-transaction-sync", job_controller.mf_transactions_sync_job);
+
+// Reconcile long-running ACTIVE systematic plans (SIP/SWP/STP) on a slower cadence (daily/weekly)
+job_router.post("/mf-active-plans-sync", job_controller.mf_active_plans_sync_job);
+
 
 /**
  * Daily job to get fd updated interest rates from velvet server

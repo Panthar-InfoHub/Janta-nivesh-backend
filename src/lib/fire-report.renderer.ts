@@ -1,12 +1,44 @@
+import os from "os";
+import fs from "fs";
+import path from "path";
 import puppeteer, { Browser } from "puppeteer";
 import logger from "../middleware/logger.js";
 
 let browser: Browser | null = null;
 
+export function getChromeExecutablePath(): string | undefined {
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    const searchDirs = [
+        path.join(process.cwd(), '.cache', 'puppeteer', 'chrome'),
+        path.join(os.homedir(), '.cache', 'puppeteer', 'chrome'),
+    ];
+
+    for (const cacheBasePath of searchDirs) {
+        if (fs.existsSync(cacheBasePath)) {
+            const versions = fs.readdirSync(cacheBasePath);
+            for (const ver of versions.reverse()) {
+                const candidate = path.join(cacheBasePath, ver, 'chrome-linux64', 'chrome');
+                if (fs.existsSync(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    return undefined;
+}
+
 async function getBrowser(): Promise<Browser> {
     if (browser && browser.connected) return browser;
+    const execPath = getChromeExecutablePath();
+    logger.info("Launching Puppeteer browser for FIRE Report...", { executablePath: execPath || "default" });
+
     browser = await puppeteer.launch({
         headless: true,
+        executablePath: execPath,
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
