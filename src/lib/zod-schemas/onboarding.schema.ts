@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { user_loan_zod_schema } from "./loan.schema.js";
+import { user_goal_zod_schema } from "./goal.schema.js";
 
 export const onboarding_finance_schema = z.union([
     z.object({
@@ -62,4 +63,20 @@ export const onboarding_loans_schema = z.union([
         loans: loan_array_schema,
     }),
     loan_array_schema,
+]);
+
+export const onboarding_goals_schema = z.union([
+    z.object({
+        skip: z.literal(true),
+    }),
+    z.object({
+        skip: z.literal(false).optional(),
+        goals: z.array(user_goal_zod_schema).min(1),
+    }),
+    z.object({
+        skip: z.literal(false).optional(),
+        goal: user_goal_zod_schema,
+    }),
+    user_goal_zod_schema,
+    z.array(user_goal_zod_schema).min(1),
 ]);

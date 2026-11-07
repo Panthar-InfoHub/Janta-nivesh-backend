@@ -25,3 +25,12 @@ mf_router.use("/redemption", mf_redemption_router);
 // Public (no login_require) - fund discovery happens before onboarding.
 // GET /api/v2/mf/funds?tag=popular&page=1&limit=5   ("see all" behind each home-screen carousel)
 mf_router.get("/funds", mf_catalogue_controller.get_funds_by_tag);
+
+// ------------------------ NAV History Routes -----------------------------
+// Registered before /:id parameter to prevent route collision
+//   GET /api/v2/mf/history/:id?period=1y
+mf_router.get("/history/:id", mf_catalogue_controller.get_mutual_fund_history);
+
+// ------------------------ Mutual Fund Details by ID ----------------------
+//   GET /api/v2/mf/:id
+mf_router.get("/:id", mf_catalogue_controller.get_mutual_fund_by_id);

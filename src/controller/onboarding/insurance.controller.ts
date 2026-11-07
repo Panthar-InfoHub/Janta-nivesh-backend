@@ -39,7 +39,7 @@ class InsuranceOnboardingControllerClass {
                     user.id,
                     {
                         insurance_status: "SKIPPED",
-                        current_stage: "INSURANCE_DETAILS",
+                        current_stage: "GOAL_DETAILS",
                     },
                 );
 
@@ -65,6 +65,7 @@ class InsuranceOnboardingControllerClass {
                 user.id,
                 {
                     insurance_status: "VERIFIED",
+                    current_stage: "GOAL_DETAILS",
                 },
             );
 
@@ -76,18 +77,6 @@ class InsuranceOnboardingControllerClass {
                 await user_onboarding_service.get_status_summary(
                     user.id,
                 );
-
-            const db_user =
-                await user_service.get_user_by_id(user.id);
-
-            await zoho_webhook_service.send_event({
-                event_type: "FINANCIAL_ONBOARDING_COMPLETED",
-                timestamp: new Date().toISOString(),
-                user_id: user.id,
-                user_phone: db_user?.phone_no,
-                full_name: db_user?.full_name,
-                email: db_user?.email,
-            });
 
             res.status(200).json({
                 success: true,
