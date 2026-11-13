@@ -1,0 +1,71 @@
+name: Velvet Staging & Production Pipeline
+
+# Trigger: Always run whenever code is pushed to docker-deploy
+on:
+  push:
+    branches:
+      - docker-deploy
+
+# Permissions: Push to branch and create PRs
+permissions:
+  contents: write
+  pull-requests: write
+
+# Jobs
+jobs:
+
+  # Job 1: Verify Code on docker-deploy branch (CI)
+  verify_build:
+    name: Verify TypeScript & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Test Build by GCP Build Script
+        run: npm run gcp-build
+
+  # Job 2: Raise Production PR (CD)
+  raise_production_pr:
+    name: Raise PR to Production
+    needs: verify_build  # This job runs ONLY if Job 1 passes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Ensure Pull Request to production Exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if an open PR from docker-deploy to production already exists
+          EXISTING_PR=$(gh pr list --base production --head docker-deploy --state open --json number -q '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR is already open. GitHub has automatically updated it with the latest commits!"
+          else
+            echo "Creating a new PR for production..."
+            gh pr create \
+              --base production \
+              --head docker-deploy \
+              --title "Release to Production (from docker-deploy)" \
+              --body "### Automated Production Release PR
+          This PR was automatically created by GitHub Actions because new changes were pushed and verified on \`docker-deploy\`.
+
+          **Checks:**
+          - [x] TypeScript & Build Verification passed
+
+          **Action Required:**
+          1. Review the changes.
+          2. When ready, click **Merge pull request** to deploy to Production."
+          fi

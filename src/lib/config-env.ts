@@ -121,7 +121,7 @@ export const env = {
     BLIND_INDEX_KEY: process.env.BLIND_INDEX_KEY || "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 
     // App Branding
-    APP_NAME: process.env.APP_NAME || "Velvet",
+    APP_NAME: process.env.APP_NAME || "Janta Nivesh",
 
     // Zoho Webhook
     ZOHO_API_KEY: process.env.ZOHO_API_KEY!

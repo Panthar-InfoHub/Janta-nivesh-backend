@@ -72,7 +72,7 @@ export const GOAL_TYPE_METADATA: Record<number, {
     },
 };
 
-class UserGoalServiceClass {
+export class UserGoalServiceClass {
     /**
      * Get system goal calculation configs enriched with frontend presentation metadata.
      */
@@ -248,7 +248,7 @@ class UserGoalServiceClass {
         return created;
     };
 
-    private static HOLDINGS_INCLUDE = {
+    static HOLDINGS_INCLUDE = {
         include: {
             mf_product: {
                 select: {
@@ -263,7 +263,7 @@ class UserGoalServiceClass {
         },
     } as const;
 
-    private formatGoalWithHoldings = (goal: any) => {
+    formatGoalWithHoldings = (goal: any) => {
         const holdings = (goal.holdings || []).map((h: any) => {
             const { raw_response, ...rest } = h;
             return rest;

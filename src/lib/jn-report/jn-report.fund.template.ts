@@ -1,4 +1,5 @@
 /** Report 2 — Fund Holding Report (single scheme, table-driven, section-aware). */
+import { env } from '../config-env.js';
 import { BRAND, brandBar, kpi, sectionTitle, disclaimer, shell } from './jn-report.base.js';
 import * as F from './jn-report.format.js';
 import { JnReportData } from './jn-report.types.js';
@@ -168,5 +169,5 @@ export function generateFundReportHTML(d: JnReportData): string {
     ${disclaimer(inv)}
   `;
 
-    return shell({ title: 'Janta Nivesh — Fund Holding Report', body });
+    return shell({ title: `${env.APP_NAME} — Fund Holding Report`, body });
 }
