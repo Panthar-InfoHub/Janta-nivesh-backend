@@ -6,9 +6,15 @@ import { get_bank_name_from_ifsc } from "../lib/bank-master.js";
 class UserBankDetailsServiceClass {
 
     get_primary = async (user_id: string) => {
-        const primary = await db.userBankDetails.findFirst({ where: { user_id, is_primary: true } });
+        const primary = await db.userBankDetails.findFirst({
+            where: { user_id, is_primary: true },
+            orderBy: { updatedAt: "desc" },
+        });
         if (primary) return primary;
-        return await db.userBankDetails.findFirst({ where: { user_id } });
+        return await db.userBankDetails.findFirst({
+            where: { user_id },
+            orderBy: { updatedAt: "desc" },
+        });
     }
 
     /**
@@ -24,7 +30,13 @@ class UserBankDetailsServiceClass {
         logger.debug("Persisting penny drop bank details", { user_id });
         const bank_name = input.bank_name || get_bank_name_from_ifsc(input.ifsc_code);
 
-        logger.debug(`Bank name ==> $${bank_name}`)
+        logger.debug(`Bank name ==> $${bank_name}`);
+
+        // Demote older bank accounts so the newly submitted bank account becomes the sole primary
+        await db.userBankDetails.updateMany({
+            where: { user_id },
+            data: { is_primary: false },
+        });
 
         return await db.userBankDetails.upsert({
             where: {

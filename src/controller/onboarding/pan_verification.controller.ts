@@ -7,6 +7,7 @@ import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
 import { user_bank_details_service } from "../../services/user-bank-details.service.js";
 import { sync_investment_account } from "../../services/kyc/investment-account-sync.service.js";
+import { penny_drop_controller } from "./penny_drop.controller.js";
 
 class PanVerificationControllerClass {
 
@@ -127,11 +128,13 @@ class PanVerificationControllerClass {
                 const dob_obj = pre_verification?.date_of_birth;
 
                 // 1. Check Readiness Status
-                if (readiness?.status === "failed") {
+                if (readiness?.status === "failed" || readiness?.code === "kyc_rate_limit_exceeded") {
                     const code = readiness?.code;
                     logger.error("Readiness check failed", { code, reason: readiness?.reason });
 
                     switch (code) {
+                        case "kyc_rate_limit_exceeded":
+                            throw new AppError("KYC check limit reached for this PAN. Please retry after some time.", 429, "READINESS_RATE_LIMIT_EXCEEDED");
                         case "kyc_unavailable":
                         case "kyc_rejected":
                             throw new AppError("KYC unavailable or rejected. Submit a new KYC form via KYC Forms API.", 400, "READINESS_KYC_NEW_REQUIRED");
@@ -213,23 +216,17 @@ class PanVerificationControllerClass {
                 }
 
                 // Bank account verification (only present once penny drop has fired a second
-                // pre_verification with bank_accounts attached) - sync UserBankDetails, no
-                // thrown errors on failure per-code here, just surface the raw result.
+                // pre_verification with bank_accounts attached) - sync UserBankDetails & evaluate outcome
                 const bank_accounts = pre_verification?.bank_accounts;
                 if (Array.isArray(bank_accounts) && bank_accounts.length > 0) {
                     const primary_bank = await user_bank_details_service.get_primary(user_id);
                     if (primary_bank) {
-                        await user_bank_details_service.sync_verification_from_pre_verification(primary_bank.id, bank_accounts[0]);
-
-                        const onboarding_before = await user_onboarding_service.get_or_create(user_id);
-                        if (bank_accounts[0]?.status === "verified") {
-                            await user_onboarding_service.update_stage(user_id, {
-                                penny_drop_status: "VERIFIED",
-                                ...(onboarding_before.current_stage === "PENNY_DROP_VERIFICATION" ? { current_stage: "NOMINEE_ADDITION" } : {}),
-                            });
-                        } else if (bank_accounts[0]?.status === "failed") {
-                            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
-                        }
+                        await penny_drop_controller.handle_bank_verification_result(
+                            user_id,
+                            primary_bank.id,
+                            bank_accounts[0],
+                            kyc_profile
+                        );
                     }
                 }
 

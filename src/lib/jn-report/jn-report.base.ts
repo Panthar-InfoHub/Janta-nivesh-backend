@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pct, signClass } from './jn-report.format.js';
 import { JnReportInvestor } from './jn-report.types.js';
+import { env } from '../config-env.js';
 
 export const BRAND = {
     navy: '#23336E',
@@ -25,12 +26,20 @@ let cachedLogoDataUri = '';
 export function getLogoDataUri(): string {
     if (cachedLogoDataUri) return cachedLogoDataUri;
 
-    const candidatePaths = [
-        path.join(__dirname, 'assets', 'janta-nivesh-logo.png'),
-        path.join(process.cwd(), 'src', 'lib', 'jn-report', 'assets', 'janta-nivesh-logo.png'),
-        path.join(process.cwd(), 'src', 'assets', 'reports', 'janta-nivesh-logo.png'),
-        path.join(process.cwd(), 'extras', 'jn', 'jn-reports', 'assets', 'janta-nivesh-logo.png'),
-    ];
+  const janta_candidatePaths = [
+    path.join(__dirname, 'assets', 'janta-nivesh-logo.png'),
+    path.join(process.cwd(), 'src', 'lib', 'jn-report', 'assets', 'janta-nivesh-logo.png'),
+    path.join(process.cwd(), 'src', 'assets', 'reports', 'janta-nivesh-logo.png'),
+    path.join(process.cwd(), 'extras', 'jn', 'jn-reports', 'assets', 'janta-nivesh-logo.png'),
+  ];
+  const velvet_candidatePaths = [
+    path.join(__dirname, 'assets', 'velvet-logo.png'),
+    path.join(process.cwd(), 'src', 'lib', 'jn-report', 'assets', 'velvet-logo.png'),
+    path.join(process.cwd(), 'src', 'assets', 'reports', 'velvet-logo.png'),
+    path.join(process.cwd(), 'extras', 'jn', 'jn-reports', 'assets', 'velvet-logo.png'),
+  ];
+
+  const candidatePaths = env.APP_NAME === 'Janta Nivesh' ? janta_candidatePaths : velvet_candidatePaths;
 
     for (const p of candidatePaths) {
         try {
@@ -197,7 +206,7 @@ table.tbl tr.totalrow td.l { text-align: left; }
 export const footerTemplate = (reportName: string): string => `
 <div style="font-family:'Inter',Arial,sans-serif;font-size:8px;color:#9AA3B5;width:100%;
      padding:0 12mm;display:flex;justify-content:space-between;align-items:center;">
-  <span>Janta Nivesh &nbsp;·&nbsp; ${reportName}</span>
+  <span>${env.APP_NAME} &nbsp;·&nbsp; ${reportName}</span>
   <span>Confidential - for the named investor only</span>
   <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
 </div>`;

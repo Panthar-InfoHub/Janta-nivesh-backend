@@ -1,6 +1,33 @@
 import { db } from "../server.js";
-import { CreateBundleInput } from "../lib/zod-schemas/bundle.schema.js";
+import { CreateBundleInput, UpdateBundleInput } from "../lib/zod-schemas/bundle.schema.js";
 import { Prisma } from "../prisma/generated/prisma/client.js";
+import AppError from "../middleware/error.middleware.js";
+
+function deep_merge(target: any, source: any): any {
+    if (typeof target !== "object" || target === null || Array.isArray(target)) {
+        return source;
+    }
+    if (typeof source !== "object" || source === null || Array.isArray(source)) {
+        return source;
+    }
+    const output = { ...target };
+    for (const key of Object.keys(source)) {
+        if (
+            typeof source[key] === "object" &&
+            source[key] !== null &&
+            !Array.isArray(source[key]) &&
+            key in target &&
+            typeof target[key] === "object" &&
+            target[key] !== null &&
+            !Array.isArray(target[key])
+        ) {
+            output[key] = deep_merge(target[key], source[key]);
+        } else {
+            output[key] = source[key];
+        }
+    }
+    return output;
+}
 
 class BundleServiceClass {
 
@@ -168,6 +195,61 @@ class BundleServiceClass {
                                 },
                             },
                         },
+                    },
+                },
+            },
+        });
+    }
+
+    async update_bundle(identifier: string, data: UpdateBundleInput) {
+        const bundle = await db.bundle.findFirst({
+            where: {
+                OR: [
+                    { id: identifier },
+                    { bundle_name: identifier },
+                ],
+            },
+        });
+
+        if (!bundle) {
+            throw new AppError("Bundle not found", 404, "BUNDLE_NOT_FOUND");
+        }
+
+        let updated_meta_data: any = bundle.meta_data;
+        if (data.meta_data !== undefined) {
+            if (data.meta_data === null) {
+                updated_meta_data = data.overwrite_meta_data ? null : bundle.meta_data;
+            } else if (data.overwrite_meta_data) {
+                updated_meta_data = data.meta_data as Prisma.InputJsonValue;
+            } else {
+                const existing_obj =
+                    typeof bundle.meta_data === "object" && bundle.meta_data !== null && !Array.isArray(bundle.meta_data)
+                        ? (bundle.meta_data as Record<string, any>)
+                        : {};
+                updated_meta_data = deep_merge(existing_obj, data.meta_data) as Prisma.InputJsonValue;
+            }
+        }
+
+        return await db.bundle.update({
+            where: { id: bundle.id },
+            data: {
+                ...(data.bundle_name !== undefined ? { bundle_name: data.bundle_name } : {}),
+                ...(data.bundle_description !== undefined ? { bundle_description: data.bundle_description } : {}),
+                ...(data.is_published !== undefined ? { is_published: data.is_published } : {}),
+                ...(data.equity_percentage !== undefined ? { equity_percentage: data.equity_percentage } : {}),
+                ...(data.commodity_percentage !== undefined ? { commodity_percentage: data.commodity_percentage } : {}),
+                ...(data.hybrid_percentage !== undefined ? { hybrid_percentage: data.hybrid_percentage } : {}),
+                ...(data.debt_percentage !== undefined ? { debt_percentage: data.debt_percentage } : {}),
+                ...(data.img_url !== undefined ? { img_url: data.img_url } : {}),
+                ...(data.hex !== undefined ? { hex: data.hex } : {}),
+                ...(data.meta_data !== undefined ? { meta_data: updated_meta_data as Prisma.InputJsonValue } : {}),
+            },
+            include: {
+                types: {
+                    select: {
+                        id: true,
+                        investment_type: true,
+                        start_amount: true,
                     },
                 },
             },

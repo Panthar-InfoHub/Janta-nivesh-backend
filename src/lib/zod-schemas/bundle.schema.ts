@@ -33,6 +33,22 @@ export const create_bundle_zod_schema = z.object({
 
 export type CreateBundleInput = z.infer<typeof create_bundle_zod_schema>;
 
+export const update_bundle_zod_schema = z.object({
+    bundle_name: z.string().min(1).optional(),
+    bundle_description: z.string().min(1).optional(),
+    is_published: z.boolean().optional(),
+    equity_percentage: z.number().min(0).max(100).optional(),
+    hybrid_percentage: z.number().min(0).max(100).optional(),
+    commodity_percentage: z.number().min(0).max(100).optional(),
+    debt_percentage: z.number().min(0).max(100).optional(),
+    img_url: z.string().nullable().optional(),
+    hex: z.string().nullable().optional(),
+    meta_data: z.record(z.string(), z.any()).optional().nullable(),
+    overwrite_meta_data: z.boolean().optional().default(false),
+});
+
+export type UpdateBundleInput = z.infer<typeof update_bundle_zod_schema>;
+
 // ─── Add Bundle to Cart ───────────────────────────────────────────────────────
 
 export const bundle_selection_schema = z.object({
