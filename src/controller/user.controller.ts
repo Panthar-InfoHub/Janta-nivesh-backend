@@ -11,6 +11,7 @@ import { db } from "../server.js";
 import { mf_cart_service } from "../services/mf-cart.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { fire_report_service } from "../services/fire.report.service.js";
+import { user_goal_service } from "../services/onboarding/user.goal.service.js";
 class UserFinanceControllerClass {
 
 
@@ -118,6 +119,7 @@ class UserFinanceControllerClass {
                 message: "User data fetched successfully",
                 data: {
                     ...data,
+                    user_goals: data.user_goals.map((goal: any) => user_goal_service.formatGoalWithHoldings(goal)),
                     onboarding: data?.onboarding ? {
                         ...data.onboarding,
                         ...onboarding_summary,

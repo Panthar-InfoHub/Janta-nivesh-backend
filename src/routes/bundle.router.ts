@@ -6,6 +6,8 @@ export const bundle_router = Router();
 bundle_router.get("/", bundle_controller.get_bundles);
 bundle_router.get("/:id", bundle_controller.get_bundle_by_id);
 bundle_router.post("/", bundle_controller.create_bundle);
+bundle_router.patch("/:id", bundle_controller.update_bundle);
+bundle_router.put("/:id", bundle_controller.update_bundle);
 bundle_router.patch("/:id/publish", bundle_controller.toggle_publish);
 bundle_router.delete("/:id", bundle_controller.delete_bundle);
 

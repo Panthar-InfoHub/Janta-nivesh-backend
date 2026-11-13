@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
 import { bundle_service } from "../services/bundle.services.js";
-import { create_bundle_zod_schema } from "../lib/zod-schemas/bundle.schema.js";
+import { create_bundle_zod_schema, update_bundle_zod_schema } from "../lib/zod-schemas/bundle.schema.js";
 import {
     mf_catalogue_service,
     MF_SECTION_TITLES,
@@ -197,6 +197,40 @@ class BundleControllerClass {
             return;
         } catch (error) {
             logger.error("Error in get_bundle_by_id controller:", error);
+            next(error);
+            return;
+        }
+    };
+
+    update_bundle = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const scheduler_token = req.headers["x-admin-token"];
+            const secret = process.env.SCHEDULER_SECRET || "default_secret";
+            if (scheduler_token !== secret) {
+                logger.warn(
+                    `[SECURITY] Unauthorized attempt to access update bundle job with token: ${scheduler_token}`
+                );
+                throw new AppError(
+                    "Unauthorized: Invalid or missing admin token",
+                    401,
+                    "Unauthorized"
+                );
+            }
+
+            const id = req.params.id as string;
+            logger.info(`Updating bundle: ${id}`);
+            const data = update_bundle_zod_schema.parse(req.body);
+
+            const result = await bundle_service.update_bundle(id, data);
+
+            res.status(200).json({
+                success: true,
+                message: "Bundle updated successfully",
+                data: result,
+            });
+            return;
+        } catch (error) {
+            logger.error("Error in update_bundle controller:", error);
             next(error);
             return;
         }

@@ -9,7 +9,7 @@ import { user_finance_service } from "./onboarding/user.finance.service.js";
 import { user_assets_service } from "./onboarding/user.assets.service.js";
 import { user_insurance_service } from "./onboarding/user.insurance.service.js";
 import { user_loan_service } from "./onboarding/user.loan.service.js";
-import { user_goal_service } from "./onboarding/user.goal.service.js";
+import { user_goal_service, UserGoalServiceClass } from "./onboarding/user.goal.service.js";
 import { hash_mpin, compare_mpin } from "../lib/utils.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import AppError from "../middleware/error.middleware.js";
@@ -230,6 +230,9 @@ class UserServiceClass {
                             status: { not: "DELETED" },
                         },
                         orderBy: { createdAt: "desc" },
+                        include: {
+                            holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+                        },
                     }
                     : false,
                 user_bank_details: options?.user_bank_details ?? false,

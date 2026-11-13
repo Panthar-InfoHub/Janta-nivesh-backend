@@ -198,26 +198,26 @@ class KycApprovalServiceClass {
 
                     if (code === "kyc_underprocess") {
                         logger.info("KRA KYC is still under process", { user_id, time_since_last_check });
-
-                        // If > 15 minutes have passed since last submit, submit a fresh pre_verification check to re-query KRA
-                        if (time_since_last_check > RECHECK_THROTTLE_MS) {
-                            logger.info("Throttle elapsed, creating fresh pre-verification to re-query KRA", { user_id });
-                            const new_pre_verification = await cybrilla_pan_verification_service.create_pre_verification({
-                                pan: kyc_profile.pan,
-                                name: kyc_profile.full_name,
-                                date_of_birth: kyc_profile.dob,
-                            });
-
-                            if (new_pre_verification?.id) {
-                                await kyc_profile_service.upsert(user_id, {
-                                    kyc_poll_pre_verification_id: new_pre_verification.id,
-                                    kyc_poll_status: "PENDING",
-                                    kyc_poll_submitted_at: new Date(),
-                                    kyc_poll_response: new_pre_verification,
-                                });
-                            }
-                        }
                         return { status: "PENDING", code: "kyc_underprocess" };
+                        // If > 15 minutes have passed since last submit, submit a fresh pre_verification check to re-query KRA
+                        // if (time_since_last_check > RECHECK_THROTTLE_MS) {
+                        //     logger.info("Throttle elapsed, creating fresh pre-verification to re-query KRA", { user_id });
+                        //     const new_pre_verification = await cybrilla_pan_verification_service.create_pre_verification({
+                        //         pan: kyc_profile.pan,
+                        //         name: kyc_profile.full_name,
+                        //         date_of_birth: kyc_profile.dob,
+                        //     });
+
+                        //     if (new_pre_verification?.id) {
+                        //         await kyc_profile_service.upsert(user_id, {
+                        //             kyc_poll_pre_verification_id: new_pre_verification.id,
+                        //             kyc_poll_status: "PENDING",
+                        //             kyc_poll_submitted_at: new Date(),
+                        //             kyc_poll_response: new_pre_verification,
+                        //         });
+                        //     }
+                        // }
+
                     }
 
                     // Terminal failures (kyc_rejected, kyc_deactivated)

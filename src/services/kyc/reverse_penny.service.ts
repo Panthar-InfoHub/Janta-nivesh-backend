@@ -267,17 +267,22 @@ class ReversePennyServiceClass {
      * Helper: Returns pre-filled bank details captured from Reverse Penny.
      */
     get_prefill = async (user_id: string) => {
-        const successful_rp = await db.userReversePennyVerification.findFirst({
-            where: { user_id, status: "SUCCESS" },
-            orderBy: { updatedAt: "desc" },
-        });
+        const [successful_rp, kyc_profile] = await Promise.all([
+            db.userReversePennyVerification.findFirst({
+                where: { user_id, status: "SUCCESS" },
+                orderBy: { updatedAt: "desc" },
+            }),
+            db.kycProfile.findFirst({
+                where: { user_id }
+            })
+        ])
 
         if (successful_rp?.payer_account_number && successful_rp?.payer_account_ifsc) {
             return {
                 has_prefilled: true,
                 account_number: successful_rp.payer_account_number,
                 ifsc_code: successful_rp.payer_account_ifsc,
-                account_holder_name: successful_rp.payer_name,
+                account_holder_name: kyc_profile.full_name,
                 account_type: successful_rp.payer_account_type || "SAVINGS",
                 payer_vpa: successful_rp.payer_vpa,
                 bank_name: get_bank_name_from_ifsc(successful_rp.payer_account_ifsc) || null,
@@ -292,7 +297,7 @@ class ReversePennyServiceClass {
                 has_prefilled: true,
                 account_number: bank.account_no,
                 ifsc_code: bank.ifsc_code,
-                account_holder_name: bank.account_holder_name,
+                account_holder_name: kyc_profile.full_name,
                 account_type: bank.account_type || "SAVINGS",
                 payer_vpa: null,
                 bank_name: bank.bank_name,

@@ -1,4 +1,5 @@
 /** Report 1 — Overall Portfolio Statement (table-driven, section-aware). */
+import { env } from '../config-env.js';
 import { BRAND, brandBar, kpi, sectionTitle, disclaimer, shell } from './jn-report.base.js';
 import * as F from './jn-report.format.js';
 import { JnReportData } from './jn-report.types.js';
@@ -181,5 +182,5 @@ export function generatePortfolioReportHTML(d: JnReportData): string {
     ${disclaimer(inv)}
   `;
 
-    return shell({ title: 'Janta Nivesh — Portfolio Statement', body });
+  return shell({ title: `${env.APP_NAME || 'Janta Nivesh'} — Portfolio Statement`, body });
 }

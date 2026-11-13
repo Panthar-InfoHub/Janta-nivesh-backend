@@ -12,9 +12,18 @@ type PreVerificationInput = {
         account_number: string;
         ifsc_code: string;
         account_type: string;
-        bank_account_proof?: string; // only needed for nre_savings/nro_savings, not plain savings
+        bank_account_proof?: string; // file_id from POST /poa/files
         verify_manually_if_required?: boolean;
     }>;
+};
+
+const format_cybrilla_account_type = (type?: string): string => {
+    if (!type) return "savings";
+    const lower = type.toLowerCase();
+    if (lower === "nre" || lower === "nre_savings") return "nre_savings";
+    if (lower === "nro" || lower === "nro_savings") return "nro_savings";
+    if (lower === "current") return "current";
+    return "savings";
 };
 
 // Thin Cybrilla API client - no DB writes here, that's the controller's job (calls this,
@@ -27,6 +36,34 @@ class CybrillaPanVerificationServiceClass {
     constructor() {
         this.base_url = env.CYBRILLA_API_BASE_URL;
     }
+
+    /**
+     * POST /poa/files - uploads a document (e.g. cancelled cheque, bank statement) to Cybrilla.
+     * Purpose defaults to "bank account proof". Returns { id: string, created_at: string }.
+     */
+    upload_file = async (file_buffer: Buffer, file_name: string, mime_type: string, purpose: string = "bank account proof") => {
+        const token = await provider_token_service.get_cybrilla_token();
+
+        logger.debug("Uploading file to Cybrilla /poa/files", { file_name, mime_type, purpose });
+
+        const form_data = new FormData();
+        form_data.append("purpose", purpose);
+        form_data.append("file", new Blob([new Uint8Array(file_buffer)], { type: mime_type }), file_name);
+
+        try {
+            const response = await axios.post(`${this.base_url}/poa/files`, form_data, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            logger.debug("Cybrilla file upload response ==> ", response.data);
+            return response.data as { id: string; created_at: string };
+        } catch (error: any) {
+            logger.error("Error uploading file to Cybrilla ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to upload bank account proof to provider", 502, "BANK_PROOF_UPLOAD_FAILED");
+        }
+    };
 
     /**
      * POST /poa/pre_verifications - kicks off the PAN readiness check, optionally also
@@ -48,10 +85,10 @@ class CybrillaPanVerificationServiceClass {
                     value: {
                         account_number: b.account_number,
                         ifsc_code: b.ifsc_code,
-                        account_type: b.account_type,
-                        // ...(b.bank_account_proof ? { bank_account_proof: b.bank_account_proof } : {}),
+                        account_type: format_cybrilla_account_type(b.account_type),
+                        ...(b.bank_account_proof ? { bank_account_proof: b.bank_account_proof } : {}),
                     },
-                    // verify_manually_if_required: b.verify_manually_if_required ?? true,
+                    ...(b.verify_manually_if_required !== undefined ? { verify_manually_if_required: b.verify_manually_if_required } : {}),
                 })),
             } : {}),
         };
