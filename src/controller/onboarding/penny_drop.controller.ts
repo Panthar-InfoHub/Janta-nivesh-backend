@@ -4,7 +4,6 @@ import logger from "../../middleware/logger.js";
 import { penny_drop_schema } from "../../lib/zod-schemas/penny-drop.schema.js";
 import { user_bank_details_service } from "../../services/user-bank-details.service.js";
 import { user_onboarding_service } from "../../services/kyc/user.onboarding.service.js";
-import { kyc_profile_service } from "../../services/kyc/kyc-profile.service.js";
 import { cybrilla_pan_verification_service } from "../../services/cybrilla/pan_verification.service.js";
 import { reverse_penny_service } from "../../services/kyc/reverse_penny.service.js";
 import { fintech_primitive_bank_account_service } from "../../services/fintech-primitive/bank_account.service.js";
@@ -15,12 +14,126 @@ import { db } from "../../server.js";
 class PennyDropControllerClass {
 
     /**
-     * Evaluates the bank_accounts[0] verification result from a Cybrilla pre_verification response.
-     * Updates UserBankDetails and UserOnboarding.
-     * If failed, throws the appropriate AppError:
-     * - "uncertain" / "bank_account_proof_required" -> AppError(..., 422, "BANK_MANUAL_VERIFICATION_REQUIRED")
-     * - "low_confidence" -> AppError(..., 400, "BANK_NAME_MISMATCH")
-     * - other failure -> AppError(..., 400, "BANK_VERIFICATION_FAILED")
+     * Submits primary bank account for manual verification with Cybrilla (TAT 24 hrs).
+     * Used by submit_bank_details fallback and manual_verify endpoint.
+     */
+    trigger_manual_verification = async (
+        user_id: string,
+        bank_details: { id: string; account_no: string; ifsc_code: string; account_type?: string | null },
+        kyc_profile: { pan: string; full_name: string; dob: string }
+    ) => {
+        logger.info("Submitting bank account for manual verification (verify_manually_if_required: true)", {
+            user_id,
+            bank_details_id: bank_details.id,
+        });
+
+        const manual_pre_verification = await cybrilla_pan_verification_service.create_pre_verification({
+            pan: kyc_profile.pan,
+            name: kyc_profile.full_name,
+            date_of_birth: kyc_profile.dob,
+            bank_accounts: [{
+                account_number: bank_details.account_no,
+                ifsc_code: bank_details.ifsc_code,
+                account_type: bank_details.account_type || "savings",
+                verify_manually_if_required: true,
+            }],
+        });
+
+        const pre_verif_id = manual_pre_verification?.id;
+
+        // Perform state updates in parallel
+        await Promise.all([
+            db.userBankDetails.update({
+                where: { id: bank_details.id },
+                data: {
+                    verification_status: "IN_PROGRESS",
+                    verification_method: "CYBRILLA_MANUAL_VERIFICATION",
+                    provider_reference_id: pre_verif_id ?? null,
+                },
+            }),
+            db.userOnboarding.update({
+                where: { user_id },
+                data: {
+                    penny_drop_status: "IN_PROGRESS",
+                    current_stage: "PENNY_DROP_VERIFICATION",
+                },
+            }),
+            pre_verif_id
+                ? db.kycProfile.update({
+                    where: { user_id },
+                    data: { cybrilla_pre_verification_id: pre_verif_id },
+                })
+                : Promise.resolve(),
+        ]);
+
+        return {
+            pre_verification_id: pre_verif_id ?? null,
+            verification_status: "IN_PROGRESS",
+            is_manual_verification: true,
+            tat: "24 hours",
+            bank_accounts: manual_pre_verification?.bank_accounts ?? null,
+        };
+    };
+
+    /**
+     * Completes bank account verification lifecycle when Cybrilla confirms status === "verified":
+     * 1. Creates FP bank account if investor_profile exists
+     * 2. Sets userBankDetails to VERIFIED
+     * 3. Sets userOnboarding penny_drop_status to VERIFIED & current_stage to NOMINEE_ADDITION
+     * 4. Syncs investment account & recomputes completion
+     */
+    finalize_verified_bank = async (
+        user_id: string,
+        bank_details: { id: string; account_no: string; ifsc_code: string; account_type?: string | null; account_holder_name?: string | null; fp_bank_account_id?: string | null },
+        kyc_profile: { full_name: string }
+    ) => {
+        logger.info("Finalizing verified bank account", { user_id, bank_details_id: bank_details.id });
+
+        const user = await user_service.get_user_by_id(user_id);
+        let fp_id = bank_details.fp_bank_account_id;
+        let fp_old_id: number | undefined;
+
+        if (user?.investor_profile && !fp_id) {
+            const fp_bank = await fintech_primitive_bank_account_service.create_bank_account(user.investor_profile, {
+                primary_account_holder_name: bank_details.account_holder_name ?? kyc_profile.full_name,
+                account_number: bank_details.account_no,
+                type: (bank_details.account_type as "savings" | "current" | "nre" | "nro") ?? "savings",
+                ifsc_code: bank_details.ifsc_code,
+            });
+            if (fp_bank?.id) {
+                fp_id = fp_bank.id;
+                fp_old_id = fp_bank.old_id;
+            }
+        }
+
+        // Single batch update for verified state
+        await Promise.all([
+            db.userBankDetails.update({
+                where: { id: bank_details.id },
+                data: {
+                    verification_status: "VERIFIED",
+                    verified_at: new Date(),
+                    ...(fp_id ? { fp_bank_account_id: fp_id } : {}),
+                    ...(fp_old_id !== undefined ? { fp_bank_account_old_id: fp_old_id } : {}),
+                },
+            }),
+            db.userOnboarding.update({
+                where: { user_id },
+                data: {
+                    penny_drop_status: "VERIFIED",
+                    current_stage: "NOMINEE_ADDITION",
+                },
+            }),
+        ]);
+
+        await sync_investment_account(user_id);
+        await user_onboarding_service.recompute_completion(user_id);
+
+        return { status: "verified" };
+    };
+
+    /**
+     * Public handler called by pan_verification.controller.ts and status polling
      */
     handle_bank_verification_result = async (
         user_id: string,
@@ -30,58 +143,45 @@ class PennyDropControllerClass {
     ) => {
         if (!bank_account_result) return null;
 
-        await user_bank_details_service.sync_verification_from_pre_verification(bank_details_id, bank_account_result);
-
         const status = bank_account_result.status;
         const code = bank_account_result.code;
         const reason = bank_account_result.reason;
 
         logger.info("Evaluating bank account verification outcome", { user_id, status, code, reason });
 
+        const current_bank = await db.userBankDetails.findUnique({ where: { id: bank_details_id } });
+        if (!current_bank) return null;
+
         if (status === "verified") {
-            const onboarding_before = await user_onboarding_service.get_or_create(user_id);
-            await user_onboarding_service.update_stage(user_id, {
-                penny_drop_status: "VERIFIED",
-                ...(onboarding_before.current_stage === "PENNY_DROP_VERIFICATION" ? { current_stage: "NOMINEE_ADDITION" } : {}),
-            });
-
-            const user = await user_service.get_user_by_id(user_id);
-            const current_bank = await db.userBankDetails.findUnique({ where: { id: bank_details_id } });
-
-            if (user?.investor_profile && current_bank && !current_bank.fp_bank_account_id) {
-                const fp_bank = await fintech_primitive_bank_account_service.create_bank_account(user.investor_profile, {
-                    primary_account_holder_name: current_bank.account_holder_name ?? kyc_profile?.full_name!,
-                    account_number: current_bank.account_no,
-                    type: (current_bank.account_type as "savings" | "current" | "nre" | "nro") ?? "savings",
-                    ifsc_code: current_bank.ifsc_code,
-                });
-                if (fp_bank?.id) {
-                    await user_bank_details_service.set_fp_bank_account_ids(current_bank.id, fp_bank.id, fp_bank.old_id);
-                }
-            }
-
-            await sync_investment_account(user_id);
-            await user_onboarding_service.recompute_completion(user_id);
-            return { status: "verified" };
+            return await this.finalize_verified_bank(user_id, current_bank, kyc_profile);
         }
 
         if (status === "failed") {
-            await user_onboarding_service.update_stage(user_id, { penny_drop_status: "FAILED" });
-            await user_onboarding_service.recompute_completion(user_id);
-
             if (code === "uncertain" || code === "bank_account_proof_required") {
-                logger.warn("Bank verification uncertain - manual verification required with proof", { user_id, code, reason });
-                throw new AppError(
-                    reason || "Bank account verification is uncertain. Please upload bank proof for manual verification.",
-                    422,
-                    "BANK_MANUAL_VERIFICATION_REQUIRED",
-                    {
-                        code,
-                        reason,
-                        bank_details_id,
-                    }
-                );
+                if (current_bank.verification_method === "CYBRILLA_MANUAL_VERIFICATION") {
+                    // Already in manual verification and Cybrilla finally failed it
+                    logger.warn("Bank verification failed after manual review", { user_id, code, reason });
+                    await Promise.all([
+                        db.userBankDetails.update({ where: { id: bank_details_id }, data: { verification_status: "FAILED" } }),
+                        db.userOnboarding.update({ where: { user_id }, data: { penny_drop_status: "FAILED" } }),
+                    ]);
+                    throw new AppError(
+                        reason || "Manual bank verification could not verify your account. Please submit a different bank account.",
+                        400,
+                        "BANK_VERIFICATION_FAILED",
+                        { code, reason, bank_details_id }
+                    );
+                }
+
+                // First time uncertain: auto-submit manual verification
+                return await this.trigger_manual_verification(user_id, current_bank, kyc_profile);
             }
+
+            // Low confidence (name mismatch) or general failure
+            await Promise.all([
+                db.userBankDetails.update({ where: { id: bank_details_id }, data: { verification_status: "FAILED" } }),
+                db.userOnboarding.update({ where: { user_id }, data: { penny_drop_status: "FAILED" } }),
+            ]);
 
             if (code === "low_confidence") {
                 logger.warn("Bank verification name mismatch", { user_id, code, reason });
@@ -105,6 +205,9 @@ class PennyDropControllerClass {
         return { status: status || "in_progress" };
     };
 
+    /**
+     * POST /api/v2/onboarding/penny-drop
+     */
     submit_bank_details = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user_id = req.user?.id!;
@@ -112,20 +215,23 @@ class PennyDropControllerClass {
 
             logger.info("Saving penny drop bank details", { user_id });
 
-            const onboarding_before = await user_onboarding_service.get_or_create(user_id);
-            if (onboarding_before.profile_status !== "VERIFIED") {
+            // 1. Single parallel read for preconditions
+            const [onboarding, kyc_profile] = await Promise.all([
+                db.userOnboarding.findUnique({ where: { user_id } }),
+                db.kycProfile.findUnique({ where: { user_id } }),
+            ]);
+
+            if (onboarding?.profile_status !== "VERIFIED") {
                 throw new AppError("Complete investor profile stage first", 400, "INVESTOR_PROFILE_REQUIRED");
             }
-
-            const bank_details = await user_bank_details_service.save_from_penny_drop(user_id, input);
-
-            const kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
             if (!kyc_profile?.pan || !kyc_profile?.full_name || !kyc_profile?.dob) {
                 throw new AppError("Complete PAN verification first", 400, "PAN_VERIFICATION_REQUIRED");
             }
 
-            // Re-run pre_verification, now with bank_accounts - same resource/poll endpoint
-            // as stage 1 (GET .../pan-verification/status), just an extended response this time.
+            // 2. Persist bank details
+            const bank_details = await user_bank_details_service.save_from_penny_drop(user_id, input);
+
+            // 3. Trigger digital pre-verification
             const pre_verification = await cybrilla_pan_verification_service.create_pre_verification({
                 pan: kyc_profile.pan,
                 name: kyc_profile.full_name,
@@ -137,58 +243,92 @@ class PennyDropControllerClass {
                 }],
             });
 
-            if (pre_verification?.id) {
-                await kyc_profile_service.upsert_pre_verification(user_id, {
-                    pan: kyc_profile.pan,
-                    full_name: kyc_profile.full_name,
-                    dob: kyc_profile.dob,
-                    pre_verification_response: pre_verification
-                });
-            }
-
-            await user_onboarding_service.update_stage(user_id, {
-                penny_drop_status: "IN_PROGRESS",
-                current_stage: "PENNY_DROP_VERIFICATION",
-            });
-            await user_onboarding_service.recompute_completion(user_id);
-
-            // One best-effort immediate poll - Cybrilla is sometimes fast enough that this
-            // already has the answer. If it's not done yet (or this call itself fails for any
-            // reason), we still return 200 for the actual save - frontend polls status from here.
-            let bank_accounts: any = null;
-            let is_processing_complete = false;
-
+            // 4. One-shot poll to check immediate result
+            let bank_result: any = null;
             if (pre_verification?.id) {
                 try {
                     const fetched = await cybrilla_pan_verification_service.get_pre_verification(pre_verification.id);
-                    await kyc_profile_service.update_pre_verification_status(user_id, fetched);
-
-                    is_processing_complete = !!fetched?.completed_at;
-                    bank_accounts = fetched?.bank_accounts ?? null;
-
-                    if (Array.isArray(bank_accounts) && bank_accounts.length > 0) {
-                        await this.handle_bank_verification_result(user_id, bank_details.id, bank_accounts[0], kyc_profile);
+                    if (fetched?.completed_at && Array.isArray(fetched.bank_accounts) && fetched.bank_accounts.length > 0) {
+                        bank_result = fetched.bank_accounts[0];
                     }
-                } catch (poll_error: any) {
-                    if (poll_error instanceof AppError) {
-                        throw poll_error;
-                    }
-                    logger.warn("Immediate one-shot pre-verification poll failed, leaving it to frontend polling", { user_id, error: poll_error });
+                } catch (poll_err) {
+                    logger.warn("Immediate pre-verification poll failed, leaving to polling", { user_id });
                 }
             }
 
-            const onboarding = await user_onboarding_service.get_status_summary(user_id);
+            // 5. Evaluate outcome with minimal DB operations
+            let final_pre_verif_id = pre_verification?.id ?? null;
+            let is_manual = false;
+            let is_verified = false;
+
+            if (bank_result?.status === "verified") {
+                is_verified = true;
+                await this.finalize_verified_bank(user_id, bank_details, kyc_profile);
+            } else if (
+                bank_result?.status === "failed" &&
+                (bank_result.code === "uncertain" || bank_result.code === "bank_account_proof_required")
+            ) {
+                // Auto-submit manual verification immediately (TAT 24 hrs)
+                is_manual = true;
+                const manual_outcome = await this.trigger_manual_verification(
+                    user_id,
+                    bank_details,
+                    kyc_profile as { pan: string; full_name: string; dob: string }
+                );
+                final_pre_verif_id = manual_outcome.pre_verification_id;
+            } else if (bank_result?.status === "failed") {
+                // Hard failure (low_confidence or bank_verification_failed)
+                await Promise.all([
+                    db.userBankDetails.update({ where: { id: bank_details.id }, data: { verification_status: "FAILED" } }),
+                    db.userOnboarding.update({ where: { user_id }, data: { penny_drop_status: "FAILED" } }),
+                ]);
+
+                if (bank_result.code === "low_confidence") {
+                    throw new AppError(
+                        bank_result.reason || "The name on this bank account does not match your KYC/PAN details.",
+                        400,
+                        "BANK_NAME_MISMATCH"
+                    );
+                }
+                throw new AppError(
+                    bank_result.reason || "Bank account verification failed. Please check the account number and IFSC code.",
+                    400,
+                    "BANK_VERIFICATION_FAILED"
+                );
+            } else {
+                // Still processing at Cybrilla
+                await Promise.all([
+                    db.userOnboarding.update({
+                        where: { user_id },
+                        data: { penny_drop_status: "IN_PROGRESS", current_stage: "PENNY_DROP_VERIFICATION" },
+                    }),
+                    final_pre_verif_id
+                        ? db.kycProfile.update({
+                            where: { user_id },
+                            data: { cybrilla_pre_verification_id: final_pre_verif_id },
+                        })
+                        : Promise.resolve(),
+                ]);
+            }
+
+            const summary = await user_onboarding_service.get_status_summary(user_id);
 
             res.status(200).json({
                 success: true,
-                message: "Bank details saved",
+                message: is_verified
+                    ? "Bank details verified successfully"
+                    : is_manual
+                        ? "Bank details submitted. Verification is under review (Turnaround time: 24 hours)."
+                        : "Bank details saved",
                 data: {
                     bank_account_id: bank_details.id,
-                    pre_verification_id: pre_verification?.id ?? null,
-                    is_processing_complete,
-                    bank_accounts,
-                    onboarding,
-                }
+                    pre_verification_id: final_pre_verif_id,
+                    is_processing_complete: is_verified,
+                    verification_status: is_verified ? "VERIFIED" : "IN_PROGRESS",
+                    is_manual_verification: is_manual,
+                    tat: is_manual ? "24 hours" : null,
+                    onboarding: summary,
+                },
             });
             return;
         } catch (error) {
@@ -200,44 +340,83 @@ class PennyDropControllerClass {
 
     /**
      * GET /api/v2/onboarding/penny-drop/status
-     * Dedicated poll endpoint for checking bank account verification status.
      */
     check_status = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user_id = req.user?.id!;
             logger.info("Polling penny drop verification status", { user_id });
 
-            const kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
+            // 1. Single parallel read for primary bank and kyc_profile
+            const [primary_bank, kyc_profile] = await Promise.all([
+                user_bank_details_service.get_primary(user_id),
+                db.kycProfile.findUnique({
+                    where: { user_id },
+                    select: { cybrilla_pre_verification_id: true, pan: true, full_name: true, dob: true },
+                }),
+            ]);
+
+            if (!primary_bank) {
+                throw new AppError("No bank details found for user", 404, "BANK_DETAILS_NOT_FOUND");
+            }
             if (!kyc_profile?.cybrilla_pre_verification_id) {
                 throw new AppError("No bank verification request found - submit bank details first", 404, "PRE_VERIFICATION_NOT_FOUND");
             }
 
-            const primary_bank = await user_bank_details_service.get_primary(user_id);
-            if (!primary_bank) {
-                throw new AppError("No bank details found for user", 404, "BANK_DETAILS_NOT_FOUND");
-            }
-
+            // 2. Fetch Cybrilla pre-verification status
             const pre_verification = await cybrilla_pan_verification_service.get_pre_verification(
                 kyc_profile.cybrilla_pre_verification_id
             );
-            await kyc_profile_service.update_pre_verification_status(user_id, pre_verification);
 
             const is_processing_complete = !!pre_verification?.completed_at;
             const bank_accounts = pre_verification?.bank_accounts ?? null;
+            let is_verified = primary_bank.verification_status === "VERIFIED";
+            let is_manual = primary_bank.verification_method === "CYBRILLA_MANUAL_VERIFICATION";
+            let current_pre_verif_id: string | null = kyc_profile.cybrilla_pre_verification_id;
 
             if (is_processing_complete && Array.isArray(bank_accounts) && bank_accounts.length > 0) {
-                await this.handle_bank_verification_result(user_id, primary_bank.id, bank_accounts[0], kyc_profile);
+                const bank_result = bank_accounts[0];
+
+                if (bank_result.status === "verified") {
+                    is_verified = true;
+                    is_manual = false;
+                    await this.finalize_verified_bank(user_id, primary_bank, kyc_profile as any);
+                } else if (
+                    bank_result.status === "failed" &&
+                    (bank_result.code === "uncertain" || bank_result.code === "bank_account_proof_required") &&
+                    !is_manual
+                ) {
+                    // First time uncertain: auto-submit manual verification
+                    is_manual = true;
+                    const manual_outcome = await this.trigger_manual_verification(
+                        user_id,
+                        primary_bank,
+                        kyc_profile as { pan: string; full_name: string; dob: string }
+                    );
+                    current_pre_verif_id = manual_outcome.pre_verification_id;
+                } else if (bank_result.status === "failed") {
+                    await Promise.all([
+                        db.userBankDetails.update({ where: { id: primary_bank.id }, data: { verification_status: "FAILED" } }),
+                        db.userOnboarding.update({ where: { user_id }, data: { penny_drop_status: "FAILED" } }),
+                    ]);
+                }
             }
 
             const onboarding = await user_onboarding_service.get_status_summary(user_id);
 
             res.status(200).json({
                 success: true,
-                message: "Bank verification status fetched",
+                message: is_verified
+                    ? "Bank details verified successfully"
+                    : is_manual
+                        ? "Bank verification is under review (Turnaround time: 24 hours)"
+                        : "Bank verification status fetched",
                 data: {
-                    pre_verification_id: pre_verification?.id,
+                    pre_verification_id: current_pre_verif_id,
                     status: pre_verification?.status,
-                    is_processing_complete,
+                    is_processing_complete: is_verified,
+                    verification_status: is_verified ? "VERIFIED" : is_manual ? "IN_PROGRESS" : primary_bank.verification_status,
+                    is_manual_verification: is_manual,
+                    tat: is_manual ? "24 hours" : null,
                     bank_accounts,
                     onboarding,
                 },
@@ -252,116 +431,45 @@ class PennyDropControllerClass {
 
     /**
      * POST /api/v2/onboarding/penny-drop/manual-verify
-     * Handles manual bank verification when digital verification returns uncertain.
-     * Uploads proof to Cybrilla /poa/files and triggers pre_verification with:
-     * - bank_account_proof: file_id
-     * - verify_manually_if_required: true
      */
     manual_verify = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user_id = req.user?.id!;
-            logger.info("Submitting manual bank verification with proof", { user_id });
+            logger.info("Submitting manual bank verification (verify_manually_if_required: true)", { user_id });
 
-            const file = (req as any).file;
-            if (!file) {
-                throw new AppError("Bank account proof file is required", 400, "BANK_PROOF_FILE_REQUIRED");
-            }
+            const [primary_bank, kyc_profile] = await Promise.all([
+                user_bank_details_service.get_primary(user_id),
+                db.kycProfile.findUnique({
+                    where: { user_id },
+                    select: { pan: true, full_name: true, dob: true },
+                }),
+            ]);
 
-            const primary_bank = await user_bank_details_service.get_primary(user_id);
             if (!primary_bank) {
                 throw new AppError("No bank details found - submit bank details first", 400, "BANK_DETAILS_NOT_FOUND");
             }
-
-            const kyc_profile = await kyc_profile_service.get_by_user_id(user_id);
             if (!kyc_profile?.pan || !kyc_profile?.full_name || !kyc_profile?.dob) {
                 throw new AppError("Complete PAN verification first", 400, "PAN_VERIFICATION_REQUIRED");
             }
 
-            // 1. Upload proof file to Cybrilla
-            const uploaded_file = await cybrilla_pan_verification_service.upload_file(
-                file.buffer,
-                file.originalname,
-                file.mimetype,
-                "bank account proof"
+            const outcome = await this.trigger_manual_verification(
+                user_id,
+                primary_bank,
+                kyc_profile as { pan: string; full_name: string; dob: string }
             );
-
-            if (!uploaded_file?.id) {
-                throw new AppError("Failed to upload bank account proof to provider", 502, "BANK_PROOF_UPLOAD_FAILED");
-            }
-
-            logger.info("Bank account proof uploaded to Cybrilla", { user_id, file_id: uploaded_file.id });
-
-            // 2. Trigger pre-verification with proof file & verify_manually_if_required: true
-            const pre_verification = await cybrilla_pan_verification_service.create_pre_verification({
-                pan: kyc_profile.pan,
-                name: kyc_profile.full_name,
-                date_of_birth: kyc_profile.dob,
-                bank_accounts: [{
-                    account_number: primary_bank.account_no,
-                    ifsc_code: primary_bank.ifsc_code,
-                    account_type: primary_bank.account_type || "savings",
-                    bank_account_proof: uploaded_file.id,
-                    verify_manually_if_required: true,
-                }],
-            });
-
-            if (pre_verification?.id) {
-                await kyc_profile_service.upsert_pre_verification(user_id, {
-                    pan: kyc_profile.pan,
-                    full_name: kyc_profile.full_name,
-                    dob: kyc_profile.dob,
-                    pre_verification_response: pre_verification,
-                });
-            }
-
-            await db.userBankDetails.update({
-                where: { id: primary_bank.id },
-                data: {
-                    verification_status: "IN_PROGRESS",
-                    verification_method: "CYBRILLA_MANUAL_VERIFICATION",
-                },
-            });
-
-            await user_onboarding_service.update_stage(user_id, {
-                penny_drop_status: "IN_PROGRESS",
-                current_stage: "PENNY_DROP_VERIFICATION",
-            });
-            await user_onboarding_service.recompute_completion(user_id);
-
-            // One best-effort immediate poll
-            let is_processing_complete = false;
-            let bank_accounts: any = null;
-
-            if (pre_verification?.id) {
-                try {
-                    const fetched = await cybrilla_pan_verification_service.get_pre_verification(pre_verification.id);
-                    await kyc_profile_service.update_pre_verification_status(user_id, fetched);
-
-                    is_processing_complete = !!fetched?.completed_at;
-                    bank_accounts = fetched?.bank_accounts ?? null;
-
-                    if (is_processing_complete && Array.isArray(bank_accounts) && bank_accounts.length > 0) {
-                        await this.handle_bank_verification_result(user_id, primary_bank.id, bank_accounts[0], kyc_profile);
-                    }
-                } catch (poll_err: any) {
-                    if (poll_err instanceof AppError) {
-                        throw poll_err;
-                    }
-                    logger.warn("Immediate poll on manual verify failed, leaving to polling", { user_id, error: poll_err });
-                }
-            }
 
             const onboarding = await user_onboarding_service.get_status_summary(user_id);
 
-            res.status(202).json({
+            res.status(200).json({
                 success: true,
-                message: "Bank account proof submitted for manual verification",
+                message: "Bank details submitted for manual verification (Turnaround time: 24 hours)",
                 data: {
                     bank_account_id: primary_bank.id,
-                    pre_verification_id: pre_verification?.id ?? null,
-                    proof_file_id: uploaded_file.id,
-                    is_processing_complete,
-                    bank_accounts,
+                    pre_verification_id: outcome.pre_verification_id,
+                    verification_status: "IN_PROGRESS",
+                    is_manual_verification: true,
+                    tat: "24 hours",
+                    bank_accounts: outcome.bank_accounts,
                     onboarding,
                 },
             });
@@ -375,8 +483,6 @@ class PennyDropControllerClass {
 
     /**
      * GET /api/v2/onboarding/penny-drop/prefill
-     * Returns verified bank details captured during Reverse Penny (Decentro UPI ₹1).
-     * Used by the frontend Penny Drop screen to automatically populate bank details.
      */
     get_prefill = async (req: Request, res: Response, next: NextFunction) => {
         try {
