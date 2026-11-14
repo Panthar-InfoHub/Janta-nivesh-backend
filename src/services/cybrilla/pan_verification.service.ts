@@ -107,7 +107,14 @@ class CybrillaPanVerificationServiceClass {
             return response.data;
         } catch (error: any) {
             logger.error("Error creating Cybrilla pre-verification ==> ", error?.response?.data || error.message);
-            throw new AppError("Failed to submit PAN readiness check", 502, "PAN_READINESS_CHECK_FAILED");
+            const errData = error?.response?.data;
+            const errMsg =
+                errData?.error?.errors?.[0]?.message ||
+                errData?.error?.message ||
+                errData?.message ||
+                "Failed to submit PAN readiness check";
+            const status = error?.response?.status && error.response.status < 500 ? error.response.status : 502;
+            throw new AppError(errMsg, status, "PAN_READINESS_CHECK_FAILED", errData);
         }
     }
 
