@@ -69,6 +69,7 @@ class FintechPrimitiveMfPurchasePlanServiceClass {
             purpose: input.purpose,
             number_of_installments: installments,
             systematic: true,
+            generate_first_installment_now: true,
             payment_method: "mandate",
             payment_source: mandate_id,
             auto_generate_installments: true,

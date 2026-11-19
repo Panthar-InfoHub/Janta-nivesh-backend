@@ -230,7 +230,7 @@ class MfTransactionPlanServiceClass {
 
             state,
             auto_generate_installments: plan.auto_generate_installments ?? true,
-            generate_first_installment_now: plan.generate_first_installment_now ?? false,
+            generate_first_installment_now: plan.generate_first_installment_now ?? (plan_type === "PURCHASE" && systematic),
 
             payment_method: plan.payment_method ?? null,
             payment_source: plan.payment_source ?? null,
@@ -304,6 +304,28 @@ class MfTransactionPlanServiceClass {
         });
 
         if (!existing) {
+            // Check if this purchase is an installment generated for a purchase plan
+            const plan_fp_id = purchase?.plan || purchase?.mf_purchase_plan;
+            if (plan_fp_id) {
+                const parent_plan = await db.mfTransactionPlan.findUnique({
+                    where: { fp_id: plan_fp_id },
+                    select: { user_id: true },
+                });
+                if (parent_plan) {
+                    logger.info("MF purchase webhook matched parent purchase plan", {
+                        fp_id,
+                        plan_fp_id,
+                        user_id: parent_plan.user_id,
+                    });
+                    return await this.upsert_from_fp(
+                        parent_plan.user_id,
+                        "PURCHASE",
+                        purchase,
+                        false,
+                    );
+                }
+            }
+
             logger.warn("MF purchase webhook received for unknown FP id", {
                 fp_id,
             });

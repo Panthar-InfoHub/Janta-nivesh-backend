@@ -118,6 +118,26 @@ class FintechPrimitiveMfPurchaseServiceClass {
         }
     }
 
+    /** GET /v2/mf_purchases?plan=:plan_id - fetches purchases linked to a purchase plan. */
+    get_purchases_by_plan_id = async (plan_id: string) => {
+        logger.debug("Fetching FP mf_purchases by plan id", { plan_id });
+
+        try {
+            const response = await axios.get(`${this.base_url}/v2/mf_purchases`, {
+                headers: await this.auth_headers(),
+                params: {
+                    plan: plan_id,
+                },
+            });
+
+            logger.debug("FP mf_purchases by plan id response ==> ", response.data);
+            return response.data;
+        } catch (error: any) {
+            logger.error("Error fetching FP mf_purchases by plan id ==> ", error?.response?.data || error.message);
+            throw new AppError("Failed to fetch MF purchases for plan", 502, "MF_PURCHASES_BY_PLAN_FETCH_FAILED");
+        }
+    }
+
     /**
      * PATCH /v2/mf_purchases - `state` and `consent` are both Conditional per the docs, so this
      * one method covers both steps of the confirm sequence: consent first (order stays pending),
