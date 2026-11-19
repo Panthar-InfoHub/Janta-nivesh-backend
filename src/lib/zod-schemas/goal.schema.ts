@@ -62,6 +62,35 @@ export const otherGoalSchema = baseRateAndSavingsSchema.extend({
     current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000").max(200000000, "Current cost cannot exceed ₹20 crore"),
 });
 
+// 7. Retirement Goal (goal_type_id: 7) - Velvet
+export const retirementGoalSchema = z.object({
+    goal_type_id: z.literal(7),
+    goal_name: z.string().min(2, "Goal name must be at least 2 characters").max(60).default("Retirement"),
+    retirement_age: z.coerce.number().int().min(20, "Retirement age must be >= 20").max(100, "Retirement age must be <= 100").default(60),
+    plan_until_age: z.coerce.number().int().min(30, "Plan until age must be >= 30").max(120, "Plan until age must be <= 120").default(90),
+    monthly_lifestyle_cost: z.coerce.number().min(1000, "Monthly lifestyle cost must be at least ₹1,000"),
+    existing_retirement_savings: z.coerce.number().min(0, "Existing savings must be >= 0").optional().default(0),
+    current_monthly_sip: z.coerce.number().min(0, "Current monthly SIP must be >= 0").optional().default(0),
+    pension_or_regular_income: z.coerce.number().min(0, "Pension must be >= 0").optional().default(0),
+    annual_pension_increase: z.coerce.number().min(0, "Annual pension increase must be >= 0").optional().default(0),
+    pre_retirement_return: z.coerce.number().min(0).optional(),
+    post_retirement_return: z.coerce.number().min(0).optional(),
+    inflation_before_retirement: z.coerce.number().min(0).optional(),
+    inflation_during_retirement: z.coerce.number().min(0).optional(),
+    additional_corpus_buffer: z.coerce.number().min(0).optional(),
+
+    // Optional legacy/compatibility fields
+    years_remaining: z.coerce.number().int().min(0).optional(),
+    current_savings: z.coerce.number().min(0).optional(),
+    current_cost: z.coerce.number().min(0).optional(),
+    target_amount: z.coerce.number().min(0).optional(),
+    inflation_rate: z.coerce.number().min(0).optional(),
+    expected_return_rate: z.coerce.number().min(0).optional(),
+}).refine(data => data.plan_until_age > data.retirement_age, {
+    message: "plan_until_age must be greater than retirement_age",
+    path: ["plan_until_age"],
+});
+
 /**
  * Discriminated union for creating a goal (v2)
  */
@@ -72,6 +101,7 @@ export const user_goal_zod_schema = z.discriminatedUnion("goal_type_id", [
     buyVehicleSchema,
     buildSavingsSchema,
     otherGoalSchema,
+    retirementGoalSchema,
 ]);
 
 /**
@@ -82,20 +112,33 @@ export const user_goal_update_zod_schema = z.object({
     child_name: z.string().min(2).max(50).optional(),
     child_age: z.coerce.number().int().min(0).max(30).optional(),
     asset_subtype: z.enum(["BIKE", "SCOOTER", "CAR"]).optional(),
-    years_remaining: z.coerce.number().int().min(1).max(30).optional(),
+    years_remaining: z.coerce.number().int().min(0).max(60).optional(),
     current_cost: z.coerce.number().min(1000).optional(),
     target_amount: z.coerce.number().min(1000).optional(),
     current_savings: z.coerce.number().min(0).optional(),
     inflation_rate: z.coerce.number().min(0).optional(),
     expected_return_rate: z.coerce.number().min(0).optional(),
     status: z.enum(["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED", "DELETED"]).optional(),
+
+    // Retirement-specific updates
+    retirement_age: z.coerce.number().int().min(20).max(100).optional(),
+    plan_until_age: z.coerce.number().int().min(30).max(120).optional(),
+    monthly_lifestyle_cost: z.coerce.number().min(1000).optional(),
+    existing_retirement_savings: z.coerce.number().min(0).optional(),
+    current_monthly_sip: z.coerce.number().min(0).optional(),
+    pension_or_regular_income: z.coerce.number().min(0).optional(),
+    annual_pension_increase: z.coerce.number().min(0).optional(),
+    pre_retirement_return: z.coerce.number().min(0).optional(),
+    post_retirement_return: z.coerce.number().min(0).optional(),
+    inflation_before_retirement: z.coerce.number().min(0).optional(),
+    inflation_during_retirement: z.coerce.number().min(0).optional(),
+    additional_corpus_buffer: z.coerce.number().min(0).optional(),
 });
 
 /**
- * Schema for the interactive preview calculation endpoint
+ * Schemas for the interactive preview calculation endpoint
  */
-export const goal_calculate_schema = z.object({
-    goal_type_id: z.coerce.number().int().min(1).max(6),
+export const standard_goal_calculate_schema = z.object({
     years_remaining: z.coerce.number().int().min(1).max(30),
     current_cost: z.coerce.number().min(0).optional(),
     target_amount: z.coerce.number().min(0).optional(),
@@ -103,6 +146,36 @@ export const goal_calculate_schema = z.object({
     inflation_rate: z.coerce.number().min(0).optional(),
     expected_return_rate: z.coerce.number().min(0).optional(),
 });
+
+export const retirement_calculate_schema = z.object({
+    goal_type_id: z.literal(7),
+    current_age: z.coerce.number().int().min(18, "Current age must be >= 18").max(100, "Current age must be <= 100").default(30),
+    retirement_age: z.coerce.number().int().min(20, "Retirement age must be >= 20").max(100, "Retirement age must be <= 100").default(60),
+    plan_until_age: z.coerce.number().int().min(30, "Plan until age must be >= 30").max(120, "Plan until age must be <= 120").default(90),
+    monthly_lifestyle_cost: z.coerce.number().min(0, "Monthly lifestyle cost must be >= 0"),
+    existing_retirement_savings: z.coerce.number().min(0, "Existing savings must be >= 0").optional().default(0),
+    current_monthly_sip: z.coerce.number().min(0, "Current monthly SIP must be >= 0").optional().default(0),
+    pension_or_regular_income: z.coerce.number().min(0, "Pension must be >= 0").optional().default(0),
+    annual_pension_increase: z.coerce.number().min(0, "Annual pension increase must be >= 0").optional().default(0),
+    pre_retirement_return: z.coerce.number().min(0).optional(),
+    post_retirement_return: z.coerce.number().min(0).optional(),
+    inflation_before_retirement: z.coerce.number().min(0).optional(),
+    inflation_during_retirement: z.coerce.number().min(0).optional(),
+    additional_corpus_buffer: z.coerce.number().min(0).optional(),
+}).refine(data => data.plan_until_age > data.retirement_age, {
+    message: "plan_until_age must be greater than retirement_age",
+    path: ["plan_until_age"],
+});
+
+export const goal_calculate_schema = z.discriminatedUnion("goal_type_id", [
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(1) }),
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(2) }),
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(3) }),
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(4) }),
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(5) }),
+    standard_goal_calculate_schema.extend({ goal_type_id: z.literal(6) }),
+    retirement_calculate_schema,
+]);
 
 /**
  * Mapping mutual fund holdings to goals
@@ -172,5 +245,7 @@ export type goal_map_res = {
 
 export type GoalMapInput = z.infer<typeof goal_map_zod_schema>;
 export type UserGoalInput = z.infer<typeof user_goal_zod_schema>;
+export type RetirementGoalInput = z.infer<typeof retirementGoalSchema>;
+export type RetirementCalculateInput = z.infer<typeof retirement_calculate_schema>;
 export type UserGoalUpdateInput = z.infer<typeof user_goal_update_zod_schema>;
 export type GoalCalculateInput = z.infer<typeof goal_calculate_schema>;

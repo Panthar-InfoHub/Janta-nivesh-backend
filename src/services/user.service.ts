@@ -232,6 +232,7 @@ class UserServiceClass {
                         orderBy: { createdAt: "desc" },
                         include: {
                             holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+                            retirement_details: true,
                         },
                     }
                     : false,
