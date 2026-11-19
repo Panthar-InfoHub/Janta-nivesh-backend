@@ -788,6 +788,7 @@ class FireReportServiceClass {
                 4: "Buy a Vehicle",
                 5: "Build My Savings",
                 6: "Other Goal",
+                7: "Retirement",
             };
 
             const normalized: NormalizedGoalWithSIP[] = [];
