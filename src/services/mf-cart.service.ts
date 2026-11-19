@@ -1065,7 +1065,7 @@ class MfCartServiceClass {
         const first_installment_orders: any[] = [];
 
         for (const plan of confirmed_plans) {
-            if (plan.generate_first_installment_now) {
+            if (plan.generate_first_installment_now || (plan.plan_type === "PURCHASE" && plan.systematic)) {
                 try {
                     let order_items: any[] = [];
                     for (let attempt = 0; attempt < 3; attempt++) {

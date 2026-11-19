@@ -237,7 +237,7 @@ class MfPurchasePlanControllerClass {
             let order: any = null;
             let payment: any = null;
 
-            if (updated.generate_first_installment_now) {
+            if (updated.generate_first_installment_now || (updated.plan_type === "PURCHASE" && updated.systematic)) {
                 try {
                     let order_items: any[] = [];
                     for (let attempt = 0; attempt < 3; attempt++) {

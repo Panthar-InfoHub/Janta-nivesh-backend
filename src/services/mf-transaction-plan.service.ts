@@ -230,7 +230,7 @@ class MfTransactionPlanServiceClass {
 
             state,
             auto_generate_installments: plan.auto_generate_installments ?? true,
-            generate_first_installment_now: plan.generate_first_installment_now ?? false,
+            generate_first_installment_now: plan.generate_first_installment_now ?? (plan_type === "PURCHASE" && systematic),
 
             payment_method: plan.payment_method ?? null,
             payment_source: plan.payment_source ?? null,
