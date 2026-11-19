@@ -19,6 +19,7 @@ export const create_mf_purchase_plan_schema = z.object({
     installment_day: z.number().int().min(1).max(31).optional(), // must be null for frequency = daily
     folio_number: z.string().optional(),
     purpose: z.enum(["children_education", "children_marriage", "house", "car", "travel", "retirement", "others"]).optional(),
+    generate_first_installment_now: z.boolean().default(true).optional(),
 }).refine(
     (v) => v.frequency !== "monthly" || v.installment_day !== undefined,
     { message: "installment_day is required for monthly frequency", path: ["installment_day"] }
@@ -36,6 +37,7 @@ export type ResolvedMfPurchasePlanInput = Omit<CreateMfPurchasePlanInput, "mf_pr
 
 export const verify_purchase_plan_confirmation_otp_schema = z.object({
     otp: z.string().length(6),
+    payment_postback_url: z.string().url().optional(),
 });
 
 export type VerifyPurchasePlanConfirmationOtpInput = z.infer<typeof verify_purchase_plan_confirmation_otp_schema>;
