@@ -1034,6 +1034,32 @@ class JobServiceClass {
                             unchanged_count++;
                         }
 
+                        // For systematic purchase plans (SIP), also discover and reconcile child installment orders
+                        if (txn.fp_id.startsWith("mfpp_")) {
+                            try {
+                                const rawPurchases = await fintech_primitive_mf_purchase_service.get_purchases_by_plan_id(txn.fp_id);
+                                const installmentOrders = Array.isArray(rawPurchases?.data)
+                                    ? rawPurchases.data
+                                    : Array.isArray(rawPurchases)
+                                    ? rawPurchases
+                                    : [];
+                                for (const order of installmentOrders) {
+                                    if (!options.dry_run) {
+                                        await mf_transaction_plan_service.upsert_from_fp(
+                                            txn.user_id,
+                                            "PURCHASE",
+                                            order,
+                                            false
+                                        );
+                                    }
+                                }
+                            } catch (instErr: any) {
+                                logger.warn(`${tag} Failed to sync child installments for plan ${txn.fp_id}`, {
+                                    error: instErr?.message || instErr,
+                                });
+                            }
+                        }
+
                         await sleep(100);
                     } catch (err: any) {
                         const errMsg = err?.response?.data?.message || err?.message || "Unknown error";

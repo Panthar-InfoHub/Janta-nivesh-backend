@@ -915,6 +915,7 @@ class MfCartServiceClass {
         user_id: string,
         batch_id: string,
         otp: string,
+        payment_postback_url?: string,
     ) => {
         await plan_confirmation_otp_service.verify_otp(
             user_id,
@@ -1061,6 +1062,81 @@ class MfCartServiceClass {
             confirmed_plans.push(saved_plan);
         }
 
+        const first_installment_orders: any[] = [];
+
+        for (const plan of confirmed_plans) {
+            if (plan.generate_first_installment_now) {
+                try {
+                    let order_items: any[] = [];
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        const raw = await fintech_primitive_mf_purchase_service.get_purchases_by_plan_id(plan.fp_id);
+                        const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+                        if (list.length > 0) {
+                            order_items = list;
+                            break;
+                        }
+                        if (attempt < 2) {
+                            await new Promise((resolve) => setTimeout(resolve, 800));
+                        }
+                    }
+
+                    for (const item of order_items) {
+                        const saved_order = await mf_transaction_plan_service.upsert_from_fp(
+                            user_id,
+                            "PURCHASE",
+                            item,
+                            false,
+                        );
+                        first_installment_orders.push(saved_order);
+                    }
+                } catch (err: any) {
+                    logger.error("Error fetching generated 1st installment for plan ==> ", {
+                        plan_id: plan.fp_id,
+                        error: err?.message || err,
+                    });
+                }
+            }
+        }
+
+        let payment: any = null;
+        if (first_installment_orders.length > 0) {
+            const primary_bank = await user_bank_details_service.get_primary(user_id);
+            if (!primary_bank?.fp_bank_account_old_id) {
+                logger.warn("Primary bank account not configured for user, skipping payment creation for SIP 1st installment", { user_id });
+            } else {
+                const valid_orders = first_installment_orders.filter((o) => o.fp_old_id);
+                if (valid_orders.length > 0) {
+                    try {
+                        payment = await fintech_primitive_payment_service.create_payment({
+                            amc_order_ids: valid_orders.map((o) => o.fp_old_id!),
+                            bank_account_id: primary_bank.fp_bank_account_old_id,
+                            payment_postback_url,
+                        });
+
+                        if (payment?.id) {
+                            const payment_id = String(payment.id);
+                            for (const order of valid_orders) {
+                                await mf_transaction_plan_service.set_payment_id(
+                                    order.id,
+                                    payment_id,
+                                );
+                                if (payment?.status) {
+                                    await mf_transaction_plan_service.set_payment_status(
+                                        order.id,
+                                        payment.status,
+                                    );
+                                }
+                            }
+                        }
+                    } catch (err: any) {
+                        logger.error("Error creating payment for SIP 1st installments ==> ", {
+                            error: err?.message || err,
+                        });
+                    }
+                }
+            }
+        }
+
         await db.mfCartItem.deleteMany({
             where: {
                 user_id,
@@ -1074,6 +1150,13 @@ class MfCartServiceClass {
             batch_id,
             plans_count: confirmed_plans.length,
             plans: confirmed_plans,
+            orders_count: first_installment_orders.length,
+            orders: first_installment_orders,
+            payment: payment ? {
+                id: String(payment.id),
+                status: payment.status,
+                payment_url: payment.payment_url,
+            } : null,
         };
     };
 

@@ -189,6 +189,7 @@ class MfCartCheckoutControllerClass {
             const {
                 batch_id,
                 otp,
+                payment_postback_url,
             } = confirm_sip_checkout_schema.parse(req.body);
 
             const result =
@@ -196,6 +197,7 @@ class MfCartCheckoutControllerClass {
                     user_id,
                     batch_id,
                     otp,
+                    payment_postback_url,
                 );
 
             res.status(200).json({

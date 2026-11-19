@@ -71,7 +71,7 @@ model MfTransactionPlan {
 
   state                          MfTransactionState
   auto_generate_installments     Boolean            @default(true)
-  generate_first_installment_now Boolean            @default(false) // REDEMPTION only
+  generate_first_installment_now Boolean            @default(false) // PURCHASE plan (prepone 1st installment)
 
   // PURCHASE only - redemptions pay out, no mandate involved
   payment_method String? // "mandate"
