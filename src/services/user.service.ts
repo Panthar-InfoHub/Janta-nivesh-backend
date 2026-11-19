@@ -234,6 +234,7 @@ class UserServiceClass {
                         orderBy: { createdAt: "desc" },
                         include: {
                             holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+                            retirement_details: true,
                         },
                     }
                     : false,
@@ -289,7 +290,7 @@ class UserServiceClass {
         const where: FdTransactionWhereInput = {
             ...(query ?? {}),
             user_id,
-            status: { in: ["PAYMENT_SUCCESS", "VKYC_COMPLETED", "FD_CREATED", "MATURED", "PREMATURE_WITHDRAWN"] }
+            status: { in: ["PAYMENT_SUCCESS", "VKYC_PENDING", "VKYC_FAILED", "VKYC_COMPLETED", "FD_CREATED", "MATURED", "PREMATURE_WITHDRAWN"] }
         };
 
         const [total, fd_transactions] = await Promise.all([
@@ -305,6 +306,8 @@ class UserServiceClass {
                     status: true,
                     maturity_amount: true,
                     maturity_date: true,
+                    is_vkyc_pending: true,
+                    vkyc_failure_reason: true,
                     user: {
                         select: {
                             id: true,
@@ -406,8 +409,9 @@ class UserServiceClass {
         const fd_aggregates = fd_transactions.reduce(
             (acc: any, fd: any) => {
                 const fd_amount = Number(fd.amount) || 0;
-                const fd_maturity = Number(fd.maturity_amount) || 0;
-                const fd_returns = fd_maturity - fd_amount;
+                const has_maturity = Number(fd.maturity_amount) > 0;
+                const fd_maturity = has_maturity ? Number(fd.maturity_amount) : fd_amount;
+                const fd_returns = has_maturity ? (fd_maturity - fd_amount) : 0;
 
                 acc.invested_amount += fd_amount;
                 acc.current_value += fd_maturity;

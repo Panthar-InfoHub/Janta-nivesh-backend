@@ -12,6 +12,9 @@ import { user_service } from "../services/user.service.js";
 import { plan_confirmation_otp_service } from "../services/plan-confirmation-otp.service.js";
 import { notification_producer_service } from "../services/notification.producer.service.js";
 import { notification_type } from "../lib/types.js";
+import { fintech_primitive_mf_purchase_service } from "../services/fintech-primitive/mf_purchase.service.js";
+import { fintech_primitive_payment_service } from "../services/fintech-primitive/payment.service.js";
+import { user_bank_details_service } from "../services/user-bank-details.service.js";
 
 class MfPurchasePlanControllerClass {
 
@@ -195,7 +198,7 @@ class MfPurchasePlanControllerClass {
         try {
             const user_id = req.user?.id!;
             const fp_purchase_plan_id = req.params.id as string;
-            const { otp } = verify_purchase_plan_confirmation_otp_schema.parse(req.body);
+            const { otp, payment_postback_url } = verify_purchase_plan_confirmation_otp_schema.parse(req.body);
 
             const plan = await mf_transaction_plan_service.get_by_fp_id(user_id, fp_purchase_plan_id);
             if (!plan) {
@@ -231,10 +234,67 @@ class MfPurchasePlanControllerClass {
                 }
             );
 
+            let order: any = null;
+            let payment: any = null;
+
+            if (updated.generate_first_installment_now || (updated.plan_type === "PURCHASE" && updated.systematic)) {
+                try {
+                    let order_items: any[] = [];
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        const raw = await fintech_primitive_mf_purchase_service.get_purchases_by_plan_id(fp_purchase_plan_id);
+                        const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+                        if (list.length > 0) {
+                            order_items = list;
+                            break;
+                        }
+                        if (attempt < 2) {
+                            await new Promise((resolve) => setTimeout(resolve, 800));
+                        }
+                    }
+
+                    if (order_items.length > 0) {
+                        const saved_order = await mf_transaction_plan_service.upsert_from_fp(
+                            user_id,
+                            "PURCHASE",
+                            order_items[0],
+                            false
+                        );
+                        order = saved_order;
+
+                        const primary_bank = await user_bank_details_service.get_primary(user_id);
+                        if (primary_bank?.fp_bank_account_old_id && saved_order.fp_old_id) {
+                            payment = await fintech_primitive_payment_service.create_payment({
+                                amc_order_ids: [saved_order.fp_old_id],
+                                bank_account_id: primary_bank.fp_bank_account_old_id,
+                                payment_postback_url,
+                            });
+
+                            if (payment?.id) {
+                                const payment_id = String(payment.id);
+                                await mf_transaction_plan_service.set_payment_id(saved_order.id, payment_id);
+                                if (payment.status) {
+                                    await mf_transaction_plan_service.set_payment_status(saved_order.id, payment.status);
+                                }
+                            }
+                        }
+                    }
+                } catch (err: any) {
+                    logger.error("Error creating 1st installment payment for SIP plan ==> ", err?.message || err);
+                }
+            }
+
             res.status(200).json({
                 success: true,
                 message: "Purchase plan confirmed",
-                data: updated
+                data: {
+                    ...updated,
+                    order,
+                    payment: payment ? {
+                        id: String(payment.id),
+                        status: payment.status,
+                        payment_url: payment.payment_url,
+                    } : null,
+                }
             });
             return;
         } catch (error) {

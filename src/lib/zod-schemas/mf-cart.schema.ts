@@ -106,6 +106,10 @@ export type InitiateSipCheckoutInput = z.infer<
 export const confirm_sip_checkout_schema = z.object({
     batch_id: z.string().min(1, "batch_id is required"),
     otp: z.string().length(6, "OTP must be 6 digits"),
+    payment_postback_url: z
+        .string()
+        .url("Invalid payment_postback_url")
+        .optional(),
 });
 
 export type ConfirmSipCheckoutInput = z.infer<

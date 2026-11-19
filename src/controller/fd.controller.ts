@@ -205,7 +205,7 @@ class FdControllerClass {
         try {
 
             const user_id = req.user?.id! as string;
-            logger.info(`Creating purchase URL for User ID: ${user_id}...`);
+            logger.info(`Creating redirect URL for User ID: ${user_id}...`);
 
             const VALID_REDIRECT_STATES = {
                 "PAYMENT": [

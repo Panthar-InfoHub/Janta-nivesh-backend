@@ -119,14 +119,17 @@ model UserGoals {
   required_lumpsum_today Decimal @db.Decimal(18, 2)
 
   status              GoalStatus @default(ACTIVE)
+  is_velvet           Boolean    @default(false)
   calculation_version String     @default("v2.0") @db.VarChar(20)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @default(now()) @updatedAt
 
-  user     User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  holdings MfHolding[]
+  user               User                        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  holdings           MfHolding[]
+  retirement_details UserGoalRetirementDetails?
 
   @@index([user_id, status])
+  @@index([user_id, is_velvet])
   @@index([user_id, goal_type_id], map: "user_goal_type_idx")
   @@map("user_goal")
 }
@@ -138,10 +141,52 @@ model GoalCalculationConfig {
   expected_return_rate Decimal  @db.Decimal(7, 4)
   min_years            Int      @db.SmallInt
   max_years            Int      @db.SmallInt
+  is_velvet            Boolean  @default(false)
   active               Boolean  @default(true)
   config_version       String   @default("v2.0") @db.VarChar(20)
   effective_from       DateTime @default(now())
   updatedAt            DateTime @default(now()) @updatedAt
 
   @@map("goal_calculation_config")
+}
+
+model UserGoalRetirementDetails {
+  id                          String    @id @default(uuid())
+  goal_id                     String    @unique
+  current_age                 Int       @db.SmallInt
+  retirement_age              Int       @db.SmallInt
+  plan_until_age              Int       @db.SmallInt
+  retirement_date             DateTime? @db.Date
+  planning_end_date           DateTime? @db.Date
+
+  monthly_lifestyle_expense   Decimal   @db.Decimal(18, 2)
+  expense_as_of               DateTime  @default(now())
+  existing_retirement_savings Decimal   @default(0) @db.Decimal(18, 2)
+  savings_as_of               DateTime  @default(now())
+  current_monthly_sip         Decimal   @default(0) @db.Decimal(18, 2)
+  pension_monthly_amount      Decimal   @default(0) @db.Decimal(18, 2)
+  annual_pension_increase     Decimal   @default(0) @db.Decimal(7, 4)
+
+  pre_retirement_return       Decimal   @db.Decimal(7, 4)
+  post_retirement_return      Decimal   @db.Decimal(7, 4)
+  inflation_before_retirement Decimal   @db.Decimal(7, 4)
+  inflation_during_retirement Decimal   @db.Decimal(7, 4)
+  additional_corpus_buffer    Decimal   @db.Decimal(7, 4)
+
+  base_retirement_corpus      Decimal   @db.Decimal(18, 2)
+  target_retirement_corpus    Decimal   @db.Decimal(18, 2)
+  fv_existing_savings         Decimal   @db.Decimal(18, 2)
+  remaining_corpus_to_build   Decimal   @db.Decimal(18, 2)
+  total_monthly_sip           Decimal   @db.Decimal(18, 2)
+  extra_monthly_sip           Decimal   @db.Decimal(18, 2)
+  additional_lumpsum_today    Decimal   @db.Decimal(18, 2)
+  monthly_cost_at_retirement  Decimal   @db.Decimal(18, 2)
+  calculation_snapshot        Json?
+
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @default(now()) @updatedAt
+
+  goal                        UserGoals @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+
+  @@map("user_goal_retirement_details")
 }

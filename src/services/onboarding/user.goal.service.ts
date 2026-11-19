@@ -1,7 +1,18 @@
 import { Prisma } from "../../prisma/generated/prisma/client.js";
 import { db } from "../../server.js";
 import { calculateGoalProjections, normalizeRate } from "../../lib/goal-calculator.js";
-import { GoalCalculateInput, UserGoalInput, UserGoalUpdateInput } from "../../lib/zod-schemas/goal.schema.js";
+import {
+    calculateRetirement,
+    timelineFromDob,
+    timelineFromAges,
+} from "../../lib/retirement-calculator.js";
+import {
+    GoalCalculateInput,
+    UserGoalInput,
+    UserGoalUpdateInput,
+    RetirementCalculateInput,
+    RetirementGoalInput,
+} from "../../lib/zod-schemas/goal.schema.js";
 import AppError from "../../middleware/error.middleware.js";
 import logger from "../../middleware/logger.js";
 
@@ -70,19 +81,36 @@ export const GOAL_TYPE_METADATA: Record<number, {
         min_years: 1,
         max_years: 30,
     },
+    7: {
+        name: "Retirement",
+        purpose: "Plan your retirement corpus, lifestyle costs, and pension gap",
+        calculation_mode: "Retirement cash flow & shortfall projection",
+        tenure_suggestions: [10, 20, 30],
+        min_years: 0,
+        max_years: 60,
+        default_cost_chips: [25000, 50000, 100000, 200000],
+    },
 };
 
 export class UserGoalServiceClass {
     /**
      * Get system goal calculation configs enriched with frontend presentation metadata.
+     * Option 1:
+     * - When is_velvet is true (Velvet): Returns ALL 7 goals (1 to 6 PLUS Retirement).
+     * - When is_velvet is false (Janta): Returns only standard Janta goals (Types 1-6).
+     * No duplicate DB rows needed.
      */
-    getConfig = async () => {
+    getConfig = async (is_velvet: boolean = false) => {
+        const whereClause = is_velvet
+            ? { active: true } // Velvet sees all active goals (1 to 7)
+            : { active: true, goal_type_id: { in: [1, 2, 3, 4, 5, 6] } }; // Janta sees standard goals 1 to 6
+
         const configs = await db.goalCalculationConfig.findMany({
-            where: { active: true },
+            where: whereClause,
             orderBy: { goal_type_id: "asc" },
         });
 
-        return configs.map((cfg) => {
+        const mapped = configs.map((cfg) => {
             const meta = GOAL_TYPE_METADATA[cfg.goal_type_id];
             return {
                 id: cfg.id,
@@ -98,8 +126,10 @@ export class UserGoalServiceClass {
                 cost_chips: meta?.default_cost_chips || [],
                 asset_subtypes: meta?.asset_subtypes || null,
                 config_version: cfg.config_version,
+                is_velvet: cfg.is_velvet,
             };
         });
+        return mapped;
     };
 
     /**
@@ -113,13 +143,35 @@ export class UserGoalServiceClass {
         if (!cfg) {
             // Fallback hardcoded defaults if config table was somehow unseeded
             const meta = GOAL_TYPE_METADATA[goal_type_id];
+            if (goal_type_id === 7) {
+                return {
+                    id: "default-retirement-config",
+                    goal_type_id: 7,
+                    inflation_rate: new Prisma.Decimal(0.06),
+                    expected_return_rate: new Prisma.Decimal(0.10),
+                    min_years: 0,
+                    max_years: 60,
+                    is_velvet: true,
+                    active: true,
+                    config_version: "v2.0",
+                    effective_from: new Date(),
+                    updatedAt: new Date(),
+                };
+            }
+
             const defaultInflation = goal_type_id === 3 || goal_type_id === 4 ? 0.05 : goal_type_id === 5 ? null : 0.06;
             return {
+                id: `default-config-${goal_type_id}`,
+                goal_type_id,
                 inflation_rate: defaultInflation !== null ? new Prisma.Decimal(defaultInflation) : null,
                 expected_return_rate: new Prisma.Decimal(0.10),
                 min_years: meta?.min_years ?? 1,
                 max_years: meta?.max_years ?? 30,
+                is_velvet: false,
+                active: true,
                 config_version: "v2.0",
+                effective_from: new Date(),
+                updatedAt: new Date(),
             };
         }
 
@@ -130,6 +182,21 @@ export class UserGoalServiceClass {
      * Stateless calculation preview for interactive sliders / simulators without persisting.
      */
     calculate = async (input: GoalCalculateInput) => {
+        if (input.goal_type_id === 7) {
+            const retInput = input as RetirementCalculateInput;
+            const timeline = timelineFromAges(
+                retInput.current_age,
+                retInput.retirement_age,
+                retInput.plan_until_age
+            );
+            const projections = calculateRetirement(retInput, timeline);
+            return {
+                goal_type_id: 7,
+                ...timeline,
+                ...projections,
+            };
+        }
+
         const cfg = await this.getConfigForType(input.goal_type_id);
 
         const cost = input.goal_type_id === 5 ? (input.target_amount ?? 0) : (input.current_cost ?? 0);
@@ -170,6 +237,95 @@ export class UserGoalServiceClass {
     createGoal = async (user_id: string, data: UserGoalInput) => {
         const cfg = await this.getConfigForType(data.goal_type_id);
 
+        // ── Retirement Goal (goal_type_id: 7) ─────────────────────────────
+        if (data.goal_type_id === 7) {
+            const retData = data as RetirementGoalInput;
+
+            // Derive current age and milestones from saved verified DOB
+            const userRecord = await db.user.findUnique({
+                where: { id: user_id },
+                select: {
+                    dob: true,
+                    kyc_profile: { select: { dob: true } },
+                },
+            });
+
+            const rawDob = userRecord?.dob || userRecord?.kyc_profile?.dob;
+            if (!rawDob) {
+                throw new AppError(
+                    "Verified Date of Birth (DOB) is required to create a Retirement goal. Please complete your profile details.",
+                    400,
+                    "DOB_REQUIRED"
+                );
+            }
+
+            const timeline = timelineFromDob(rawDob, retData.retirement_age, retData.plan_until_age);
+            const projections = calculateRetirement(retData, timeline);
+            const goal_name = retData.goal_name?.trim() || "Retirement";
+
+            const created = await db.$transaction(async (tx) => {
+                const goal = await tx.userGoals.create({
+                    data: {
+                        user_id,
+                        goal_type_id: 7,
+                        goal_name,
+                        years_remaining: timeline.years_to_retirement,
+                        target_date: timeline.retirement_date,
+                        current_savings: new Prisma.Decimal(retData.existing_retirement_savings || 0),
+                        inflation_rate: new Prisma.Decimal(projections.inflation_before_used),
+                        expected_return_rate: new Prisma.Decimal(projections.pre_retirement_return_used),
+                        future_target_amount: new Prisma.Decimal(projections.target_retirement_corpus),
+                        fv_current_savings: new Prisma.Decimal(projections.fv_existing_savings),
+                        net_required_corpus: new Prisma.Decimal(projections.remaining_corpus_to_build),
+                        required_monthly_sip: new Prisma.Decimal(projections.total_monthly_sip),
+                        required_lumpsum_today: new Prisma.Decimal(projections.additional_lumpsum_today),
+                        is_velvet: true,
+                        calculation_version: cfg.config_version || "v2.0",
+                        status: "ACTIVE",
+                    },
+                });
+
+                const details = await tx.userGoalRetirementDetails.create({
+                    data: {
+                        goal_id: goal.id,
+                        current_age: timeline.current_age,
+                        retirement_age: timeline.retirement_age,
+                        plan_until_age: timeline.plan_until_age,
+                        retirement_date: timeline.retirement_date,
+                        planning_end_date: timeline.planning_end_date,
+                        monthly_lifestyle_expense: new Prisma.Decimal(retData.monthly_lifestyle_cost),
+                        existing_retirement_savings: new Prisma.Decimal(retData.existing_retirement_savings || 0),
+                        current_monthly_sip: new Prisma.Decimal(retData.current_monthly_sip || 0),
+                        pension_monthly_amount: new Prisma.Decimal(retData.pension_or_regular_income || 0),
+                        annual_pension_increase: new Prisma.Decimal(projections.pension_increase_used),
+                        pre_retirement_return: new Prisma.Decimal(projections.pre_retirement_return_used),
+                        post_retirement_return: new Prisma.Decimal(projections.post_retirement_return_used),
+                        inflation_before_retirement: new Prisma.Decimal(projections.inflation_before_used),
+                        inflation_during_retirement: new Prisma.Decimal(projections.inflation_during_used),
+                        additional_corpus_buffer: new Prisma.Decimal(projections.buffer_used),
+                        base_retirement_corpus: new Prisma.Decimal(projections.base_retirement_corpus),
+                        target_retirement_corpus: new Prisma.Decimal(projections.target_retirement_corpus),
+                        fv_existing_savings: new Prisma.Decimal(projections.fv_existing_savings),
+                        remaining_corpus_to_build: new Prisma.Decimal(projections.remaining_corpus_to_build),
+                        total_monthly_sip: new Prisma.Decimal(projections.total_monthly_sip),
+                        extra_monthly_sip: new Prisma.Decimal(projections.extra_monthly_sip),
+                        additional_lumpsum_today: new Prisma.Decimal(projections.additional_lumpsum_today),
+                        monthly_cost_at_retirement: new Prisma.Decimal(projections.monthly_cost_at_retirement),
+                        calculation_snapshot: projections as any,
+                    },
+                });
+
+                return {
+                    ...goal,
+                    retirement_details: details,
+                };
+            });
+
+            logger.info(`Retirement Goal created successfully for user ${user_id}: ${created.id}`);
+            return created;
+        }
+
+        // ── Standard Goals (Types 1 - 6) ──────────────────────────────────
         if (data.years_remaining < cfg.min_years || data.years_remaining > cfg.max_years) {
             throw new AppError(
                 `Years remaining must be between ${cfg.min_years} and ${cfg.max_years} for this goal type`,
@@ -239,6 +395,7 @@ export class UserGoalServiceClass {
                 net_required_corpus: new Prisma.Decimal(projections.net_required_corpus),
                 required_monthly_sip: new Prisma.Decimal(projections.required_monthly_sip),
                 required_lumpsum_today: new Prisma.Decimal(projections.required_lumpsum_today),
+                is_velvet: false,
                 calculation_version: cfg.config_version || "v2.0",
                 status: "ACTIVE",
             },
@@ -283,6 +440,28 @@ export class UserGoalServiceClass {
             ? Math.min(100, Math.round((total_current_value / future_target) * 100))
             : 0;
 
+        let retirement_details = goal.retirement_details ? {
+            ...goal.retirement_details,
+            monthly_lifestyle_expense: Number(goal.retirement_details.monthly_lifestyle_expense),
+            existing_retirement_savings: Number(goal.retirement_details.existing_retirement_savings),
+            current_monthly_sip: Number(goal.retirement_details.current_monthly_sip),
+            pension_monthly_amount: Number(goal.retirement_details.pension_monthly_amount),
+            annual_pension_increase: Number(goal.retirement_details.annual_pension_increase),
+            pre_retirement_return: Number(goal.retirement_details.pre_retirement_return),
+            post_retirement_return: Number(goal.retirement_details.post_retirement_return),
+            inflation_before_retirement: Number(goal.retirement_details.inflation_before_retirement),
+            inflation_during_retirement: Number(goal.retirement_details.inflation_during_retirement),
+            additional_corpus_buffer: Number(goal.retirement_details.additional_corpus_buffer),
+            base_retirement_corpus: Number(goal.retirement_details.base_retirement_corpus),
+            target_retirement_corpus: Number(goal.retirement_details.target_retirement_corpus),
+            fv_existing_savings: Number(goal.retirement_details.fv_existing_savings),
+            remaining_corpus_to_build: Number(goal.retirement_details.remaining_corpus_to_build),
+            total_monthly_sip: Number(goal.retirement_details.total_monthly_sip),
+            extra_monthly_sip: Number(goal.retirement_details.extra_monthly_sip),
+            additional_lumpsum_today: Number(goal.retirement_details.additional_lumpsum_today),
+            monthly_cost_at_retirement: Number(goal.retirement_details.monthly_cost_at_retirement),
+        } : null;
+
         return {
             ...goal,
             holdings,
@@ -290,20 +469,25 @@ export class UserGoalServiceClass {
             total_invested_amount: Number(total_invested_amount.toFixed(2)),
             total_current_value,
             progress_percent,
+            ...(retirement_details ? { retirement_details } : {}),
         };
     };
 
     /**
      * Get all active goals for a user.
+     * When is_velvet is true (Velvet): returns all active goals (1 to 7).
+     * When is_velvet is false (Janta): returns only standard Janta goals (1 to 6).
      */
-    getUserGoals = async (user_id: string) => {
+    getUserGoals = async (user_id: string, is_velvet: boolean = false) => {
+        const whereClause = is_velvet
+            ? { user_id, status: { not: "DELETED" as const } }
+            : { user_id, status: { not: "DELETED" as const }, goal_type_id: { in: [1, 2, 3, 4, 5, 6] } };
+
         const goals = await db.userGoals.findMany({
-            where: {
-                user_id,
-                status: { not: "DELETED" },
-            },
+            where: whereClause,
             include: {
                 holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+                retirement_details: true,
             },
             orderBy: { createdAt: "desc" },
         });
@@ -323,6 +507,7 @@ export class UserGoalServiceClass {
             },
             include: {
                 holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
+                retirement_details: true,
             },
         });
 
@@ -343,12 +528,144 @@ export class UserGoalServiceClass {
                 user_id,
                 status: { not: "DELETED" },
             },
+            include: {
+                retirement_details: true,
+            },
         });
 
         if (!existing) {
             throw new AppError("Goal not found", 404, "GOAL_NOT_FOUND");
         }
 
+        // ── Retirement Goal Update (goal_type_id: 7) ──────────────────────
+        if (existing.goal_type_id === 7) {
+            const userRecord = await db.user.findUnique({
+                where: { id: user_id },
+                select: {
+                    dob: true,
+                    kyc_profile: { select: { dob: true } },
+                },
+            });
+            const rawDob = userRecord?.dob || userRecord?.kyc_profile?.dob;
+            if (!rawDob) {
+                throw new AppError("Verified Date of Birth (DOB) is required for Retirement recalculation", 400, "DOB_REQUIRED");
+            }
+
+            const currentDetails = existing.retirement_details;
+            const retAge = data.retirement_age ?? currentDetails?.retirement_age ?? 60;
+            const planAge = data.plan_until_age ?? currentDetails?.plan_until_age ?? 90;
+            const monthlyCost = data.monthly_lifestyle_cost ?? (currentDetails ? Number(currentDetails.monthly_lifestyle_expense) : 0);
+            const savings = data.existing_retirement_savings ?? (data.current_savings !== undefined ? data.current_savings : (currentDetails ? Number(currentDetails.existing_retirement_savings) : 0));
+            const sip = data.current_monthly_sip ?? (currentDetails ? Number(currentDetails.current_monthly_sip) : 0);
+            const pension = data.pension_or_regular_income ?? (currentDetails ? Number(currentDetails.pension_monthly_amount) : 0);
+            const pensionIncrease = data.annual_pension_increase ?? (currentDetails ? Number(currentDetails.annual_pension_increase) : 0);
+            const preRetReturn = data.pre_retirement_return ?? (data.expected_return_rate !== undefined ? data.expected_return_rate : (currentDetails ? Number(currentDetails.pre_retirement_return) : 0.10));
+            const postRetReturn = data.post_retirement_return ?? (currentDetails ? Number(currentDetails.post_retirement_return) : 0.06);
+            const infPre = data.inflation_before_retirement ?? (data.inflation_rate !== undefined ? data.inflation_rate : (currentDetails ? Number(currentDetails.inflation_before_retirement) : 0.06));
+            const infPost = data.inflation_during_retirement ?? (currentDetails ? Number(currentDetails.inflation_during_retirement) : 0.06);
+            const buffer = data.additional_corpus_buffer ?? (currentDetails ? Number(currentDetails.additional_corpus_buffer) : 0.10);
+
+            const timeline = timelineFromDob(rawDob, retAge, planAge);
+            const projections = calculateRetirement({
+                monthly_lifestyle_cost: monthlyCost,
+                existing_retirement_savings: savings,
+                current_monthly_sip: sip,
+                pension_or_regular_income: pension,
+                annual_pension_increase: pensionIncrease,
+                pre_retirement_return: preRetReturn,
+                post_retirement_return: postRetReturn,
+                inflation_before_retirement: infPre,
+                inflation_during_retirement: infPost,
+                additional_corpus_buffer: buffer,
+            }, timeline);
+
+            const updated = await db.$transaction(async (tx) => {
+                const goal = await tx.userGoals.update({
+                    where: { id: goal_id },
+                    data: {
+                        ...(data.goal_name && { goal_name: data.goal_name }),
+                        years_remaining: timeline.years_to_retirement,
+                        target_date: timeline.retirement_date,
+                        current_savings: new Prisma.Decimal(savings),
+                        inflation_rate: new Prisma.Decimal(projections.inflation_before_used),
+                        expected_return_rate: new Prisma.Decimal(projections.pre_retirement_return_used),
+                        future_target_amount: new Prisma.Decimal(projections.target_retirement_corpus),
+                        fv_current_savings: new Prisma.Decimal(projections.fv_existing_savings),
+                        net_required_corpus: new Prisma.Decimal(projections.remaining_corpus_to_build),
+                        required_monthly_sip: new Prisma.Decimal(projections.total_monthly_sip),
+                        required_lumpsum_today: new Prisma.Decimal(projections.additional_lumpsum_today),
+                        ...(data.status && { status: data.status }),
+                    },
+                });
+
+                const details = await tx.userGoalRetirementDetails.upsert({
+                    where: { goal_id },
+                    create: {
+                        goal_id,
+                        current_age: timeline.current_age,
+                        retirement_age: timeline.retirement_age,
+                        plan_until_age: timeline.plan_until_age,
+                        retirement_date: timeline.retirement_date,
+                        planning_end_date: timeline.planning_end_date,
+                        monthly_lifestyle_expense: new Prisma.Decimal(monthlyCost),
+                        existing_retirement_savings: new Prisma.Decimal(savings),
+                        current_monthly_sip: new Prisma.Decimal(sip),
+                        pension_monthly_amount: new Prisma.Decimal(pension),
+                        annual_pension_increase: new Prisma.Decimal(projections.pension_increase_used),
+                        pre_retirement_return: new Prisma.Decimal(projections.pre_retirement_return_used),
+                        post_retirement_return: new Prisma.Decimal(projections.post_retirement_return_used),
+                        inflation_before_retirement: new Prisma.Decimal(projections.inflation_before_used),
+                        inflation_during_retirement: new Prisma.Decimal(projections.inflation_during_used),
+                        additional_corpus_buffer: new Prisma.Decimal(projections.buffer_used),
+                        base_retirement_corpus: new Prisma.Decimal(projections.base_retirement_corpus),
+                        target_retirement_corpus: new Prisma.Decimal(projections.target_retirement_corpus),
+                        fv_existing_savings: new Prisma.Decimal(projections.fv_existing_savings),
+                        remaining_corpus_to_build: new Prisma.Decimal(projections.remaining_corpus_to_build),
+                        total_monthly_sip: new Prisma.Decimal(projections.total_monthly_sip),
+                        extra_monthly_sip: new Prisma.Decimal(projections.extra_monthly_sip),
+                        additional_lumpsum_today: new Prisma.Decimal(projections.additional_lumpsum_today),
+                        monthly_cost_at_retirement: new Prisma.Decimal(projections.monthly_cost_at_retirement),
+                        calculation_snapshot: projections as any,
+                    },
+                    update: {
+                        current_age: timeline.current_age,
+                        retirement_age: timeline.retirement_age,
+                        plan_until_age: timeline.plan_until_age,
+                        retirement_date: timeline.retirement_date,
+                        planning_end_date: timeline.planning_end_date,
+                        monthly_lifestyle_expense: new Prisma.Decimal(monthlyCost),
+                        existing_retirement_savings: new Prisma.Decimal(savings),
+                        current_monthly_sip: new Prisma.Decimal(sip),
+                        pension_monthly_amount: new Prisma.Decimal(pension),
+                        annual_pension_increase: new Prisma.Decimal(projections.pension_increase_used),
+                        pre_retirement_return: new Prisma.Decimal(projections.pre_retirement_return_used),
+                        post_retirement_return: new Prisma.Decimal(projections.post_retirement_return_used),
+                        inflation_before_retirement: new Prisma.Decimal(projections.inflation_before_used),
+                        inflation_during_retirement: new Prisma.Decimal(projections.inflation_during_used),
+                        additional_corpus_buffer: new Prisma.Decimal(projections.buffer_used),
+                        base_retirement_corpus: new Prisma.Decimal(projections.base_retirement_corpus),
+                        target_retirement_corpus: new Prisma.Decimal(projections.target_retirement_corpus),
+                        fv_existing_savings: new Prisma.Decimal(projections.fv_existing_savings),
+                        remaining_corpus_to_build: new Prisma.Decimal(projections.remaining_corpus_to_build),
+                        total_monthly_sip: new Prisma.Decimal(projections.total_monthly_sip),
+                        extra_monthly_sip: new Prisma.Decimal(projections.extra_monthly_sip),
+                        additional_lumpsum_today: new Prisma.Decimal(projections.additional_lumpsum_today),
+                        monthly_cost_at_retirement: new Prisma.Decimal(projections.monthly_cost_at_retirement),
+                        calculation_snapshot: projections as any,
+                    },
+                });
+
+                return {
+                    ...goal,
+                    retirement_details: details,
+                };
+            });
+
+            logger.info(`Retirement Goal updated successfully: ${goal_id}`);
+            return updated;
+        }
+
+        // ── Standard Goals Update (Types 1 - 6) ───────────────────────────
         const cfg = await this.getConfigForType(existing.goal_type_id);
 
         const newYears = data.years_remaining ?? existing.years_remaining;

@@ -19,11 +19,13 @@ class UserGoalControllerClass {
     /**
      * GET /api/v2/user-goal/config
      * Returns supported goal types, calculation modes, allowed tenure ranges, chips, and default rates.
+     * Query param ?is_velvet=true filters for Velvet retirement configuration only.
      */
     get_config = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            logger.debug(`User goal config request..`)
-            const config = await user_goal_service.getConfig();
+            logger.debug(`User goal config request..`);
+            const is_velvet = req.query.is_velvet === "true" || req.query.is_velvet === "1";
+            const config = await user_goal_service.getConfig(is_velvet);
             res.status(200).json({
                 success: true,
                 message: "Goal configuration fetched successfully",
@@ -80,11 +82,13 @@ class UserGoalControllerClass {
     /**
      * GET /api/v2/user-goal
      * Lists all active goals for authenticated user with live progress.
+     * Query param ?is_velvet=true filters for Velvet goals.
      */
     get_all = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const user = req.user!;
-            const goals = await user_goal_service.getUserGoals(user.id);
+            const is_velvet = req.query.is_velvet === "true" || req.query.is_velvet === "1";
+            const goals = await user_goal_service.getUserGoals(user.id, is_velvet);
 
             res.status(200).json({
                 success: true,

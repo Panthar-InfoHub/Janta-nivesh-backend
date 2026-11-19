@@ -432,16 +432,20 @@ class UserFinanceControllerClass {
                 category: "Fixed Deposit",
                 amount: Number(fd.amount),
                 start_date: fd.fd_issued_at,
-                maturity_date: new Date(fd.maturity_date).toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric"
-                }),
-                return: Number(fd.maturity_amount || 0) - Number(fd.amount),
+                maturity_date: fd.maturity_date
+                    ? new Date(fd.maturity_date).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric"
+                    })
+                    : null,
+                return: Number(fd.maturity_amount) > 0 ? Number(fd.maturity_amount) - Number(fd.amount) : 0,
                 roi: Number(fd.roi_at_booking) || 0,
                 tenure_days: fd.tenure_at_booking || 0,
                 status: fd.status,
                 maturity_amount: Number(fd.maturity_amount) || 0,
+                is_vkyc_pending: fd.is_vkyc_pending,
+                vkyc_failure_reason: fd.vkyc_failure_reason,
                 issuer_logo: fd.product?.issuer?.logo_url
             }));
 
