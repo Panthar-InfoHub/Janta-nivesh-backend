@@ -311,7 +311,18 @@ class UserFinanceControllerClass {
             for (const h of holdings) {
                 const invested = Number(h.invested_amount);
                 const current = Number(h.current_value);
+                const holding_units = Number(h.units);
+                const holding_redeemable = Number(h.redeemable_units ?? h.units);
                 const existing = by_fund.get(h.isin);
+
+                const folio_item = {
+                    holding_id: h.id,
+                    folio_number: h.folio_number,
+                    units: Number(holding_units.toFixed(4)),
+                    redeemable_units: Number(holding_redeemable.toFixed(4)),
+                    amount: Number(invested.toFixed(2)),
+                    current_value: Number(current.toFixed(2)),
+                };
 
                 if (!existing) {
                     by_fund.set(h.isin, {
@@ -328,14 +339,16 @@ class UserFinanceControllerClass {
                         xirr: h.xirr ? Number(h.xirr) : null,
                         return_percentage: h.absolute_return,
                         current_value: current,
-                        bal_units: Number(h.units),
-                        folios: [h.folio_number],
+                        bal_units: holding_units,
+                        redeemable_units: holding_redeemable,
+                        folios: [folio_item],
                     });
                 } else {
                     existing.amount += invested;
                     existing.current_value += current;
-                    existing.bal_units += Number(h.units);
-                    existing.folios.push(h.folio_number);
+                    existing.bal_units += holding_units;
+                    existing.redeemable_units += holding_redeemable;
+                    existing.folios.push(folio_item);
                 }
             }
 
@@ -361,9 +374,10 @@ class UserFinanceControllerClass {
                     amount: Number(f.amount.toFixed(2)),
                     current_value: Number(f.current_value.toFixed(2)),
                     return: Number((f.current_value - f.amount).toFixed(2)),
-                    folio: f.folios[0],
+                    folio: f.folios[0]?.folio_number,
                     folios: f.folios,
                     bal_units: Number(f.bal_units.toFixed(4)),
+                    redeemable_units: Number(f.redeemable_units.toFixed(4)),
                     img_url: f.img_url,
                 }
             });
