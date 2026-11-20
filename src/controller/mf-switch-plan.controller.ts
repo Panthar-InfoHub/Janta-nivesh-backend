@@ -257,7 +257,7 @@ class MfSwitchPlanControllerClass {
                 },
             );
 
-            await plan_confirmation_otp_service.request_otp(
+            await plan_confirmation_otp_service.request_redemption_otp(
                 user_id,
                 fp_switch_plan_id,
                 user.phone_no,

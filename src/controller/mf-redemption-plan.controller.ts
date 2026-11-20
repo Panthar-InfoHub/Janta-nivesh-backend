@@ -164,7 +164,7 @@ class MfRedemptionPlanControllerClass {
 
             logger.info("Requesting redemption plan confirmation OTP", { user_id, fp_plan_id });
 
-            await plan_confirmation_otp_service.request_otp(user_id, fp_plan_id, user.phone_no);
+            await plan_confirmation_otp_service.request_redemption_otp(user_id, fp_plan_id, user.phone_no);
 
             res.status(200).json({
                 success: true,

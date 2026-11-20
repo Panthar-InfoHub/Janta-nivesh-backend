@@ -12,6 +12,7 @@ import { mf_cart_service } from "../services/mf-cart.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { fire_report_service } from "../services/fire.report.service.js";
 import { user_goal_service } from "../services/onboarding/user.goal.service.js";
+import { decentro_service } from "../services/decentro.service.js";
 class UserFinanceControllerClass {
 
 
@@ -53,36 +54,10 @@ class UserFinanceControllerClass {
 
             // const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
 
-            // Home-screen summary card: portfolio value split MF / FD. MF comes from MfHolding
-            // (kept in sync by mf-holding-sync.service.ts), FD from the user's own FD transactions -
-            // no live provider call on this path. Runs through the same
-            // user_service.aggregate_portfolio_data as GET /user/portfolio so the two screens can
-            // never disagree on the same number.
-            const holdings = await db.mfHolding.findMany({
-                where: { user_id },
-                select: { isin: true, invested_amount: true, current_value: true },
-            });
-
-            const mf_current_value = holdings.reduce((sum, h) => sum + Number(h.current_value), 0);
-            const mf_invested_amount = holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0);
-
-            const mf_investment_data = {
-                current_value: Number(mf_current_value.toFixed(2)),
-                invested_amount: Number(mf_invested_amount.toFixed(2)),
-                total_returns: Number((mf_current_value - mf_invested_amount).toFixed(2)),
-                return_percent: mf_invested_amount > 0
-                    ? Number((((mf_current_value - mf_invested_amount) / mf_invested_amount) * 100).toFixed(2))
-                    : 0,
-                // One entry per distinct fund, matching how the portfolio screen groups its cards
-                // (a fund held across two folios is one holding to the user, not two).
-                items_count: new Set(holdings.map(h => h.isin)).size,
-            };
-
-            const fd_response = await user_service.get_user_fd_data({ user_id, order: { fd_issued_at: 'desc' } });
-            const portfolio_aggregates = user_service.aggregate_portfolio_data(
-                mf_investment_data,
-                fd_response.fd_transactions || []
-            );
+            // Home-screen summary card: portfolio value split MF / FD. Uses cached portfolio
+            // summary (with 1-day TTL) matching GET /user/portfolio aggregates.
+            const portfolio_summary = await user_service.get_user_portfolio_summary(user_id);
+            const portfolio_aggregates = portfolio_summary.portfolio_aggregates;
 
             // const wrapper_user_goal = data.user_goals.length > 0 ? data.user_goals.map((goal: UserGoals, index: number) => {
 
@@ -337,7 +312,18 @@ class UserFinanceControllerClass {
             for (const h of holdings) {
                 const invested = Number(h.invested_amount);
                 const current = Number(h.current_value);
+                const holding_units = Number(h.units);
+                const holding_redeemable = Number(h.redeemable_units ?? h.units);
                 const existing = by_fund.get(h.isin);
+
+                const folio_item = {
+                    holding_id: h.id,
+                    folio_number: h.folio_number,
+                    units: Number(holding_units.toFixed(4)),
+                    redeemable_units: Number(holding_redeemable.toFixed(4)),
+                    amount: Number(invested.toFixed(2)),
+                    current_value: Number(current.toFixed(2)),
+                };
 
                 if (!existing) {
                     by_fund.set(h.isin, {
@@ -354,14 +340,16 @@ class UserFinanceControllerClass {
                         xirr: h.xirr ? Number(h.xirr) : null,
                         return_percentage: h.absolute_return,
                         current_value: current,
-                        bal_units: Number(h.units),
-                        folios: [h.folio_number],
+                        bal_units: holding_units,
+                        redeemable_units: holding_redeemable,
+                        folios: [folio_item],
                     });
                 } else {
                     existing.amount += invested;
                     existing.current_value += current;
-                    existing.bal_units += Number(h.units);
-                    existing.folios.push(h.folio_number);
+                    existing.bal_units += holding_units;
+                    existing.redeemable_units += holding_redeemable;
+                    existing.folios.push(folio_item);
                 }
             }
 
@@ -387,9 +375,10 @@ class UserFinanceControllerClass {
                     amount: Number(f.amount.toFixed(2)),
                     current_value: Number(f.current_value.toFixed(2)),
                     return: Number((f.current_value - f.amount).toFixed(2)),
-                    folio: f.folios[0],
+                    folio: f.folios[0]?.folio_number,
                     folios: f.folios,
                     bal_units: Number(f.bal_units.toFixed(4)),
+                    redeemable_units: Number(f.redeemable_units.toFixed(4)),
                     img_url: f.img_url,
                 }
             });
@@ -477,6 +466,18 @@ class UserFinanceControllerClass {
 
             // Aggregate portfolio data with allocation breakdown
             const portfolio_aggregates = user_service.aggregate_portfolio_data(investment_data, fd_transactions);
+
+            // Update cached summary for fast access by home screen and fire number
+            const portfolio_summary = {
+                portfolio_value: portfolio_aggregates.total_investments.current_value,
+                mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,
+                fixed_deposits: portfolio_aggregates.total_investments.allocation.fixed_deposits.value,
+                total_returns: portfolio_aggregates.total_investments.total_returns,
+                return_percent: portfolio_aggregates.total_investments.return_percent,
+                total_invested: portfolio_aggregates.invested_amount_breakdown.invested_amount,
+                portfolio_aggregates,
+            };
+            user_service.set_cached_portfolio_summary(user.id, portfolio_summary);
 
             res.status(200).json({
                 code: 200,
@@ -685,6 +686,48 @@ class UserFinanceControllerClass {
             return;
         }
     }
+
+    fetch_address = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id: string = req.user!.id;
+            logger.info(`Fetching address for user ${user_id}`);
+
+            const user = await db.user.findUnique({
+                where: { id: user_id },
+                select: {
+                    id: true,
+                    phone_no: true,
+                    kyc_profile: {
+                        select: {
+                            id: true,
+                            pre_verification_response: true,
+                        },
+                    },
+                },
+            });
+
+            if (!user) {
+                throw new AppError("User not found", 404, "USER_NOT_FOUND");
+            }
+            if (!user.phone_no) {
+                throw new AppError("User mobile number not found", 400, "PHONE_NUMBER_NOT_FOUND");
+            }
+
+            const address_data = await decentro_service.get_address(user.phone_no);
+
+            res.status(200).json({
+                code: 200,
+                success: true,
+                message: "User address fetched successfully",
+                data: address_data,
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in fetch_address: ${error}`);
+            next(error);
+            return;
+        }
+    };
 
 
 

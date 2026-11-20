@@ -13,6 +13,8 @@ import { user_goal_service, UserGoalServiceClass } from "./onboarding/user.goal.
 import { hash_mpin, compare_mpin } from "../lib/utils.js";
 import { generate_JWT } from "../middleware/jwt.js";
 import AppError from "../middleware/error.middleware.js";
+import { redis } from "../lib/redis.js";
+import logger from "../middleware/logger.js";
 
 
 type GetUserFdDataInput = {
@@ -480,6 +482,86 @@ class UserServiceClass {
                 returns_percent: total_return_percent,
             },
         };
+    };
+
+    /**
+     * Gets user portfolio summary (MF + FD aggregates).
+     * Uses Redis cache with 1-day TTL to avoid heavy recalculations across endpoints.
+     */
+    get_user_portfolio_summary = async (user_id: string) => {
+        const cache_key = `portfolio:${user_id}:summary`;
+
+        try {
+            const cached = await redis.get(cache_key);
+            if (cached) {
+                logger.debug(`Cache hit for portfolio summary of User ID: ${user_id}`);
+                return JSON.parse(cached as string);
+            }
+        } catch (err: any) {
+            logger.warn(`Redis get failed for portfolio summary ${user_id}: ${err?.message}`);
+        }
+
+        const holdings = await db.mfHolding.findMany({
+            where: { user_id },
+            select: { isin: true, invested_amount: true, current_value: true },
+        });
+
+        const mf_current_value = holdings.reduce((sum, h) => sum + Number(h.current_value), 0);
+        const mf_invested_amount = holdings.reduce((sum, h) => sum + Number(h.invested_amount), 0);
+
+        const mf_investment_data = {
+            current_value: Number(mf_current_value.toFixed(2)),
+            invested_amount: Number(mf_invested_amount.toFixed(2)),
+            total_returns: Number((mf_current_value - mf_invested_amount).toFixed(2)),
+            return_percent: mf_invested_amount > 0
+                ? Number((((mf_current_value - mf_invested_amount) / mf_invested_amount) * 100).toFixed(2))
+                : 0,
+            items_count: new Set(holdings.map(h => h.isin)).size,
+        };
+
+        const fd_response = await this.get_user_fd_data({ user_id, order: { fd_issued_at: 'desc' } });
+        const fd_transactions = fd_response.fd_transactions || [];
+
+        const portfolio_aggregates = this.aggregate_portfolio_data(
+            mf_investment_data,
+            fd_transactions
+        );
+
+        const summary = {
+            portfolio_value: portfolio_aggregates.total_investments.current_value,
+            mutual_funds: portfolio_aggregates.total_investments.allocation.mutual_funds.value,
+            fixed_deposits: portfolio_aggregates.total_investments.allocation.fixed_deposits.value,
+            total_returns: portfolio_aggregates.total_investments.total_returns,
+            return_percent: portfolio_aggregates.total_investments.return_percent,
+            total_invested: portfolio_aggregates.invested_amount_breakdown.invested_amount,
+            portfolio_aggregates,
+        };
+
+        try {
+            await redis.set(cache_key, JSON.stringify(summary), { EX: 86400 });
+        } catch (err: any) {
+            logger.warn(`Redis set failed for portfolio summary ${user_id}: ${err?.message}`);
+        }
+
+        return summary;
+    };
+
+    set_cached_portfolio_summary = async (user_id: string, summary: any) => {
+        const cache_key = `portfolio:${user_id}:summary`;
+        try {
+            await redis.set(cache_key, JSON.stringify(summary), { EX: 86400 });
+        } catch (err: any) {
+            logger.warn(`Redis set failed for portfolio summary ${user_id}: ${err?.message}`);
+        }
+    };
+
+    invalidate_user_portfolio_cache = async (user_id: string) => {
+        try {
+            await redis.del(`portfolio:${user_id}:summary`);
+            logger.debug(`Invalidated portfolio cache for User ID: ${user_id}`);
+        } catch (err: any) {
+            logger.warn(`Failed to delete portfolio cache for ${user_id}: ${err?.message}`);
+        }
     };
 }
 

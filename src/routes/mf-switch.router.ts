@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { login_require } from "../middleware/session.middleware.js";
 import { mf_switch_controller } from "../controller/mf-switch.controller.js";
+import { plan_otp_rate_limiter, transaction_rate_limiter } from "../middleware/rate-limiter.middleware.js";
 
 export const mf_switch_router = Router();
 
 mf_switch_router.post(
     "/",
     login_require,
+    transaction_rate_limiter,
     mf_switch_controller.create_switch,
 );
 
@@ -25,6 +27,7 @@ mf_switch_router.get(
 mf_switch_router.post(
     "/:id/confirm/request-otp",
     login_require,
+    plan_otp_rate_limiter,
     mf_switch_controller.request_confirmation_otp,
 );
 

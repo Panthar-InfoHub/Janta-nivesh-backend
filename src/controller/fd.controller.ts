@@ -285,6 +285,8 @@ class FdControllerClass {
 
             const transaction = await user_service.get_user_fd_transaction_by_id({ user_id, transaction_id });
 
+            logger.debug("Transaction --> ", transaction)
+
             if (!transaction) {
                 logger.warn(`FD Transaction with ID ${transaction_id} not found for User ID ${user_id}`);
                 throw new AppError("FD Transaction not found", 404, "FD_TRANSACTION_NOT_FOUND");
@@ -293,7 +295,7 @@ class FdControllerClass {
             let pending_action: "PAYMENT" | "VKYC" | "COMPLETED" | null = null;
             if (!transaction.payment_completed_at) {
                 pending_action = "PAYMENT";
-            } else if (transaction.is_vkyc_pending) {
+            } else if (!transaction.vkyc_completed_at) {
                 pending_action = "VKYC";
             } else {
                 pending_action = "COMPLETED"

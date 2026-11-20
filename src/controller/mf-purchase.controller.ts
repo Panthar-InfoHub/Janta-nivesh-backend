@@ -157,7 +157,7 @@ class MfPurchaseControllerClass {
 
             logger.info("Requesting MF purchase confirmation OTP", { user_id, fp_id });
 
-            await plan_confirmation_otp_service.request_otp(user_id, fp_id, user.phone_no);
+            await plan_confirmation_otp_service.request_purchase_otp(user_id, fp_id, user.phone_no);
 
             res.status(200).json({
                 success: true,

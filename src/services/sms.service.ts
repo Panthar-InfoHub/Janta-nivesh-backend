@@ -29,28 +29,25 @@ class SMS_SERVICE_CLASS {
         return cleaned;
     };
 
-    /**
-     * Send OTP via MSG91
-     */
-    send_otp_sms = async (phoneNumber: string, otp: string): Promise<boolean> => {
+    private _send_flow = async (phoneNumber: string, template_id: string, variables: Record<string, string>): Promise<boolean> => {
         try {
             const formattedPhone = this.format_phone_no(phoneNumber);
 
             const payload = {
-                template_id: env.MSG91_TEMPLATE_ID,
+                template_id,
                 realTimeResponse: 1,
                 short_url: "0",
                 recipients: [
                     {
                         mobiles: formattedPhone,
-                        number: otp, // Assuming VAR1 is the placeholder for OTP in the MSG91 template
+                        ...variables,
                     },
                 ],
             };
 
-            logger.debug(`Formatted phone for msg91 sms --> `, formattedPhone)
-            logger.debug(`Payload for otp --> `, payload)
-            logger.debug(`Base url --> `, env.MSG91_BASE_URL)
+            logger.debug(`Formatted phone for msg91 sms --> `, formattedPhone);
+            logger.debug(`Payload for otp --> `, payload);
+            logger.debug(`Base url --> `, env.MSG91_BASE_URL);
             const response = await axios.post(
                 env.MSG91_BASE_URL,
                 payload,
@@ -62,14 +59,35 @@ class SMS_SERVICE_CLASS {
                     }
                 }
             );
-            logger.debug("msg 91 response ==> ", response.data)
+            logger.debug("msg 91 response ==> ", response.data);
 
-            if (response.data.type != "success") return false
-            return true
+            if (response.data.type != "success") return false;
+            return true;
         } catch (error) {
             logger.error("[SMS] Error sending MSG91 OTP:", error);
             return false;
         }
+    };
+
+    /**
+     * Send Login/Auth OTP via MSG91
+     */
+    send_otp_sms = async (phoneNumber: string, otp: string): Promise<boolean> => {
+        return this._send_flow(phoneNumber, env.MSG91_TEMPLATE_ID, { number: otp });
+    };
+
+    /**
+     * Send Mutual Fund Purchase OTP via MSG91 (Lumpsum, SIP, Cart checkout)
+     */
+    send_purchase_otp_sms = async (phoneNumber: string, otp: string): Promise<boolean> => {
+        return this._send_flow(phoneNumber, env.MSG91_MF_PURCHASE_TEMPLATE_ID, { name: otp });
+    };
+
+    /**
+     * Send Mutual Fund Redemption OTP via MSG91 (One-shot, SWP, Switch)
+     */
+    send_redemption_otp_sms = async (phoneNumber: string, otp: string): Promise<boolean> => {
+        return this._send_flow(phoneNumber, env.MSG91_MF_REDEMPTION_TEMPLATE_ID, { name: otp });
     };
 
 }

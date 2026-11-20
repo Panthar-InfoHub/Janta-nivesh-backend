@@ -320,8 +320,9 @@ class JobServiceClass {
                                 }
 
                                 freqGroup.tenure_mapping?.forEach((tm: any) => {
-                                    // Unique constraint: (fd_product_id, payout_frequency, tenure_days, customer_type)
-                                    const uniqueKey = `${pId}|${mappedFreq}|${tm.tenure}|${customerType}`;
+                                    // Dedup key must match the SQL ON CONFLICT columns: (fd_product_id, payout_frequency, tenure_label, customer_type)
+                                    const tenureLabel = (tm.year || tm.display || `${tm.tenure} Days`).trim();
+                                    const uniqueKey = `${pId}|${mappedFreq}|${tenureLabel}|${customerType}`;
 
                                     if (seenUniqueKeys.has(uniqueKey)) {
                                         duplicatesSkipped++;
@@ -329,7 +330,7 @@ class JobServiceClass {
                                         seenUniqueKeys.add(uniqueKey);
                                         rateValues.push(Prisma.sql`(
                                         ${cuid()}, ${pId}, ${mappedFreq}::"FdPayoutFrequency", ${customerType}::"FdCustomerType", 
-                                        ${tm.tenure}, ${tm.year || tm.display}, ${parseFloat(tm.rates.replace('%', ''))}, 
+                                        ${tm.tenure}, ${tenureLabel}, ${parseFloat(tm.rates.replace('%', ''))}, 
                                         ${parseFloat(tm.annualizedYield?.replace('%', '') || '0')},
                                         ${tm.default === true}, null, NOW()
                                     )`);

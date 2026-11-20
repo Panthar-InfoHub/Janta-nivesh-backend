@@ -19,7 +19,6 @@ job_router.post("/mf-scheme-code-sync", job_controller.mf_scheme_code_sync_job);
 job_router.post("/mf-nav-history", job_controller.mf_nav_history_job);
 job_router.post("/mf-nav-daily", job_controller.mf_nav_daily_job);
 job_router.post("/mf-metrics-calc", job_controller.mf_metrics_calc_job);
-job_router.post("/fd-daily", job_controller.daily_fd_product_sync_job);
 job_router.post("/user-snapshot", job_controller.monthly_user_snapshot_job);
 
 // TODO: periodic FP scheme-plan sync. For every MfProduct row (the curated list - small, bounded,
@@ -65,11 +64,12 @@ job_router.post("/mf-active-plans-sync", job_controller.mf_active_plans_sync_job
 
 
 /**
- * Daily job to get fd updated interest rates from velvet server
- * why velvet server not central fd ?? coz central fd server have no db access but since
- * both central fd and velvet server are bound via from same ip therefore we are requesting 
- * to velvet server to send janta nivesh back the updated interest rates as response
+ * Fixed Deposit (FD) Sync Jobs:
+ * - /fd-daily: Directly pulls FD templates, issuers, and daily interest rates from central Blostem server.
+ * - /send-daily-fd-rates: Returns today's updated FD rates from the local database in the HTTP response.
+ * - /get-fd-rates: Calls external velvet server to pull and upsert updated FD rates.
  */
+job_router.post("/fd-daily", job_controller.daily_fd_product_sync_job);
 job_router.post("/get-fd-rates", job_controller.get_fd_rates_job);
 job_router.post("/send-daily-fd-rates", job_controller.send_daily_fd_rates);
 

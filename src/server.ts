@@ -47,6 +47,7 @@ import { report_router } from "./routes/report.router.js"
 import { extendPrismaClient } from "./lib/extended-db.js"
 import { test_router } from "./routes/test.router.js"
 import { shutdown_posthog } from "./lib/posthog.js"
+import { global_rate_limiter } from "./middleware/rate-limiter.middleware.js"
 
 //Configurations
 import fs from "fs";
@@ -62,6 +63,8 @@ const prisma = new PrismaClient({ adapter: pool })
 export const db = extendPrismaClient(prisma)
 const app = express()
 
+// Trust reverse proxy (GCP / Nginx / Load Balancer) so req.ip reflects actual client IP
+app.set("trust proxy", 1);
 
 //Setting up socket server : later
 
@@ -76,6 +79,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 if (process.env.ENVIRONMENT === "dev") {
     app.use(morgan('combined')); //For logging
 }
+
+// Global API rate limiter (300 requests / 15 minutes per IP)
+app.use("/api", global_rate_limiter);
 
 
 //Routes

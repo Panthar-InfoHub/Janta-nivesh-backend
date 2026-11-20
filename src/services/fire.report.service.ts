@@ -22,24 +22,43 @@ import { user_service } from "./user.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
 import { db } from "../server.js";
+import { redis } from "../lib/redis.js";
 
 class FireReportServiceClass {
 
         async get_current_fire_number(user_id: string) {
-            const data = await user_service.get_all_user_data(user_id, {
-                user_finance: true,
-                user_loan: true,
-                user_goals: true,
-                user_assets: true,
-                user_insurance: true,
-            });
+            const [data, portfolio_summary] = await Promise.all([
+                user_service.get_all_user_data(user_id, {
+                    user_finance: true,
+                    user_loan: true,
+                    user_goals: true,
+                    user_assets: true,
+                    user_insurance: true,
+                }),
+                user_service.get_user_portfolio_summary(user_id)
+            ]);
 
             if (!data) {
                 logger.error(`No user data found for user_id: ${user_id}`);
                 throw new AppError("User data not found", 404, "USER_DATA_NOT_FOUND");
             }
 
-            const computed_metrics = this.compute_metrics(data);
+            const actual_mf = portfolio_summary?.mutual_funds || 0;
+            const actual_fd = portfolio_summary?.fixed_deposits || 0;
+
+            // Extract initial assets: combines actual app investments (MF holdings & FD transactions)
+            // with external assets declared during onboarding so user input is never discarded.
+            const initial_assets: ProjectionAssets = {
+                mutual_funds: actual_mf + this.to_num(data.user_assets?.mutual_funds),
+                stocks: this.to_num(data.user_assets?.stocks),
+                fd: actual_fd + this.to_num(data.user_assets?.fd),
+                gold: this.to_num(data.user_assets?.gold),
+                cash_saving: this.to_num(data.user_assets?.cash_saving),
+                nps: 0,
+                ppf_epf: 0,
+            };
+
+            const computed_metrics = this.compute_metrics(data, initial_assets);
             const monthly_expenses_total = computed_metrics.total_annual_expenses / 12;
             const goals = this.normalize_goals_with_sip(
                 data.user_goals ?? [],
@@ -49,17 +68,6 @@ class FireReportServiceClass {
 
             const current_year = new Date().getFullYear();
             const loans = this.normalize_loans(data.user_loan ?? []);
-
-            // Extract initial assets
-            const initial_assets: ProjectionAssets = {
-                mutual_funds: this.to_num(data.user_assets?.mutual_funds),
-                stocks: this.to_num(data.user_assets?.stocks),
-                fd: this.to_num(data.user_assets?.fd),
-                gold: this.to_num(data.user_assets?.gold),
-                cash_saving: this.to_num(data.user_assets?.cash_saving),
-                nps: 0,
-                ppf_epf: 0,
-            };
 
             // Get year-0 portfolio values with asset growth and partial-year aware EMI
             const { portfolio_value_inc, portfolio_value_exc, yearly_emi } =
@@ -114,38 +122,10 @@ class FireReportServiceClass {
             throw new AppError("User data not found", 404, "USER_DATA_NOT_FOUND");
         }
 
-        // 1. Actual Mutual Funds from native PostgreSQL holdings
-        const holdings = await db.mfHolding.findMany({
-            where: {
-                user_id,
-            },
-            select: {
-                current_value: true,
-            },
-        });
-
-        const actual_mf = holdings.reduce(
-            (sum, holding) => sum + this.to_num(holding.current_value),
-            0,
-        );
-
-        // 2. Actual Fixed Deposits from native PostgreSQL transactions
-        const fd_transactions = await db.fdTransaction.findMany({
-            where: {
-                user_id,
-                status: {
-                    in: ["FD_CREATED", "MATURED"],
-                },
-            },
-            select: {
-                amount: true,
-            },
-        });
-
-        const actual_fd = fd_transactions.reduce(
-            (sum, transaction) => sum + this.to_num(transaction.amount),
-            0,
-        );
+        // 1. Actual Mutual Funds & Fixed Deposits from portfolio summary (cached / native DB)
+        const portfolio_summary = await user_service.get_user_portfolio_summary(user_id);
+        const actual_mf = portfolio_summary?.mutual_funds || 0;
+        const actual_fd = portfolio_summary?.fixed_deposits || 0;
 
         // 3. Projected report from onboarding data
         const projected = await this.generate_report_with_assets(
@@ -153,11 +133,11 @@ class FireReportServiceClass {
             projection_years,
         );
 
-        // 4. Actual report from native MF holdings + FD transactions
+        // 4. Actual report from native MF holdings + FD transactions + external declared assets
         const actual_assets: ProjectionAssets = {
-            mutual_funds: actual_mf,
+            mutual_funds: actual_mf + this.to_num(data.user_assets?.mutual_funds),
             stocks: this.to_num(data.user_assets?.stocks),
-            fd: actual_fd,
+            fd: actual_fd + this.to_num(data.user_assets?.fd),
             gold: this.to_num(data.user_assets?.gold),
             cash_saving: this.to_num(data.user_assets?.cash_saving),
             nps: 0,
