@@ -21,6 +21,8 @@ export const env = {
 
     MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY!,
     MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID!,
+    MSG91_MF_PURCHASE_TEMPLATE_ID: process.env.MSG91_MF_PURCHASE_TEMPLATE_ID || "6aecb5d36cbed0e26905f063",
+    MSG91_MF_REDEMPTION_TEMPLATE_ID: process.env.MSG91_MF_REDEMPTION_TEMPLATE_ID || "6aecb60dda2368fc3d000912",
     MSG91_BASE_URL: process.env.MSG91_BASE_URL!,
 
     // MSG91 email API - same authkey as the SMS flow above, different endpoint + template.

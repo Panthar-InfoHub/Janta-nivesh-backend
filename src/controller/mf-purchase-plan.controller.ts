@@ -174,7 +174,7 @@ class MfPurchasePlanControllerClass {
             const user = await user_service.get_user_by_id(user_id);
             logger.info("Requesting purchase plan confirmation OTP", { user_id, fp_purchase_plan_id });
 
-            await plan_confirmation_otp_service.request_otp(user_id, fp_purchase_plan_id, user.phone_no);
+            await plan_confirmation_otp_service.request_purchase_otp(user_id, fp_purchase_plan_id, user.phone_no);
 
             res.status(200).json({
                 success: true,

@@ -326,7 +326,7 @@ class MfRedemptionControllerClass {
                 );
             }
 
-            await plan_confirmation_otp_service.request_otp(
+            await plan_confirmation_otp_service.request_redemption_otp(
                 user_id,
                 fp_id,
                 user.phone_no,

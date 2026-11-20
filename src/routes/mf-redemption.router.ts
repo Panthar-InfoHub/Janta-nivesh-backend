@@ -2,12 +2,14 @@ import { Router } from "express";
 
 import { mf_redemption_controller } from "../controller/mf-redemption.controller.js";
 import { login_require } from "../middleware/session.middleware.js";
+import { plan_otp_rate_limiter, transaction_rate_limiter } from "../middleware/rate-limiter.middleware.js";
 
 export const mf_redemption_router = Router();
 
 mf_redemption_router.post(
     "/",
     login_require,
+    transaction_rate_limiter,
     mf_redemption_controller.create_redemption,
 );
 
@@ -26,6 +28,7 @@ mf_redemption_router.get(
 mf_redemption_router.post(
     "/:id/confirm/request-otp",
     login_require,
+    plan_otp_rate_limiter,
     mf_redemption_controller.request_confirmation_otp,
 );
 

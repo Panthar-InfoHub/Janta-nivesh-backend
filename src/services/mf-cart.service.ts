@@ -667,7 +667,7 @@ class MfCartServiceClass {
             { EX: 5 * 60 },
         );
 
-        await plan_confirmation_otp_service.request_otp(
+        await plan_confirmation_otp_service.request_purchase_otp(
             user_id,
             batch_id,
             user.phone_no,
@@ -893,7 +893,7 @@ class MfCartServiceClass {
             { EX: 5 * 60 },
         );
 
-        await plan_confirmation_otp_service.request_otp(
+        await plan_confirmation_otp_service.request_purchase_otp(
             user_id,
             batch_id,
             user.phone_no,
