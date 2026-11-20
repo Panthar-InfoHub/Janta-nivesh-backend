@@ -12,6 +12,7 @@ import { mf_cart_service } from "../services/mf-cart.service.js";
 import { user_onboarding_service } from "../services/kyc/user.onboarding.service.js";
 import { fire_report_service } from "../services/fire.report.service.js";
 import { user_goal_service } from "../services/onboarding/user.goal.service.js";
+import { decentro_service } from "../services/decentro.service.js";
 class UserFinanceControllerClass {
 
 
@@ -685,6 +686,48 @@ class UserFinanceControllerClass {
             return;
         }
     }
+
+    fetch_address = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user_id: string = req.user!.id;
+            logger.info(`Fetching address for user ${user_id}`);
+
+            const user = await db.user.findUnique({
+                where: { id: user_id },
+                select: {
+                    id: true,
+                    phone_no: true,
+                    kyc_profile: {
+                        select: {
+                            id: true,
+                            pre_verification_response: true,
+                        },
+                    },
+                },
+            });
+
+            if (!user) {
+                throw new AppError("User not found", 404, "USER_NOT_FOUND");
+            }
+            if (!user.phone_no) {
+                throw new AppError("User mobile number not found", 400, "PHONE_NUMBER_NOT_FOUND");
+            }
+
+            const address_data = await decentro_service.get_address(user.phone_no);
+
+            res.status(200).json({
+                code: 200,
+                success: true,
+                message: "User address fetched successfully",
+                data: address_data,
+            });
+            return;
+        } catch (error) {
+            logger.error(`Error in fetch_address: ${error}`);
+            next(error);
+            return;
+        }
+    };
 
 
 

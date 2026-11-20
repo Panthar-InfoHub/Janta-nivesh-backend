@@ -46,4 +46,6 @@ user_router.patch("/", login_require, user_controller.patch_user)
 
 user_router.post("/verify-mpin", login_require, user_controller.verify_mpin)
 
+user_router.get("/fetch-address", login_require, user_controller.fetch_address)
+
 user_router.get("/fd-transactions", login_require, user_controller.get_user_fd_transactions)
