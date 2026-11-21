@@ -240,7 +240,7 @@ class FdControllerClass {
                 );
             }
 
-            const token = await job_controller.get_redirect_blostem_token();
+            // const token = await job_controller.get_redirect_blostem_token();
 
             logger.info(`User phone number for FD Transaction ID ${fd_trans_id}: ${fd_transaction.user?.phone_no}`);
             const encrypted_text = this.create_encryption_text(fd_transaction.user?.phone_no);
