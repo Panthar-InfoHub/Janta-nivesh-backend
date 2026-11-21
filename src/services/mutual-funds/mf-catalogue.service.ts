@@ -137,6 +137,7 @@ class MfCatalogueServiceClass {
             // Default "both": must allow both lumpsum and monthly SIP, ensuring 100% eligibility for cart & bundles
             scheme_plan_is.lumpsum_allowed = true;
             scheme_plan_is.sip_monthly_allowed = true;
+            scheme_plan_is.sip_daily_allowed = true
         }
 
         const where: any = {
