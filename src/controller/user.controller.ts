@@ -258,7 +258,7 @@ class UserFinanceControllerClass {
             // (on-write, once a controller calls it, plus nightly via job.service.ts's
             // mf_holding_sync_job), so this endpoint never waits on FP.
             const holdings = await db.mfHolding.findMany({
-                where: { user_id: user.id },
+                where: { user_id: user.id, units: { gt: 0 } },
                 include: {
                     mf_product: {
                         select: {
@@ -565,22 +565,72 @@ class UserFinanceControllerClass {
             }
 
             // MfTransactionPlan carries the order/SIP identity (state, next installment, SIP id) -
-            // MfHolding doesn't know about any of that, it only knows current units/value. A folio
-            // can have more than one plan against the same scheme (a SIP and a later lumpsum both
-            // landing here), so this takes the most recently created one per scheme for the
-            // identity fields shown alongside the (already-combined) holding numbers.
+            // MfHolding doesn't know about any of that, it only knows current units/value.
+            // Parent SIP plans (mfpp_*) have systematic: true and typically folio_number: null,
+            // while their child installments (mfp_*) carry folio_number and raw_response.plan -> mfpp_*.
+            // Fetch both folio-matched rows and systematic plans for the scheme(s) so we can resolve
+            // the parent SIP plan when viewing a SIP folio.
             const isins = holdings.map((h) => h.isin);
             const plans = await db.mfTransactionPlan.findMany({
-                where: { user_id: user.id, folio_number: folio_id, scheme: { in: isins } },
+                where: {
+                    user_id: user.id,
+                    scheme: { in: isins },
+                    OR: [
+                        { folio_number: folio_id },
+                        { systematic: true },
+                    ],
+                },
                 orderBy: { createdAt: "desc" },
             });
-            const plan_by_isin = new Map<string, (typeof plans)[number]>();
-            for (const plan of plans) {
-                if (!plan_by_isin.has(plan.scheme)) plan_by_isin.set(plan.scheme, plan);
+
+            const plan_by_fp_id = new Map<string, (typeof plans)[number]>();
+            for (const p of plans) {
+                if (p.fp_id) plan_by_fp_id.set(p.fp_id, p);
             }
 
+            const ACTIVE_SIP_STATES: MfTransactionState[] = [
+                MfTransactionState.ACTIVE,
+                MfTransactionState.CONFIRMED,
+                MfTransactionState.SUBMITTED,
+            ];
+
+            const resolve_plan_for_holding = (isin: string) => {
+                const scheme_plans = plans.filter((p) => p.scheme === isin);
+                const folio_matches = scheme_plans.filter((p) => p.folio_number === folio_id);
+
+                // 1. Direct systematic plan already tagged with this folio
+                const direct_sip = folio_matches.find((p) => p.systematic);
+                if (direct_sip) return direct_sip;
+
+                // 2. Child installment(s) on this folio pointing to a parent mfpp_* plan
+                for (const child of folio_matches) {
+                    const raw = child.raw_response as Record<string, any> | null;
+                    const parent_fp_id = raw?.plan || raw?.mf_purchase_plan;
+                    if (typeof parent_fp_id === "string") {
+                        const parent_plan = plan_by_fp_id.get(parent_fp_id);
+                        if (parent_plan) return parent_plan;
+                    }
+                }
+
+                // 3. No folio-matched order in DB (e.g. synced holding before order backfill):
+                // fall back to an active/latest systematic plan for the scheme
+                if (folio_matches.length === 0) {
+                    const active_sip = scheme_plans.find(
+                        (p) => p.systematic && ACTIVE_SIP_STATES.includes(p.state)
+                    );
+                    if (active_sip) return active_sip;
+                    const any_sip = scheme_plans.find((p) => p.systematic);
+                    if (any_sip) return any_sip;
+                }
+
+                // 4. Lumpsum folio
+                return folio_matches[0];
+            };
+
+
             const mf_investment_items = holdings.map((h) => {
-                const plan = plan_by_isin.get(h.isin);
+                const plan = resolve_plan_for_holding(h.isin);
+                logger.debug(`plan --> `, plan)
                 return {
                     id: h.mf_product_id,
                     mf_holding_id: h.id,

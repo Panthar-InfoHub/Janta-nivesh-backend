@@ -127,7 +127,54 @@ class PanVerificationControllerClass {
                 const name_obj = pre_verification?.name;
                 const dob_obj = pre_verification?.date_of_birth;
 
-                // 1. Check Readiness Status
+                // 1. Check PAN Hash Status (highest priority - invalid PAN / Aadhaar unlinked)
+                if (pan_obj?.status === "failed") {
+                    const code = pan_obj?.code;
+                    logger.error("PAN verification failed", { code, reason: pan_obj?.reason });
+
+                    switch (code) {
+                        case "invalid":
+                            throw new AppError("PAN number is invalid or non-existent", 400, "PAN_INVALID");
+                        case "aadhaar_not_linked":
+                            throw new AppError("Aadhaar is not linked with PAN record. Please seed Aadhaar with PAN.", 400, "PAN_AADHAAR_NOT_LINKED");
+                        case "upstream_error":
+                            throw new AppError("Upstream error contacting IT department for PAN verification.", 502, "PAN_UPSTREAM_ERROR");
+                        default:
+                            throw new AppError(`PAN verification failed: ${pan_obj?.reason || code || "Unknown error"}`, 400, "PAN_VERIFICATION_FAILED");
+                    }
+                }
+
+                // 2. Check Name Hash Status
+                if (name_obj?.status === "failed") {
+                    const code = name_obj?.code;
+                    logger.error("Name verification failed", { code, reason: name_obj?.reason });
+
+                    switch (code) {
+                        case "mismatch":
+                            throw new AppError("Name does not match with the PAN records at IT department", 400, "NAME_MISMATCH");
+                        case "upstream_error":
+                            throw new AppError("Upstream error contacting IT department for Name verification", 502, "NAME_UPSTREAM_ERROR");
+                        default:
+                            throw new AppError(`Name verification failed: ${name_obj?.reason || code || "Unknown error"}`, 400, "NAME_VERIFICATION_FAILED");
+                    }
+                }
+
+                // 3. Check Date of Birth Hash Status
+                if (dob_obj?.status === "failed") {
+                    const code = dob_obj?.code;
+                    logger.error("Date of birth verification failed", { code, reason: dob_obj?.reason });
+
+                    switch (code) {
+                        case "mismatch":
+                            throw new AppError("Date of birth does not match with the PAN records at IT department", 400, "DOB_MISMATCH");
+                        case "upstream_error":
+                            throw new AppError("Upstream error contacting IT department for Date of Birth verification", 502, "DOB_UPSTREAM_ERROR");
+                        default:
+                            throw new AppError(`Date of Birth verification failed: ${dob_obj?.reason || code || "Unknown error"}`, 400, "DOB_VERIFICATION_FAILED");
+                    }
+                }
+
+                // 4. Check Readiness Status (checked after PAN/Name/DOB identity checks pass)
                 if (readiness?.status === "failed" || readiness?.code === "kyc_rate_limit_exceeded") {
                     const code = readiness?.code;
                     logger.error("Readiness check failed", { code, reason: readiness?.reason });
@@ -150,53 +197,6 @@ class PanVerificationControllerClass {
                             throw new AppError("Upstream error during readiness check. Please retry after some time.", 502, "READINESS_UPSTREAM_ERROR");
                         default:
                             throw new AppError(`Readiness check failed: ${readiness?.reason || code || "Unknown error"}`, 400, "READINESS_FAILED");
-                    }
-                }
-
-                // 2. Check PAN Hash Status
-                if (pan_obj?.status === "failed") {
-                    const code = pan_obj?.code;
-                    logger.error("PAN verification failed", { code, reason: pan_obj?.reason });
-
-                    switch (code) {
-                        case "invalid":
-                            throw new AppError("PAN number is invalid or non-existent", 400, "PAN_INVALID");
-                        case "aadhaar_not_linked":
-                            throw new AppError("Aadhaar is not linked with PAN record. Please seed Aadhaar with PAN.", 400, "PAN_AADHAAR_NOT_LINKED");
-                        case "upstream_error":
-                            throw new AppError("Upstream error contacting IT department for PAN verification.", 502, "PAN_UPSTREAM_ERROR");
-                        default:
-                            throw new AppError(`PAN verification failed: ${pan_obj?.reason || code || "Unknown error"}`, 400, "PAN_VERIFICATION_FAILED");
-                    }
-                }
-
-                // 3. Check Name Hash Status
-                if (name_obj?.status === "failed") {
-                    const code = name_obj?.code;
-                    logger.error("Name verification failed", { code, reason: name_obj?.reason });
-
-                    switch (code) {
-                        case "mismatch":
-                            throw new AppError("Name does not match with the PAN records at IT department", 400, "NAME_MISMATCH");
-                        case "upstream_error":
-                            throw new AppError("Upstream error contacting IT department for Name verification", 502, "NAME_UPSTREAM_ERROR");
-                        default:
-                            throw new AppError(`Name verification failed: ${name_obj?.reason || code || "Unknown error"}`, 400, "NAME_VERIFICATION_FAILED");
-                    }
-                }
-
-                // 4. Check Date of Birth Hash Status
-                if (dob_obj?.status === "failed") {
-                    const code = dob_obj?.code;
-                    logger.error("Date of birth verification failed", { code, reason: dob_obj?.reason });
-
-                    switch (code) {
-                        case "mismatch":
-                            throw new AppError("Date of birth does not match with the PAN records at IT department", 400, "DOB_MISMATCH");
-                        case "upstream_error":
-                            throw new AppError("Upstream error contacting IT department for Date of Birth verification", 502, "DOB_UPSTREAM_ERROR");
-                        default:
-                            throw new AppError(`Date of Birth verification failed: ${dob_obj?.reason || code || "Unknown error"}`, 400, "DOB_VERIFICATION_FAILED");
                     }
                 }
 
