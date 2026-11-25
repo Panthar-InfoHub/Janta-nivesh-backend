@@ -140,30 +140,41 @@ class MfCatalogueServiceClass {
             scheme_plan_is.sip_daily_allowed = true
         }
 
-        const where: any = {
+        const base_where: any = {
             ...FLEXIBLE_METRICS,
             scheme_plan: {
                 is: scheme_plan_is,
             },
         };
 
-        // 4. Search query (name or isin)
+        // 4. Search query (multi-token + pg_trgm fuzzy ranking & typo fallback)
         if (search && search.trim().length > 0) {
             const trimmed = search.trim();
-            where.OR = [
-                { name: { contains: trimmed, mode: "insensitive" } },
-                { isin: { contains: trimmed, mode: "insensitive" } },
-            ];
+            const { total, funds } = await this.search_ranked_funds(
+                base_where,
+                trimmed,
+                page,
+                limit,
+            );
+
+            return {
+                tag,
+                title: MF_SECTION_TITLES[tag],
+                search: trimmed,
+                category,
+                amount_type,
+                investment_mode,
+                funds,
+                pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+            };
         }
 
         const [total, funds] = await Promise.all([
-            db.mfProduct.count({ where }),
+            db.mfProduct.count({ where: base_where }),
             db.mfProduct.findMany({
-                where,
+                where: base_where,
                 select: FUND_CARD_SELECT,
-                orderBy: search
-                    ? { name: "asc" as const }
-                    : { metrics: { return_3y: { sort: "desc" as const, nulls: "last" as const } } },
+                orderBy: { metrics: { return_3y: { sort: "desc" as const, nulls: "last" as const } } },
                 skip: (page - 1) * limit,
                 take: limit,
             }),
@@ -172,13 +183,111 @@ class MfCatalogueServiceClass {
         return {
             tag,
             title: MF_SECTION_TITLES[tag],
-            search: search ? search.trim() : undefined,
+            search: undefined,
             category,
             amount_type,
             investment_mode,
             funds,
             pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
         };
+    };
+
+    /**
+     * Two-tier fuzzy search for mutual funds:
+     * 1. Multi-token AND match (e.g. "Nip mid" -> "Nippon ... Mid...") ranked via pg_trgm.
+     * 2. pg_trgm word_similarity / similarity typo fallback (e.g. "nipon midcp") when Tier 1 has 0 hits.
+     */
+    private search_ranked_funds = async (
+        base_where: any,
+        trimmed: string,
+        page: number,
+        limit: number,
+    ) => {
+        const tokens = trimmed.split(/\s+/).filter(Boolean);
+        const token_where = {
+            ...base_where,
+            AND: tokens.map((token) => ({
+                OR: [
+                    { name: { contains: token, mode: "insensitive" as const } },
+                    { isin: { contains: token, mode: "insensitive" as const } },
+                ],
+            })),
+        };
+
+        const token_matches = await db.mfProduct.findMany({
+            where: token_where,
+            select: { id: true },
+        });
+
+        let ranked_ids: string[] = [];
+        const first_prefix = `${tokens[0]?.toLowerCase() ?? ""}%`;
+
+        if (token_matches.length > 0) {
+            const candidate_ids = token_matches.map((m) => m.id);
+            try {
+                const rows = await db.$queryRaw<Array<{ id: string }>>`
+                    SELECT id
+                    FROM "MfProduct"
+                    WHERE id = ANY(${candidate_ids}::text[])
+                    ORDER BY
+                        (lower(name) LIKE ${first_prefix}) DESC,
+                        word_similarity(${trimmed}, name) DESC,
+                        similarity(${trimmed}, name) DESC,
+                        name ASC
+                `;
+                ranked_ids = rows.map((r) => r.id);
+            } catch (err: any) {
+                logger.warn("pg_trgm ranking failed, falling back to token order", { error: err?.message });
+                ranked_ids = candidate_ids;
+            }
+        } else {
+            // Tier 2: typo-tolerant fallback across all eligible funds for the current filter
+            const eligible = await db.mfProduct.findMany({
+                where: base_where,
+                select: { id: true },
+            });
+            if (eligible.length > 0) {
+                const eligible_ids = eligible.map((e) => e.id);
+                const isin_like = `%${trimmed}%`;
+                try {
+                    const rows = await db.$queryRaw<Array<{ id: string }>>`
+                        SELECT id
+                        FROM "MfProduct"
+                        WHERE id = ANY(${eligible_ids}::text[])
+                          AND (
+                              word_similarity(${trimmed}, name) > 0.25
+                              OR similarity(${trimmed}, name) > 0.15
+                              OR isin ILIKE ${isin_like}
+                          )
+                        ORDER BY
+                            (lower(name) LIKE ${first_prefix}) DESC,
+                            word_similarity(${trimmed}, name) DESC,
+                            similarity(${trimmed}, name) DESC,
+                            name ASC
+                    `;
+                    ranked_ids = rows.map((r) => r.id);
+                } catch (err: any) {
+                    logger.warn("pg_trgm fallback search failed", { error: err?.message });
+                }
+            }
+        }
+
+        const total = ranked_ids.length;
+        const page_ids = ranked_ids.slice((page - 1) * limit, page * limit);
+
+        if (page_ids.length === 0) {
+            return { total, funds: [] };
+        }
+
+        const unsorted_funds = await db.mfProduct.findMany({
+            where: { id: { in: page_ids } },
+            select: FUND_CARD_SELECT,
+        });
+
+        const by_id = new Map(unsorted_funds.map((f) => [f.id, f]));
+        const funds = page_ids.map((id) => by_id.get(id)).filter((f): f is NonNullable<typeof f> => Boolean(f));
+
+        return { total, funds };
     };
 
     /** One tag's funds, paginated. Backs GET /api/v2/mf/funds?tag=... (the "see all" screen). */
