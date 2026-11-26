@@ -74,7 +74,7 @@ export interface ProjectionRow {
     total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw
     savings: DualEMI;           // income − total_expenses − goal_sips
     portfolio_value: DualEMI;   // portfolio_after_growth + savings − goals_payout
-    fire_number: DualEMI;       // (total_expenses + goal_sips) × 30
+    fire_number: DualEMI;       // total_expenses × 30
     fire_percentage: DualEMI;   // portfolio_value / fire_number × 100
 }
 
