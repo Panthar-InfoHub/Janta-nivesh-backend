@@ -14,9 +14,9 @@ export const childEducationSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(1),
     goal_name: z.string().min(2).max(60).optional(),
     child_name: z.string().min(2, "Child name must be at least 2 characters").max(50, "Child name cannot exceed 50 characters"),
-    child_age: z.coerce.number().int().min(0, "Child age must be >= 0").max(25, "Child age cannot exceed 25 years"),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(30, "Years remaining cannot exceed 30"),
-    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000").max(100000000, "Current cost cannot exceed ₹10 crore"),
+    child_age: z.coerce.number().int().min(0, "Child age must be >= 0"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000"),
 });
 
 // 2. Child's Marriage (goal_type_id: 2)
@@ -24,17 +24,17 @@ export const childMarriageSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(2),
     goal_name: z.string().min(2).max(60).optional(),
     child_name: z.string().min(2, "Child name must be at least 2 characters").max(50, "Child name cannot exceed 50 characters"),
-    child_age: z.coerce.number().int().min(0, "Child age must be >= 0").max(30, "Child age cannot exceed 30 years"),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(30, "Years remaining cannot exceed 30"),
-    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000").max(100000000, "Current cost cannot exceed ₹10 crore"),
+    child_age: z.coerce.number().int().min(0, "Child age must be >= 0"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000"),
 });
 
 // 3. Buy a Home (goal_type_id: 3)
 export const buyHomeSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(3),
     goal_name: z.string().min(2, "Goal name must be at least 2 characters").max(60).default("My Home"),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(30, "Years remaining cannot exceed 30"),
-    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000").max(200000000, "Current cost cannot exceed ₹20 crore"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000"),
 });
 
 // 4. Buy a Vehicle (goal_type_id: 4)
@@ -42,24 +42,24 @@ export const buyVehicleSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(4),
     goal_name: z.string().min(2, "Goal name must be at least 2 characters").max(60).default("My Vehicle"),
     asset_subtype: z.enum(["BIKE", "SCOOTER", "CAR"]),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(15, "Years remaining cannot exceed 15 for vehicle"),
-    current_cost: z.coerce.number().min(10000, "Current cost must be at least ₹10,000").max(50000000, "Current cost cannot exceed ₹5 crore"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    current_cost: z.coerce.number().min(10000, "Current cost must be at least ₹10,000"),
 });
 
 // 5. Build My Savings (goal_type_id: 5)
 export const buildSavingsSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(5),
     goal_name: z.string().min(2, "Goal name must be at least 2 characters").max(60).default("My Savings"),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(30, "Years remaining cannot exceed 30"),
-    target_amount: z.coerce.number().min(1000, "Target amount must be at least ₹1,000").max(200000000, "Target amount cannot exceed ₹20 crore"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    target_amount: z.coerce.number().min(1000, "Target amount must be at least ₹1,000"),
 });
 
 // 6. Other Goal (goal_type_id: 6)
 export const otherGoalSchema = baseRateAndSavingsSchema.extend({
     goal_type_id: z.literal(6),
     goal_name: z.string().min(2, "Goal name must be at least 2 characters").max(60, "Goal name cannot exceed 60 characters"),
-    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1").max(30, "Years remaining cannot exceed 30"),
-    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000").max(200000000, "Current cost cannot exceed ₹20 crore"),
+    years_remaining: z.coerce.number().int().min(1, "Years remaining must be at least 1"),
+    current_cost: z.coerce.number().min(1000, "Current cost must be at least ₹1,000"),
 });
 
 // 7. Retirement Goal (goal_type_id: 7) - Velvet
