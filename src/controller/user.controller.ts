@@ -35,6 +35,7 @@ class UserFinanceControllerClass {
         try {
 
             const user_id: string = req.user!.id;
+            const is_velvet = req.query.is_velvet === "true" || req.query.is_velvet === "1";
             logger.info(`Fetching user data for User ID: ${user_id}`);
 
             const { fire_number, net_worth, total_expenses, fire_percentage } = await fire_report_service.get_current_fire_number(user_id);
@@ -47,7 +48,8 @@ class UserFinanceControllerClass {
                 user_finance: true,
                 kyc_types: true,
                 onboarding: true,
-                user_bank_details: true
+                user_bank_details: true,
+                is_velvet,
             });
 
             logger.debug(`User data fetched successfully ==> `, data);

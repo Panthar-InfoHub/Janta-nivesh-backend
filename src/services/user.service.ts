@@ -34,6 +34,7 @@ type GetAllUserDataOptions = {
     kyc_types?: boolean;
     mfKycIdentities?: boolean;
     onboarding?: boolean;
+    is_velvet?: boolean;
 }
 
 
@@ -228,9 +229,9 @@ class UserServiceClass {
                 user_loan: options?.user_loan ?? false,
                 user_goals: options?.user_goals
                     ? {
-                        where: {
-                            status: { not: "DELETED" },
-                        },
+                        where: options?.is_velvet
+                            ? { status: { not: "DELETED" } }
+                            : { status: { not: "DELETED" }, goal_type_id: { in: [1, 2, 3, 4, 5, 6] } },
                         orderBy: { createdAt: "desc" },
                         include: {
                             holdings: UserGoalServiceClass.HOLDINGS_INCLUDE,
