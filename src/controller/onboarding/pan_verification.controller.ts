@@ -131,6 +131,10 @@ class PanVerificationControllerClass {
                 if (pan_obj?.status === "failed") {
                     const code = pan_obj?.code;
                     logger.error("PAN verification failed", { code, reason: pan_obj?.reason });
+                    await user_onboarding_service.update_stage(user_id, {
+                        readiness_status: "FAILED",
+                        current_stage: "PAN_VERIFICATION",
+                    });
 
                     switch (code) {
                         case "invalid":
@@ -148,6 +152,12 @@ class PanVerificationControllerClass {
                 if (name_obj?.status === "failed") {
                     const code = name_obj?.code;
                     logger.error("Name verification failed", { code, reason: name_obj?.reason });
+                    await user_onboarding_service.update_stage(user_id, {
+                        readiness_status: "FAILED",
+                        ...(code === "mismatch"
+                            ? { basic_details_status: "PENDING", current_stage: "BASIC_DETAILS" }
+                            : { current_stage: "PAN_VERIFICATION" }),
+                    });
 
                     switch (code) {
                         case "mismatch":
@@ -163,6 +173,12 @@ class PanVerificationControllerClass {
                 if (dob_obj?.status === "failed") {
                     const code = dob_obj?.code;
                     logger.error("Date of birth verification failed", { code, reason: dob_obj?.reason });
+                    await user_onboarding_service.update_stage(user_id, {
+                        readiness_status: "FAILED",
+                        ...(code === "mismatch"
+                            ? { basic_details_status: "PENDING", current_stage: "BASIC_DETAILS" }
+                            : { current_stage: "PAN_VERIFICATION" }),
+                    });
 
                     switch (code) {
                         case "mismatch":
@@ -178,6 +194,17 @@ class PanVerificationControllerClass {
                 if (readiness?.status === "failed" || readiness?.code === "kyc_rate_limit_exceeded") {
                     const code = readiness?.code;
                     logger.error("Readiness check failed", { code, reason: readiness?.reason });
+                    const requires_kyc_form = [
+                        "kyc_unavailable",
+                        "kyc_rejected",
+                        "kyc_incomplete",
+                        "kyc_onhold",
+                        "kyc_legacy",
+                    ].includes(code);
+                    await user_onboarding_service.update_stage(user_id, {
+                        readiness_status: "FAILED",
+                        current_stage: requires_kyc_form ? "KYC_VERIFICATION" : "PAN_VERIFICATION",
+                    });
 
                     switch (code) {
                         case "kyc_rate_limit_exceeded":
