@@ -126,7 +126,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     const fiAge = fiYear ? report.user_profile.age + (fiYear - new Date().getFullYear()) : null;
 
     // ── Income & Expense ──────────────────────────────────────────────────────
-    const monthlyIncome = m.monthly_income;
+    const monthlyIncome = Math.round(m.monthly_income);
     const monthlyExpense = eb.total_monthly;
     const monthlySurplus = Math.round(monthlyIncome - monthlyExpense);
     const annualSurplus = Math.round(m.annual_savings);

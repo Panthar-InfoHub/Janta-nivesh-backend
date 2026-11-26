@@ -82,8 +82,8 @@ class FireReportServiceClass {
             const total_expenses_exclude = computed_metrics.total_annual_expenses;
             const total_expenses_include = total_expenses_exclude + yearly_emi;
 
-            const fire_number_exclude = (total_expenses_exclude + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
-            const fire_number_include = (total_expenses_include + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+            const fire_number_exclude = total_expenses_exclude * FIRE_CONSTANTS.fire_factor;
+            const fire_number_include = total_expenses_include * FIRE_CONSTANTS.fire_factor;
 
             const fire_percentage_exclude = fire_number_exclude > 0
                 ? (portfolio_value_exc * 100) / fire_number_exclude
@@ -425,8 +425,8 @@ class FireReportServiceClass {
                 ya_exc.cash_saving += Math.max(0, savings_exc - goals_payout);
 
                 // 11. FIRE number and percentage per track
-                const fire_number_inc = (total_expenses_inc + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
-                const fire_number_exc = (total_expenses_exc + goal_commitment_annual) * FIRE_CONSTANTS.fire_factor;
+                const fire_number_inc = total_expenses_inc * FIRE_CONSTANTS.fire_factor;
+                const fire_number_exc = total_expenses_exc * FIRE_CONSTANTS.fire_factor;
                 const fire_percentage_inc = fire_number_inc > 0 ? (portfolio_value_inc * 100) / fire_number_inc : 0;
                 const fire_percentage_exc = fire_number_exc > 0 ? (portfolio_value_exc * 100) / fire_number_exc : 0;
 
