@@ -106,18 +106,24 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
 
     logger.debug("Quarterly Simulation Data:", qs);
     // ── Quarter labels from simulation ────────────────────────────────────────
-    const currentQuarter = qs[5]?.quarter ?? "Q1 2026";
-    const previousQuarter = qs[4]?.quarter ?? "Q4 2025";
+    // New users get fewer than 6 points, so read from the end instead of fixed indexes
+    const quarter_now = new Date();
+    const fallback_q = `Q${Math.floor(quarter_now.getMonth() / 3) + 1} ${quarter_now.getFullYear()}`;
+    const currentQuarter = qs[qs.length - 1]?.quarter ?? fallback_q;
+    const previousQuarter = qs[qs.length - 2]?.quarter ?? currentQuarter;
 
     // ── Snapshot ──────────────────────────────────────────────────────────────
     const netWorth = m.net_worth;
-    const netWorthPrevQ = Math.round(qs[4] ? qs[4].net_worth * 100_000 : netWorth * 0.98);
+    const prevPoint = qs.length >= 2 ? qs[qs.length - 2] : undefined;
+    const netWorthPrevQ = Math.round(prevPoint ? prevPoint.net_worth * 100_000 : netWorth);
     const netWorthHistory = qs.map(q => ({ quarter: q.quarter, value: q.net_worth }));
     const fireCurrentCorpus = projection[0]?.portfolio_value.emi_include ?? 0;
     const fireNumber = projection[0]?.fire_number.emi_include ?? 0;
     const firePercentage = projection[0]?.fire_percentage.emi_include ?? 0;
-    const fireGap = Math.max(0, fireNumber - netWorth);
-    const annualExpenses = m.total_annual_expenses;
+    // Gap must use the same corpus as FIRE % (investable portfolio), not net worth
+    const fireGap = Math.max(0, fireNumber - fireCurrentCorpus);
+    // Same expense base as the FIRE number (living expenses + EMIs due in the next 12 months), so "× 30" ties out
+    const annualExpenses = projection[0]?.total_expenses.emi_include ?? m.total_annual_expenses;
     // approximate previous quarter's annual expenses (monthly rate deflated by 6% p.a. ÷ 4 quarters)
     const annualExpensesPrevQ = Math.round(annualExpenses / Math.pow(1.06, 0.25));
     const monthlyExpenses = Math.round(annualExpenses / 12);
@@ -128,10 +134,11 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     // ── Income & Expense ──────────────────────────────────────────────────────
     const monthlyIncome = Math.round(m.monthly_income);
     const monthlyExpense = eb.total_monthly;
-    const monthlySurplus = Math.round(monthlyIncome - monthlyExpense);
+    // Income − expenses − EMIs: ties to annual surplus and savings rate
+    const monthlySurplus = Math.round(m.monthly_available_surplus);
     const annualSurplus = Math.round(m.annual_savings);
     const savingsRate = parseFloat(m.savings_rate.toFixed(1));
-    const totalExp = eb.total_annual || 1;
+    const totalExp = eb.total_monthly || 1; // breakdown amounts are monthly
     const expenseBreakdown = [
         { category: "Housing", amount: Math.round(eb.house), percentage: Math.round((eb.house / totalExp) * 100) },
         { category: "Food & Groceries", amount: Math.round(eb.food), percentage: Math.round((eb.food / totalExp) * 100) },
@@ -159,7 +166,8 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
 
     // ── Net Worth Page (asset-class trends for last 3 quarters) ──────────────
     const last3 = qs.slice(-3);
-    const scale_factor = (q_index: number) => qs[5]?.net_worth > 0 ? last3[q_index]!.net_worth / qs[5].net_worth : 1;
+    const latest_nw = qs[qs.length - 1]?.net_worth ?? 0;
+    const scale_factor = (q_index: number) => latest_nw > 0 ? last3[q_index]!.net_worth / latest_nw : 1;
     const to_L = (v: number) => parseFloat((v / 100_000).toFixed(2));
 
     const equity_now = ab.mutual_funds + ab.stocks;
@@ -225,7 +233,8 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         netWorth: has_valid_previous ? pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1) : "0.0",
         expenses: has_valid_previous ? pct_change(annualExpenses, annualExpensesPrevQ) : "0.0",
         fireNumber: has_valid_previous ? pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1) : "0.0",
-        firePercent: has_valid_previous ? pct_change(cur?.fire_percentage ?? 0, prev?.fire_percentage ?? 1) : "0.0",
+        // FIRE % change is reported in percentage points (see PDF footnote 6)
+        firePercent: has_valid_previous ? ((cur?.fire_percentage ?? 0) - (prev?.fire_percentage ?? 0)).toFixed(1) : "0.0",
     };
 
     // ── Quarter-end Summary ───────────────────────────────────────────────────

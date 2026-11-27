@@ -23,28 +23,23 @@ class UserSnapshotServiceClass {
                 return;
             }
 
-            // 2. Get Live Mutual Fund Data from database (mfHolding) with fallback to stored assets
-            const holdings = await db.mfHolding.findMany({
-                where: { user_id },
-                select: { current_value: true },
-            });
-            let mf_current_value = holdings.reduce(
-                (sum: number, h) => sum + this.toNumber(h.current_value),
-                0
-            );
-            if (mf_current_value === 0 && user_data.user_assets?.mutual_funds) {
-                mf_current_value = this.toNumber(user_data.user_assets?.mutual_funds);
-            }
+            // 2. Native MF + FD from the portfolio summary, plus externally declared assets from onboarding.
+            //    Same definition as the FIRE report (fire.report.service build_actual_assets).
+            //    Previously, with no MF holdings, declared MF was used as the fallback AND added again (counted twice).
+            const portfolio_summary = await user_service.get_user_portfolio_summary(user_id);
+            const native_mf = this.toNumber(portfolio_summary?.mutual_funds ?? 0);
+            const native_fd = this.toNumber(portfolio_summary?.fixed_deposits ?? 0);
 
-            // 3. Calculate Totals
+            // 3. Calculate Totals: investable assets only (real estate excluded, as in the FIRE report),
+            //    so quarterly net worth / FIRE % history lines up with the current-quarter figures.
             const assets =
-                mf_current_value +
+                native_mf +
+                this.toNumber(user_data.user_assets?.mutual_funds) +
+                native_fd +
                 this.toNumber(user_data.user_assets?.fd) +
                 this.toNumber(user_data.user_assets?.stocks) +
                 this.toNumber(user_data.user_assets?.gold) +
-                this.toNumber(user_data.user_assets?.cash_saving) +
-                this.toNumber(user_data.user_assets?.mutual_funds) + // if user have any previously calculated mutual fund value, we can consider that as well
-                this.toNumber(user_data.user_assets?.real_estate);
+                this.toNumber(user_data.user_assets?.cash_saving);
 
             const liabilities = user_data.user_loan?.reduce(
                 (sum: number, loan: any) => sum + this.toNumber(loan.outstanding_amount),

@@ -424,9 +424,9 @@ function page1(data: VelvetReportViewData): string {
       <!-- Footnotes pinned at bottom -->
       <div style="flex-shrink:0;border-top:0.5px solid #E5E7EB;padding-top:8px">
         <div class="fn_1"><sup>1</sup><b>F.I.R.E:</b> Financial Independence, Retire Early &mdash; Corpus needed to sustain current lifestyle without active income</div>
-        <div class="fn_1"><sup>2</sup><b>F.I.R.E Number:</b> Annual Expenses &times; 30 (based on 4% safe withdrawal rate) = ${rs(fmt_cr(snapshot.annualExpenses), "#111", "7px")} &times; 30 = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")} (adjusted to ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")} for inflation-adjusted future expenses)</div>
-        <div class="fn_1"><sup>3</sup><b>F.I.R.E %:</b> (Current Net Worth / F.I.R.E Number) &times; 100 = (${rs(fmt_cr(snapshot.netWorth), "#111", "7px")} / ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")}) &times; 100 = ${snapshot.firePercentage.toFixed(1)}%</div>
-        <div class="fn_1"><sup>4</sup><b>Gap:</b> F.I.R.E Number &minus; Current Net Worth = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")} &minus; ${rs(fmt_cr(snapshot.netWorth), "#111", "7px")} = ${rs(fmt_cr(snapshot.fireGap), "#111", "7px")}</div>
+        <div class="fn_1"><sup>2</sup><b>F.I.R.E Number:</b> Annual Expenses &times; 30 (based on a ~3.3% safe withdrawal rate). Annual expenses include loan EMIs due in the next 12 months = ${rs(fmt_cr(snapshot.annualExpenses), "#111", "7px")} &times; 30 = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")}</div>
+        <div class="fn_1"><sup>3</sup><b>F.I.R.E %:</b> (Current Investable Portfolio / F.I.R.E Number) &times; 100 = (${rs(fmt_cr(snapshot.fireCurrentCorpus), "#111", "7px")} / ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")}) &times; 100 = ${snapshot.firePercentage.toFixed(1)}%</div>
+        <div class="fn_1"><sup>4</sup><b>Gap:</b> F.I.R.E Number &minus; Current Investable Portfolio = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")} &minus; ${rs(fmt_cr(snapshot.fireCurrentCorpus), "#111", "7px")} = ${rs(fmt_cr(snapshot.fireGap), "#111", "7px")}</div>
         <div class="fn_1"><sup>5</sup><b>QoQ Net Worth Change:</b> ((Current NW &minus; Previous NW) / Previous NW) &times; 100 = ((${rs(fmt_cr(snapshot.netWorth), "#111", "7px")} &minus; ${rs(fmt_cr(snapshot.netWorthPrevQ), "#111", "7px")}) / ${rs(fmt_cr(snapshot.netWorthPrevQ), "#111", "7px")}) &times; 100 = ${qoqChanges.netWorth}%</div>
         <div class="fn_1"><sup>6</sup><b>QoQ F.I.R.E Score Change:</b> Current F.I.R.E % &minus; Previous F.I.R.E % = ${qoqChanges.firePercent} percentage points</div>
         <div class="fn_1">* Data marked with asterisk represents estimated values</div>
@@ -766,7 +766,7 @@ function page5(data: VelvetReportViewData): string {
     <div class="footnotes-block">
       <div class="fn">Assumptions: Retirement Inflation<sup>24</sup> 6% | SIP Return 10% | Goal FV Growth 8%</div>
       <div class="fn"><b>21. Monthly SIP:</b> PMT formula to accumulate future value at assumed returns and inflation</div>
-      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1.08)^years (assumes 8% annual growth for standard goals)</div>
+      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1 + inflation)^years, using the inflation rate saved on each goal</div>
       <div class="fn"><b>23. Year-by-Year Requirement:</b> Aggregated monthly and yearly commitment across all active goals</div>
       <div class="fn"><b>24. Inflation:</b> 6% annual cost-of-living increase applied to retirement goal; 8% growth rate applied to standard goals</div>
     </div>

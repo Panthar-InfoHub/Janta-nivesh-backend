@@ -14,7 +14,10 @@ export const FIRE_CONSTANTS = {
     },
     expense_growth: 0.06,   // 6% annual expense inflation
     income_growth: 0.05,   // 5% annual income growth
-    fire_factor: 30,     // 30× (expenses + goal SIPs) = FIRE number
+    fire_factor: 30,     // 30× annual expenses = FIRE number
+    // Growth rate for each year's surplus once it is reinvested. Kept at the cash_saving rate (old behaviour).
+    // PRODUCT DECISION PENDING: if surplus is assumed to go into MF SIPs, raise to 0.10.
+    reinvested_savings_growth: 0.04,
     default_projection_years: 20,    // default when no query param supplied
     default_age: 30,     // fallback when dob is null
 
@@ -52,6 +55,7 @@ export interface ProjectionAssets {
     cash_saving: number;
     nps: number;      // always starts at 0 — no DB column
     ppf_epf: number;  // always starts at 0 — no DB column
+    new_savings?: number; // projection-only bucket: reinvested yearly surplus (grows at reinvested_savings_growth)
 }
 
 // ─── Dual-value wrapper for EMI-sensitive fields ────────────────────────────
@@ -64,16 +68,18 @@ export interface DualEMI {
 
 // ─── Projection Row (one entry per projection year) ──────────────────────────
 
+// Row 0 = today. Row j = start of year j (after goal payouts due at that point).
+// income / expenses / goal SIPs / savings on a row are the cash flows of the 12 months that START at that row.
 export interface ProjectionRow {
     year: number;
     income: number;                         // same regardless of EMI toggle
-    goal_commitment_annual: number;         // same regardless of EMI toggle
-    goals_payout: number;                   // same regardless of EMI toggle
+    goal_commitment_annual: number;         // non-retirement goal SIPs paid in this row's year (earmarked, leaves free savings)
+    goals_payout: number;                   // goal lump sums due at this row (funded from goal SIP corpus first)
     goal_hits: { label: string; amount: number }[]; // same regardless of EMI toggle
     // ── EMI-sensitive fields (both variants always present) ──
     total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw
-    savings: DualEMI;           // income − total_expenses − goal_sips
-    portfolio_value: DualEMI;   // portfolio_after_growth + savings − goals_payout
+    savings: DualEMI;           // income − total_expenses − goal_commitment_annual (reinvested into the portfolio)
+    portfolio_value: DualEMI;   // investable portfolio at this row (row 0 = today's actual value)
     fire_number: DualEMI;       // total_expenses × 30
     fire_percentage: DualEMI;   // portfolio_value / fire_number × 100
 }
