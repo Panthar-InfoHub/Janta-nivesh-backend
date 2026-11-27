@@ -189,17 +189,20 @@ class FireReportServiceClass {
          *
          * Row 0 = TODAY: portfolio is the user's actual investable assets (no growth, no surplus added yet).
          * Row j (j >= 1) = start of year j:
-         *   portfolio_j = grow(portfolio_{j-1}, age-band rates)
-         *               + invested surplus of year j-1   (50% of a positive surplus, 100% of a deficit)
+         *   portfolio_j = portfolio_{j-1} × (1 + 9%)
+         *               + invested surplus of year j-1   (see rules)
          *               − goal payouts due in year j     (full future value, withdrawn from the portfolio)
          *
-         * Rules (product, 27 Nov 2026):
+         * Rules (client, 27 Nov 2026):
+         *   - One flat portfolio return (FIRE_CONSTANTS.portfolio_return = 9%) for every asset type and every age.
          *   - Surplus = income − living expenses − EMI. EMI is real cash in both tracks, so the portfolio is the
          *     same for emi_include / emi_exclude; the toggle only changes total_expenses → FIRE number.
+         *   - Age < 45: 50% of a positive surplus is added; a deficit is deducted 100%.
+         *   - Age >= 45 (the year the user is 45 and every year after): surplus is neither added nor deducted.
+         *     The last surplus added is the one earned in the age-44 year.
          *   - Goal SIPs are informational. They are not expenses, not part of the FIRE number and not deducted
-         *     from surplus. Only the goal PAYOUT hits the portfolio. Retirement goals have no payout.
-         *   - From the year the user's age >= return_cliff_age (45), asset_growth_after_cliff applies.
-         *   - Payouts and deficits are carried forward and withdrawn most-liquid first, never below 0.
+         *     from surplus. Only the goal PAYOUT hits the portfolio (at every age). Retirement goals have no payout.
+         *   - Payouts and deficits are withdrawn most-liquid first, never below 0.
          */
         private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number, override_assets?: ProjectionAssets): ProjectionRow[] {
             const current_year = new Date().getFullYear();
@@ -231,8 +234,8 @@ class FireReportServiceClass {
                 let goals_payout = 0;
 
                 if (j > 0) {
-                    // 1. One year of growth at the rates of the age band the user was in during that year
-                    ya = this.grow_assets(ya, this.growth_rates_for_age(current_age + j - 1));
+                    // 1. One year of growth at the flat portfolio return
+                    ya = this.grow_assets(ya);
 
                     // 2. Add last year's invested surplus (or take out last year's deficit), end-of-year
                     this.apply_cash_flow(ya, prev_invested_flow);
@@ -263,9 +266,14 @@ class FireReportServiceClass {
                 const total_expenses_exc = expenses_raw;
 
                 const surplus = income - expenses_raw - yearly_emi;
-                prev_invested_flow = surplus >= 0
-                    ? surplus * FIRE_CONSTANTS.surplus_investment_ratio
-                    : surplus; // a deficit is real money spent: 100% comes out of the portfolio
+                const age_this_year = current_age + j;
+                if (age_this_year >= FIRE_CONSTANTS.surplus_stop_age) {
+                    prev_invested_flow = 0;                                           // 45+: no addition, no deduction
+                } else if (surplus >= 0) {
+                    prev_invested_flow = surplus * FIRE_CONSTANTS.surplus_investment_ratio; // < 45: 50% added
+                } else {
+                    prev_invested_flow = surplus;                                     // < 45: deficit deducted 100%
+                }
 
                 // Informational only: SIPs the user should run across all goals this year
                 const goal_commitment_annual = this.total_goal_sip_annual(goals, year);
@@ -293,24 +301,18 @@ class FireReportServiceClass {
             return proj;
         }
 
-        /** Rate set for a projection year: before / after the age cliff (45). */
-        private growth_rates_for_age(age: number): typeof FIRE_CONSTANTS.asset_growth | typeof FIRE_CONSTANTS.asset_growth_after_cliff {
-            return age >= FIRE_CONSTANTS.return_cliff_age
-                ? FIRE_CONSTANTS.asset_growth_after_cliff
-                : FIRE_CONSTANTS.asset_growth;
-        }
-
-        private grow_assets(ya: ProjectionAssets, g: { mutual_funds: number; stocks: number; fd: number; gold: number; cash_saving: number; nps: number; ppf_epf: number }): ProjectionAssets {
+        /** One year of growth: every asset (and the invested surplus) at the same flat portfolio return. */
+        private grow_assets(ya: ProjectionAssets): ProjectionAssets {
+            const k = 1 + FIRE_CONSTANTS.portfolio_return;
             return {
-                mutual_funds: ya.mutual_funds * (1 + g.mutual_funds),
-                stocks: ya.stocks * (1 + g.stocks),
-                fd: ya.fd * (1 + g.fd),
-                gold: ya.gold * (1 + g.gold),
-                cash_saving: ya.cash_saving * (1 + g.cash_saving),
-                nps: ya.nps * (1 + g.nps),
-                ppf_epf: ya.ppf_epf * (1 + g.ppf_epf),
-                // invested surplus is assumed to go into MF SIPs → earns the age-band MF rate
-                new_savings: (ya.new_savings ?? 0) * (1 + g.mutual_funds),
+                mutual_funds: ya.mutual_funds * k,
+                stocks: ya.stocks * k,
+                fd: ya.fd * k,
+                gold: ya.gold * k,
+                cash_saving: ya.cash_saving * k,
+                nps: ya.nps * k,
+                ppf_epf: ya.ppf_epf * k,
+                new_savings: (ya.new_savings ?? 0) * k,
             };
         }
 

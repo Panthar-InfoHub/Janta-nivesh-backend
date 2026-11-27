@@ -3,9 +3,8 @@ import type { YearlyGoalRequirement } from "./fire-report.types.js";
 import { FIRE_CONSTANTS } from "./fire-report.types.js";
 
 const pctRate = (r: number) => `${+(r * 100).toFixed(2)}%`;
-const G0 = FIRE_CONSTANTS.asset_growth;
-const G1 = FIRE_CONSTANTS.asset_growth_after_cliff;
-const CLIFF = FIRE_CONSTANTS.return_cliff_age;
+const RETURN = FIRE_CONSTANTS.portfolio_return;
+const STOP_AGE = FIRE_CONSTANTS.surplus_stop_age;
 const SURPLUS_PCT = Math.round(FIRE_CONSTANTS.surplus_investment_ratio * 100);
 import * as fs from "fs";
 import * as path from "path";
@@ -509,7 +508,7 @@ function page2(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year (first row = today). Grows annually at: ${pctRate(G0.mutual_funds)} for Mutual Funds/Stocks, ${pctRate(G0.fd)} for FDs, ${pctRate(G0.gold)} for Gold and ${pctRate(G0.cash_saving)} for Cash until age ${CLIFF}; from age ${CLIFF}: ${pctRate(G1.mutual_funds)} Mutual Funds, ${pctRate(G1.stocks)} Stocks, ${pctRate(G1.fd)} FDs, ${pctRate(G1.gold)} Gold, ${pctRate(G1.cash_saving)} Cash. Each year ${SURPLUS_PCT}% of the surplus (Income &minus; Expenses &minus; EMI) is invested at the Mutual Fund rate; a deficit is fully drawn from the portfolio.</div>
+      <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year (first row = today). The whole portfolio grows at ${pctRate(RETURN)} a year. Until age ${STOP_AGE}, ${SURPLUS_PCT}% of each year's surplus (Income &minus; Expenses &minus; EMI) is added and any deficit is drawn from the portfolio; from age ${STOP_AGE} no surplus is added.</div>
       <div class="fn"><b>8. Total Expenses:</b> Projected annual expenses adjusted for ${pctRate(FIRE_CONSTANTS.expense_growth)} inflation, plus loan EMIs. Goal SIPs are not counted as expenses. Assumes ${pctRate(FIRE_CONSTANTS.income_growth)} annual growth on income.</div>
       <div class="fn"><b>9. Goal Payouts:</b> Lump-sum goal amount due that year, withdrawn from the portfolio</div>
       <div class="fn"><b>10. FIRE Number:</b> Annual Expenses &times; 30</div>
