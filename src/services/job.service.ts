@@ -464,61 +464,111 @@ class JobServiceClass {
      */
     mf_nav_daily_job = async () => {
         const products = await db.mfProduct.findMany({
-            where: { scheme_code: { not: null } },
             select: { id: true, isin: true, scheme_code: true },
         });
 
-        logger.info(`Starting NAV refresh for ${products.length} funds with a scheme_code`);
+        logger.info(`Starting NAV refresh for ${products.length} funds (AMFI primary + mfapi fallback)`);
 
-        const limit = pLimit(5);
-        let updated = 0;
-        let history_inserted = 0;
+        const amfi_map = await mfapi_service.get_amfi_nav_map();
+
+        let amfi_hits = 0;
+        let mfapi_fallback_hits = 0;
+        const resolved: { id: string; isin: string; nav: number; nav_date: Date }[] = [];
+        const fallback_products: typeof products = [];
         const failed: { isin: string; reason: string }[] = [];
 
-        const tasks = products.map(product => limit(async () => {
-            const response = await mfapi_service.get_latest_nav(product.scheme_code!);
+        for (const product of products) {
+            const from_amfi =
+                amfi_map?.by_isin.get(product.isin.toUpperCase()) ??
+                (product.scheme_code != null ? amfi_map?.by_scheme_code.get(product.scheme_code) : undefined);
 
-            const point = response?.data?.[0];
-            if (!point?.nav || !point?.date) {
-                failed.push({ isin: product.isin, reason: "no NAV data in response" });
-                return;
+            if (from_amfi) {
+                resolved.push({ id: product.id, isin: product.isin, ...from_amfi });
+                amfi_hits++;
+            } else if (product.scheme_code != null) {
+                fallback_products.push(product);
+            } else {
+                failed.push({ isin: product.isin, reason: "not found in AMFI NAVAll.txt and missing scheme_code" });
             }
+        }
 
-            const nav_date = this.parse_mfapi_date(point.date);
-            if (!nav_date) {
-                failed.push({ isin: product.isin, reason: `unparseable date "${point.date}"` });
-                return;
-            }
+        if (fallback_products.length > 0) {
+            logger.info(`Running throttled mfapi.in fallback for ${fallback_products.length} funds`);
+            const limit = pLimit(2);
+            const tasks = fallback_products.map((product) =>
+                limit(async () => {
+                    await new Promise((r) => setTimeout(r, 200));
+                    const response = await mfapi_service.get_latest_nav(product.scheme_code!);
+                    const point = response?.data?.[0];
+                    if (!point?.nav || !point?.date) {
+                        failed.push({ isin: product.isin, reason: "no NAV data in response" });
+                        return;
+                    }
 
-            const nav = parseFloat(point.nav);
-            if (isNaN(nav)) {
-                failed.push({ isin: product.isin, reason: `unparseable nav "${point.nav}"` });
-                return;
-            }
+                    const nav_date = this.parse_mfapi_date(point.date);
+                    if (!nav_date) {
+                        failed.push({ isin: product.isin, reason: `unparseable date "${point.date}"` });
+                        return;
+                    }
 
-            await db.mfProduct.update({
-                where: { id: product.id },
-                data: { latest_nav: nav, latest_nav_date: nav_date },
-            });
-            updated++;
+                    const nav = parseFloat(point.nav);
+                    if (isNaN(nav)) {
+                        failed.push({ isin: product.isin, reason: `unparseable nav "${point.nav}"` });
+                        return;
+                    }
 
-            // createMany + skipDuplicates so re-running the same day is a no-op on the unique
-            // (mf_product_id, nav_date) pair instead of throwing.
+                    resolved.push({ id: product.id, isin: product.isin, nav, nav_date });
+                    mfapi_fallback_hits++;
+                })
+            );
+            await Promise.allSettled(tasks);
+        }
+
+        const db_limit = pLimit(10);
+        let updated = 0;
+        await Promise.all(
+            resolved.map((item) =>
+                db_limit(async () => {
+                    await db.mfProduct.update({
+                        where: { id: item.id },
+                        data: { latest_nav: item.nav, latest_nav_date: item.nav_date },
+                    });
+                    updated++;
+                })
+            )
+        );
+
+        let history_inserted = 0;
+        const CHUNK = 1000;
+        const history_rows = resolved.map((item) => ({
+            mf_product_id: item.id,
+            nav: item.nav,
+            nav_date: item.nav_date,
+        }));
+        for (let i = 0; i < history_rows.length; i += CHUNK) {
             const inserted = await db.mfNavHistory.createMany({
-                data: [{ mf_product_id: product.id, nav, nav_date }],
+                data: history_rows.slice(i, i + CHUNK),
                 skipDuplicates: true,
             });
             history_inserted += inserted.count;
-        }));
+        }
 
-        await Promise.allSettled(tasks);
-
-        logger.info(`NAV refresh done - updated: ${updated}, history rows added: ${history_inserted}, failed: ${failed.length}`);
+        logger.info(
+            `NAV refresh done - updated: ${updated} (amfi: ${amfi_hits}, mfapi: ${mfapi_fallback_hits}), history rows added: ${history_inserted}, failed: ${failed.length}`
+        );
         if (failed.length > 0) {
             logger.warn(`NAV fetch failures: ${failed.slice(0, 10).map(f => `${f.isin} (${f.reason})`).join(", ")}`);
         }
 
-        return { total: products.length, updated, history_inserted, failed_count: failed.length, failed };
+        return {
+            total: products.length,
+            updated,
+            amfi_hits,
+            mfapi_fallback_hits,
+            history_inserted,
+            failed_count: failed.length,
+            failed,
+        };
     }
 
     calculate_all_mf_metrics = async () => {
