@@ -44,6 +44,7 @@ export interface VelvetReportViewData {
         monthlyIncome: number;
         monthlyExpense: number;
         monthlySurplus: number;
+        monthlyEmi: number;
         annualSurplus: number;
         savingsRate: number;
         expenseBreakdown: { category: string; amount: number; percentage: number }[];
@@ -275,6 +276,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
             monthlyIncome,
             monthlyExpense,
             monthlySurplus,
+            monthlyEmi: Math.round(m.total_monthly_emi),
             annualSurplus,
             savingsRate,
             expenseBreakdown,

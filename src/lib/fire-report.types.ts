@@ -1,7 +1,7 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const FIRE_CONSTANTS = {
-    // Per-asset annual growth rates (mirrors ASSUMPTIONS.growth in FireReport.tsx)
+    // Per-asset annual growth rates while the user is BELOW return_cliff_age
     asset_growth: {
         mutual_funds: 0.10,
         stocks: 0.10,
@@ -12,12 +12,28 @@ export const FIRE_CONSTANTS = {
         nps: 0.07,   // not stored in DB — always 0 input
         ppf_epf: 0.06,   // not stored in DB — always 0 input
     },
+    // Per-asset annual growth rates from the projection year in which the user's age >= return_cliff_age.
+    // ⚠️ PLACEHOLDER VALUES — replace with the rates confirmed by product (Sahgal) before release.
+    asset_growth_after_cliff: {
+        mutual_funds: 0.08,
+        stocks: 0.08,
+        fd: 0.065,
+        real_estate: 0.07,
+        gold: 0.07,
+        cash_saving: 0.04,
+        nps: 0.07,
+        ppf_epf: 0.06,
+    },
+    return_cliff_age: 45,
+
+    // Share of a POSITIVE yearly surplus (income − expenses − EMI) that is invested into the portfolio.
+    // The rest is assumed spent. A negative surplus (deficit) always comes 100% out of the portfolio.
+    surplus_investment_ratio: 0.5,
+    // The invested surplus earns the mutual_funds rate of the current age band (assumed to go into SIPs).
+
     expense_growth: 0.06,   // 6% annual expense inflation
     income_growth: 0.05,   // 5% annual income growth
-    fire_factor: 30,     // 30× annual expenses = FIRE number
-    // Growth rate for each year's surplus once it is reinvested. Kept at the cash_saving rate (old behaviour).
-    // PRODUCT DECISION PENDING: if surplus is assumed to go into MF SIPs, raise to 0.10.
-    reinvested_savings_growth: 0.04,
+    fire_factor: 30,     // 30× annual expenses = FIRE number (goal SIPs are NOT part of expenses)
     default_projection_years: 20,    // default when no query param supplied
     default_age: 30,     // fallback when dob is null
 
@@ -55,7 +71,7 @@ export interface ProjectionAssets {
     cash_saving: number;
     nps: number;      // always starts at 0 — no DB column
     ppf_epf: number;  // always starts at 0 — no DB column
-    new_savings?: number; // projection-only bucket: reinvested yearly surplus (grows at reinvested_savings_growth)
+    new_savings?: number; // projection-only bucket: invested share of yearly surplus (grows at the age-band MF rate)
 }
 
 // ─── Dual-value wrapper for EMI-sensitive fields ────────────────────────────
@@ -70,16 +86,17 @@ export interface DualEMI {
 
 // Row 0 = today. Row j = start of year j (after goal payouts due at that point).
 // income / expenses / goal SIPs / savings on a row are the cash flows of the 12 months that START at that row.
+// Portfolio is the same in both tracks (EMI is real cash in both). The EMI toggle only changes expenses → FIRE number.
 export interface ProjectionRow {
     year: number;
     income: number;                         // same regardless of EMI toggle
-    goal_commitment_annual: number;         // non-retirement goal SIPs paid in this row's year (earmarked, leaves free savings)
-    goals_payout: number;                   // goal lump sums due at this row (funded from goal SIP corpus first)
+    goal_commitment_annual: number;         // INFORMATIONAL: SIPs needed across all goals this year. Not deducted anywhere.
+    goals_payout: number;                   // goal lump sums withdrawn from the portfolio at this row
     goal_hits: { label: string; amount: number }[]; // same regardless of EMI toggle
     // ── EMI-sensitive fields (both variants always present) ──
-    total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw
-    savings: DualEMI;           // income − total_expenses − goal_commitment_annual (reinvested into the portfolio)
-    portfolio_value: DualEMI;   // investable portfolio at this row (row 0 = today's actual value)
+    total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw   (drives FIRE number only)
+    savings: DualEMI;           // surplus = income − expenses − EMI (same in both). Only surplus_investment_ratio of it is invested
+    portfolio_value: DualEMI;   // investable portfolio at this row (row 0 = today's actual value); same in both
     fire_number: DualEMI;       // total_expenses × 30
     fire_percentage: DualEMI;   // portfolio_value / fire_number × 100
 }

@@ -18,7 +18,7 @@ import {
 } from "../lib/fire-report.types.js";
 
 import { UserFireReportData, UserWithAllData } from "../lib/types.js";
-import { calculateGoalProjections, normalizeRate } from "../lib/goal-calculator.js";
+import { calculateGoalProjections } from "../lib/goal-calculator.js";
 import { user_service } from "./user.service.js";
 import logger from "../middleware/logger.js";
 import AppError from "../middleware/error.middleware.js";
@@ -185,23 +185,25 @@ class FireReportServiceClass {
         }
 
         /**
-         * FIRE projection, dual track (emi_include / emi_exclude).
+         * FIRE projection.
          *
-         * Row 0 = TODAY: portfolio is the user's actual investable assets (no growth, no savings added yet).
+         * Row 0 = TODAY: portfolio is the user's actual investable assets (no growth, no surplus added yet).
          * Row j (j >= 1) = start of year j:
-         *   portfolio_j = grow(portfolio_{j-1}) + savings_{j-1} - goal shortfall paid at row j
+         *   portfolio_j = grow(portfolio_{j-1}, age-band rates)
+         *               + invested surplus of year j-1   (50% of a positive surplus, 100% of a deficit)
+         *               − goal payouts due in year j     (full future value, withdrawn from the portfolio)
          *
-         * Goals:
-         *   - Non-retirement goal SIPs are earmarked. They leave free savings and build a separate goal corpus
-         *     (monthly SIP, monthly compounding at the goal's expected return, same formula as goal-calculator.ts).
-         *   - At the target year the payout is taken from that goal corpus. Only a shortfall comes out of the
-         *     FIRE portfolio; any excess goes back into it. (Fixes the old double deduction: SIP removed every
-         *     year AND full payout removed again.)
-         *   - Retirement SIPs are NOT deducted: retirement money is the FIRE corpus itself.
-         *   - Payouts and negative savings are carried forward (they permanently reduce assets).
+         * Rules (product, 27 Nov 2026):
+         *   - Surplus = income − living expenses − EMI. EMI is real cash in both tracks, so the portfolio is the
+         *     same for emi_include / emi_exclude; the toggle only changes total_expenses → FIRE number.
+         *   - Goal SIPs are informational. They are not expenses, not part of the FIRE number and not deducted
+         *     from surplus. Only the goal PAYOUT hits the portfolio. Retirement goals have no payout.
+         *   - From the year the user's age >= return_cliff_age (45), asset_growth_after_cliff applies.
+         *   - Payouts and deficits are carried forward and withdrawn most-liquid first, never below 0.
          */
         private compute_projection(data: UserFireReportData, metrics: ComputedMetrics, goals: NormalizedGoalWithSIP[], projection_years: number, override_assets?: ProjectionAssets): ProjectionRow[] {
             const current_year = new Date().getFullYear();
+            const current_age = this.extract_age(data.dob);
             const loans = this.normalize_loans(data.user_loan ?? []);
 
             const initial_assets: ProjectionAssets = override_assets ?? {
@@ -214,18 +216,13 @@ class FireReportServiceClass {
                 ppf_epf: 0,
             };
 
-            let ya_inc: ProjectionAssets = { ...initial_assets, new_savings: 0 };
-            let ya_exc: ProjectionAssets = { ...initial_assets, new_savings: 0 };
+            let ya: ProjectionAssets = { ...initial_assets, new_savings: 0 };
 
             const annual_income_base = metrics.monthly_income * 12;
             const annual_expenses_base = metrics.total_annual_expenses;
+            const payout_goals = goals.filter(goal => goal.category !== "Retirement");
 
-            const earmarked_goals = goals.filter(goal => goal.category !== "Retirement");
-            const goal_return = this.goal_return_map(data);
-            const goal_corpus = new Map<string, number>(earmarked_goals.map(goal => [goal.id, 0]));
-
-            let prev_savings_inc = 0;
-            let prev_savings_exc = 0;
+            let prev_invested_flow = 0;
             const proj: ProjectionRow[] = [];
 
             for (let j = 0; j < projection_years; j++) {
@@ -234,40 +231,23 @@ class FireReportServiceClass {
                 let goals_payout = 0;
 
                 if (j > 0) {
-                    // 1. One year of growth on the free portfolio, then add last year's savings (end-of-year)
-                    ya_inc = this.grow_assets(ya_inc);
-                    ya_exc = this.grow_assets(ya_exc);
-                    this.apply_cash_flow(ya_inc, prev_savings_inc);
-                    this.apply_cash_flow(ya_exc, prev_savings_exc);
+                    // 1. One year of growth at the rates of the age band the user was in during that year
+                    ya = this.grow_assets(ya, this.growth_rates_for_age(current_age + j - 1));
 
-                    // 2. Goal corpus collects the SIPs paid during the year that just ended
-                    for (const goal of earmarked_goals) {
-                        if (year - 1 < goal.target_year) {
-                            const m = (goal_return.get(goal.id) ?? FIRE_CONSTANTS.goal_sip_return) / 12;
-                            const corpus = goal_corpus.get(goal.id) ?? 0;
-                            const fv_12 = m > 0 ? (Math.pow(1 + m, 12) - 1) / m : 12;
-                            goal_corpus.set(goal.id, corpus * Math.pow(1 + m, 12) + goal.required_monthly_sip * fv_12);
-                        }
-                    }
+                    // 2. Add last year's invested surplus (or take out last year's deficit), end-of-year
+                    this.apply_cash_flow(ya, prev_invested_flow);
 
-                    // 3. Goal payouts due now: funded from goal corpus, shortfall from the free portfolio
-                    let net_goal_flow = 0;
-                    for (const goal of earmarked_goals) {
-                        if (goal.target_year !== year) continue;
+                    // 3. Goal payouts due now come straight out of the portfolio
+                    for (const goal of payout_goals) {
                         const payout = this.calculate_goal_future_value(goal, current_year, year) ?? 0;
                         if (payout <= 0) continue;
-                        const corpus = goal_corpus.get(goal.id) ?? 0;
                         goals_payout += payout;
                         goal_hits.push({ label: `${goal.name} (${goal.target_year})`, amount: Math.round(payout) });
-                        net_goal_flow += corpus - payout; // +ve = excess corpus returns, -ve = shortfall
-                        goal_corpus.set(goal.id, 0);
                     }
-                    this.apply_cash_flow(ya_inc, net_goal_flow);
-                    this.apply_cash_flow(ya_exc, net_goal_flow);
+                    this.apply_cash_flow(ya, -goals_payout);
                 }
 
-                const portfolio_inc = this.sum_assets(ya_inc);
-                const portfolio_exc = this.sum_assets(ya_exc);
+                const portfolio = this.sum_assets(ya);
 
                 // 4. Cash flows for the 12 months starting at this row
                 const income = annual_income_base * Math.pow(1 + FIRE_CONSTANTS.income_growth, j);
@@ -282,20 +262,19 @@ class FireReportServiceClass {
                 const total_expenses_inc = expenses_raw + yearly_emi;
                 const total_expenses_exc = expenses_raw;
 
-                // Earmarked goal SIPs run every year BEFORE the target year (n years -> n x 12 instalments)
-                const goal_commitment_annual = earmarked_goals.reduce((sum, goal) =>
-                    year < goal.target_year ? sum + goal.required_monthly_sip * 12 : sum, 0);
+                const surplus = income - expenses_raw - yearly_emi;
+                prev_invested_flow = surplus >= 0
+                    ? surplus * FIRE_CONSTANTS.surplus_investment_ratio
+                    : surplus; // a deficit is real money spent: 100% comes out of the portfolio
 
-                const savings_inc = income - total_expenses_inc - goal_commitment_annual;
-                const savings_exc = income - total_expenses_exc - goal_commitment_annual;
-                prev_savings_inc = savings_inc;
-                prev_savings_exc = savings_exc;
+                // Informational only: SIPs the user should run across all goals this year
+                const goal_commitment_annual = this.total_goal_sip_annual(goals, year);
 
-                // 5. FIRE number and percentage per track
+                // 5. FIRE number and percentage per track (portfolio is the same in both)
                 const fire_number_inc = total_expenses_inc * FIRE_CONSTANTS.fire_factor;
                 const fire_number_exc = total_expenses_exc * FIRE_CONSTANTS.fire_factor;
-                const fire_percentage_inc = fire_number_inc > 0 ? (portfolio_inc * 100) / fire_number_inc : 0;
-                const fire_percentage_exc = fire_number_exc > 0 ? (portfolio_exc * 100) / fire_number_exc : 0;
+                const fire_percentage_inc = fire_number_inc > 0 ? (portfolio * 100) / fire_number_inc : 0;
+                const fire_percentage_exc = fire_number_exc > 0 ? (portfolio * 100) / fire_number_exc : 0;
 
                 proj.push({
                     year,
@@ -304,8 +283,8 @@ class FireReportServiceClass {
                     goals_payout: Math.round(goals_payout),
                     goal_hits,
                     total_expenses: { emi_include: Math.round(total_expenses_inc), emi_exclude: Math.round(total_expenses_exc) },
-                    savings: { emi_include: Math.round(savings_inc), emi_exclude: Math.round(savings_exc) },
-                    portfolio_value: { emi_include: Math.round(portfolio_inc), emi_exclude: Math.round(portfolio_exc) },
+                    savings: { emi_include: Math.round(surplus), emi_exclude: Math.round(surplus) },
+                    portfolio_value: { emi_include: Math.round(portfolio), emi_exclude: Math.round(portfolio) },
                     fire_number: { emi_include: Math.round(fire_number_inc), emi_exclude: Math.round(fire_number_exc) },
                     fire_percentage: { emi_include: parseFloat(fire_percentage_inc.toFixed(2)), emi_exclude: parseFloat(fire_percentage_exc.toFixed(2)) },
                 });
@@ -314,8 +293,14 @@ class FireReportServiceClass {
             return proj;
         }
 
-        private grow_assets(ya: ProjectionAssets): ProjectionAssets {
-            const g = FIRE_CONSTANTS.asset_growth;
+        /** Rate set for a projection year: before / after the age cliff (45). */
+        private growth_rates_for_age(age: number): typeof FIRE_CONSTANTS.asset_growth | typeof FIRE_CONSTANTS.asset_growth_after_cliff {
+            return age >= FIRE_CONSTANTS.return_cliff_age
+                ? FIRE_CONSTANTS.asset_growth_after_cliff
+                : FIRE_CONSTANTS.asset_growth;
+        }
+
+        private grow_assets(ya: ProjectionAssets, g: { mutual_funds: number; stocks: number; fd: number; gold: number; cash_saving: number; nps: number; ppf_epf: number }): ProjectionAssets {
             return {
                 mutual_funds: ya.mutual_funds * (1 + g.mutual_funds),
                 stocks: ya.stocks * (1 + g.stocks),
@@ -324,7 +309,8 @@ class FireReportServiceClass {
                 cash_saving: ya.cash_saving * (1 + g.cash_saving),
                 nps: ya.nps * (1 + g.nps),
                 ppf_epf: ya.ppf_epf * (1 + g.ppf_epf),
-                new_savings: (ya.new_savings ?? 0) * (1 + FIRE_CONSTANTS.reinvested_savings_growth),
+                // invested surplus is assumed to go into MF SIPs → earns the age-band MF rate
+                new_savings: (ya.new_savings ?? 0) * (1 + g.mutual_funds),
             };
         }
 
@@ -333,14 +319,14 @@ class FireReportServiceClass {
                 ya.cash_saving + ya.nps + ya.ppf_epf + (ya.new_savings ?? 0);
         }
 
-        /** Positive amount is reinvested. Negative amount is withdrawn, most liquid first, never below 0. */
+        /** Positive amount is invested. Negative amount is withdrawn, most liquid first, never below 0. */
         private apply_cash_flow(ya: ProjectionAssets, amount: number): void {
             if (amount >= 0) {
                 ya.new_savings = (ya.new_savings ?? 0) + amount;
                 return;
             }
             let deficit = -amount;
-            const order: (keyof ProjectionAssets)[] = ["new_savings", "cash_saving", "fd", "mutual_funds", "stocks", "gold", "nps", "ppf_epf"];
+            const order: (keyof ProjectionAssets)[] = ["cash_saving", "new_savings", "fd", "mutual_funds", "stocks", "gold", "nps", "ppf_epf"];
             for (const key of order) {
                 if (deficit <= 0) break;
                 const available = ya[key] ?? 0;
@@ -348,16 +334,6 @@ class FireReportServiceClass {
                 ya[key] = available - take;
                 deficit -= take;
             }
-        }
-
-        /** Expected return per goal (stored snapshot rate), used to grow the earmarked goal corpus. */
-        private goal_return_map(data: UserFireReportData): Map<string, number> {
-            const map = new Map<string, number>();
-            for (const g of (data.user_goals ?? []) as any[]) {
-                const r = normalizeRate(this.to_num(g.expected_return_rate));
-                if (r > 0) map.set(g.id, r);
-            }
-            return map;
         }
 
         /** Sum of ALL goal SIPs (incl. retirement) that run in `year`. */
