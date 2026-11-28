@@ -1,27 +1,27 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const FIRE_CONSTANTS = {
-    // Per-asset annual growth rates (mirrors ASSUMPTIONS.growth in FireReport.tsx)
-    asset_growth: {
-        mutual_funds: 0.10,
-        stocks: 0.10,
-        fd: 0.065,
-        real_estate: 0.07,
-        gold: 0.07,
-        cash_saving: 0.04,
-        nps: 0.07,   // not stored in DB — always 0 input
-        ppf_epf: 0.06,   // not stored in DB — always 0 input
-    },
-    expense_growth: 0.06,   // 6% annual expense inflation
+    // Client rule (27 Nov 2026): one flat annual return for the whole portfolio, every asset type, every age.
+    // Applies to MF, stocks, FD, gold, cash, NPS, PPF/EPF and the invested surplus alike.
+    portfolio_return: 0.09,
+
+    // Share of a POSITIVE yearly surplus (income − expenses − EMI) added to the portfolio while age < surplus_stop_age.
+    // The rest is assumed spent. Negative surplus adds nothing and deducts nothing.
+    surplus_investment_ratio: 0.5,
+    // From the projection year in which the user is this age, the yearly surplus is no longer added.
+    // Last surplus added = the one earned in the age-44 year.
+    surplus_stop_age: 45,
+
+    expense_growth: 0.05,   // 6% annual expense inflation
     income_growth: 0.05,   // 5% annual income growth
-    fire_factor: 30,     // 30× (expenses + goal SIPs) = FIRE number
+    fire_factor: 30,     // 30× annual expenses = FIRE number (goal SIPs are NOT part of expenses)
     default_projection_years: 20,    // default when no query param supplied
     default_age: 30,     // fallback when dob is null
 
     // Goal SIP formula constants (hardcoded — stored rates not used)
     goal_fv_growth: 0.08,   // FV inflation for non-retirement goal payouts
     goal_sip_return: 0.10,   // annual return for non-retirement SIP PMT (1.1 base)
-    retirement_inflation: 0.06,   // corpus inflation for retirement goal
+    retirement_inflation: 0.05,   // corpus inflation for retirement goal
     retirement_return: 0.10,   // corpus growth for retirement goal
 } as const;
 
@@ -52,6 +52,7 @@ export interface ProjectionAssets {
     cash_saving: number;
     nps: number;      // always starts at 0 — no DB column
     ppf_epf: number;  // always starts at 0 — no DB column
+    new_savings?: number; // projection-only bucket: invested share of yearly surplus (grows at portfolio_return)
 }
 
 // ─── Dual-value wrapper for EMI-sensitive fields ────────────────────────────
@@ -64,16 +65,19 @@ export interface DualEMI {
 
 // ─── Projection Row (one entry per projection year) ──────────────────────────
 
+// Row 0 = today. Row j = start of year j (after goal payouts due at that point).
+// income / expenses / goal SIPs / savings on a row are the cash flows of the 12 months that START at that row.
+// Portfolio is the same in both tracks (EMI is real cash in both). The EMI toggle only changes expenses → FIRE number.
 export interface ProjectionRow {
     year: number;
     income: number;                         // same regardless of EMI toggle
-    goal_commitment_annual: number;         // same regardless of EMI toggle
-    goals_payout: number;                   // same regardless of EMI toggle
+    goal_commitment_annual: number;         // INFORMATIONAL: SIPs needed across all goals this year. Not deducted anywhere.
+    goals_payout: number;                   // goal lump sums withdrawn from the portfolio at this row
     goal_hits: { label: string; amount: number }[]; // same regardless of EMI toggle
     // ── EMI-sensitive fields (both variants always present) ──
-    total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw
-    savings: DualEMI;           // income − total_expenses − goal_sips
-    portfolio_value: DualEMI;   // portfolio_after_growth + savings − goals_payout
+    total_expenses: DualEMI;    // expenses_raw + emi  vs  expenses_raw   (drives FIRE number only)
+    savings: DualEMI;           // surplus = income − expenses − EMI (same in both). Portfolio gets surplus_investment_ratio of it before age 45, nothing after
+    portfolio_value: DualEMI;   // investable portfolio at this row (row 0 = today's actual value); same in both
     fire_number: DualEMI;       // total_expenses × 30
     fire_percentage: DualEMI;   // portfolio_value / fire_number × 100
 }

@@ -209,8 +209,9 @@ class UserServiceClass {
                 user_loan: true,
                 user_goals: {
                     where: {
-                        status: { not: "DELETED" },
+                        status: { notIn: ["DELETED", "CANCELLED", "COMPLETED"] },
                     },
+                    include: { retirement_details: true },
                 },
             }
         });

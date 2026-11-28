@@ -1,4 +1,4 @@
-import { rateLimit, Options as RateLimitOptions } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit, Options as RateLimitOptions } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { Request, Response } from "express";
 import { redis } from "../lib/redis.js";
@@ -18,7 +18,7 @@ const create_redis_store = (prefix: string) =>
  */
 const rate_limit_handler = (message: string) => {
     return (req: Request, res: Response, _next: any, options: RateLimitOptions) => {
-        logger.warn(`Rate limit exceeded on [${req.method} ${req.originalUrl || req.url}] by IP: ${req.ip}`);
+        logger.warn(`Rate limit exceeded on [${req.method} ${req.originalUrl || req.url}] by IP: ${ipKeyGenerator(req.ip)}`);
         res.status(options.statusCode || 429).json({
             success: false,
             message,
@@ -71,7 +71,7 @@ export const auth_otp_rate_limiter = rateLimit({
     store: create_redis_store("auth_otp"),
     keyGenerator: (req) => {
         const phone = get_phone_from_req(req);
-        return phone ? `phone:${phone}` : `ip:${req.ip}`;
+        return phone ? `phone:${phone}` : `ip:${ipKeyGenerator(req.ip)}`;
     },
     handler: rate_limit_handler("Too many OTP requests for this mobile number. Please wait 10 minutes before trying again."),
 });
@@ -90,7 +90,7 @@ export const auth_validate_otp_rate_limiter = rateLimit({
     store: create_redis_store("auth_validate"),
     keyGenerator: (req) => {
         const phone = get_phone_from_req(req);
-        return phone ? `phone:${phone}` : `ip:${req.ip}`;
+        return phone ? `phone:${phone}` : `ip:${ipKeyGenerator(req.ip)}`;
     },
     handler: rate_limit_handler("Too many incorrect OTP attempts. Please wait 10 minutes before trying again."),
 });
@@ -108,7 +108,7 @@ export const plan_otp_rate_limiter = rateLimit({
     passOnStoreError: true,
     store: create_redis_store("plan_otp"),
     keyGenerator: (req) => {
-        return req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+        return req.user?.id ? `user:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`;
     },
     handler: rate_limit_handler("Too many confirmation OTP requests. Please wait a few minutes before trying again."),
 });
@@ -126,7 +126,7 @@ export const transaction_rate_limiter = rateLimit({
     passOnStoreError: true,
     store: create_redis_store("tx"),
     keyGenerator: (req) => {
-        return req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+        return req.user?.id ? `user:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`;
     },
     handler: rate_limit_handler("You are performing actions too quickly. Please wait a moment and try again."),
 });
