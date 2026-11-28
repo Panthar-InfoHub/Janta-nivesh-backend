@@ -267,13 +267,10 @@ class FireReportServiceClass {
 
                 const surplus = income - expenses_raw - yearly_emi;
                 const age_this_year = current_age + j;
-                if (age_this_year >= FIRE_CONSTANTS.surplus_stop_age) {
-                    prev_invested_flow = 0;                                           // 45+: no addition, no deduction
-                } else if (surplus >= 0) {
-                    prev_invested_flow = surplus * FIRE_CONSTANTS.surplus_investment_ratio; // < 45: 50% added
-                } else {
-                    prev_invested_flow = surplus;                                     // < 45: deficit deducted 100%
-                }
+                prev_invested_flow =
+                    age_this_year < FIRE_CONSTANTS.surplus_stop_age && surplus > 0
+                        ? surplus * FIRE_CONSTANTS.surplus_investment_ratio
+                        : 0;
 
                 // Informational only: SIPs the user should run across all goals this year
                 const goal_commitment_annual = this.total_goal_sip_annual(goals, year);

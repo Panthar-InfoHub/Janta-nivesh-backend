@@ -6,13 +6,13 @@ export const FIRE_CONSTANTS = {
     portfolio_return: 0.09,
 
     // Share of a POSITIVE yearly surplus (income − expenses − EMI) added to the portfolio while age < surplus_stop_age.
-    // The rest is assumed spent. Before that age a deficit comes 100% out of the portfolio.
+    // The rest is assumed spent. Negative surplus adds nothing and deducts nothing.
     surplus_investment_ratio: 0.5,
-    // From the projection year in which the user is this age, the yearly surplus is no longer added
-    // (and a deficit is no longer deducted). Last surplus added = the one earned in the age-44 year.
+    // From the projection year in which the user is this age, the yearly surplus is no longer added.
+    // Last surplus added = the one earned in the age-44 year.
     surplus_stop_age: 45,
 
-    expense_growth: 0.06,   // 6% annual expense inflation
+    expense_growth: 0.05,   // 6% annual expense inflation
     income_growth: 0.05,   // 5% annual income growth
     fire_factor: 30,     // 30× annual expenses = FIRE number (goal SIPs are NOT part of expenses)
     default_projection_years: 20,    // default when no query param supplied
@@ -21,7 +21,7 @@ export const FIRE_CONSTANTS = {
     // Goal SIP formula constants (hardcoded — stored rates not used)
     goal_fv_growth: 0.08,   // FV inflation for non-retirement goal payouts
     goal_sip_return: 0.10,   // annual return for non-retirement SIP PMT (1.1 base)
-    retirement_inflation: 0.06,   // corpus inflation for retirement goal
+    retirement_inflation: 0.05,   // corpus inflation for retirement goal
     retirement_return: 0.10,   // corpus growth for retirement goal
 } as const;
 

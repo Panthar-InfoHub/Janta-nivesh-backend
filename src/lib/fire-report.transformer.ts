@@ -81,6 +81,7 @@ export interface VelvetReportViewData {
         portfolioValue: number;
         expenses: number;
         goals: number;
+        goalHits: { label: string; amount: number }[];
         fireNumber: number;
         firePercent: number;
     }[];
@@ -161,8 +162,9 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         emi: l.monthly_emi,
         tenure_months: l.tenure_months,
     }));
+    const normalizeZeroStr = (s: string) => (s === "-0.0" ? "0.0" : s);
     const qoqNwPct = (netWorthPrevQ > 0 && netWorth !== netWorthPrevQ)
-        ? ((netWorth - netWorthPrevQ) / netWorthPrevQ * 100).toFixed(1)
+        ? normalizeZeroStr(((netWorth - netWorthPrevQ) / netWorthPrevQ * 100).toFixed(1))
         : "0.0";
 
     // ── Net Worth Page (asset-class trends for last 3 quarters) ──────────────
@@ -217,6 +219,7 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
         portfolioValue: r.portfolio_value.emi_include,
         expenses: r.total_expenses.emi_include,
         goals: r.goals_payout,
+        goalHits: r.goal_hits,
         fireNumber: r.fire_number.emi_include,
         firePercent: r.fire_percentage.emi_include,
     }));
@@ -229,13 +232,13 @@ export function to_report_view_data(report: FireReportCoreResponse): VelvetRepor
     logger.debug(`Current ${cur} and prev quarter nw ${prev}`)
 
     const pct_change = (c: number, p: number) =>
-        p > 0 ? ((c - p) / p * 100).toFixed(1) : "0.0";
+        p > 0 ? normalizeZeroStr(((c - p) / p * 100).toFixed(1)) : "0.0";
     const qoqChanges = {
         netWorth: has_valid_previous ? pct_change(cur?.net_worth ?? 0, prev?.net_worth ?? 1) : "0.0",
         expenses: has_valid_previous ? pct_change(annualExpenses, annualExpensesPrevQ) : "0.0",
         fireNumber: has_valid_previous ? pct_change(cur?.fire_number ?? 0, prev?.fire_number ?? 1) : "0.0",
         // FIRE % change is reported in percentage points (see PDF footnote 6)
-        firePercent: has_valid_previous ? ((cur?.fire_percentage ?? 0) - (prev?.fire_percentage ?? 0)).toFixed(1) : "0.0",
+        firePercent: has_valid_previous ? normalizeZeroStr(((cur?.fire_percentage ?? 0) - (prev?.fire_percentage ?? 0)).toFixed(1)) : "0.0",
     };
 
     // ── Quarter-end Summary ───────────────────────────────────────────────────

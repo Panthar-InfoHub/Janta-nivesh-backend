@@ -31,13 +31,21 @@ function logoB64(filename: string): string {
 
 const logoData = logoB64("logo.png");
 
-const fmt_cr = (v: number): string =>
-  v >= 10_000_000 ? `${(v / 10_000_000).toFixed(2)} Cr` : `${(v / 100_000).toFixed(1)} L`;
+const fmt_cr = (v: number): string => {
+  const n = Math.abs(v) < 5_000 ? 0 : v;
+  return Math.abs(n) >= 10_000_000
+    ? `${(n / 10_000_000).toFixed(2)} Cr`
+    : `${(n / 100_000).toFixed(1)} L`;
+};
 
-const fmt_in = (v: number): string =>
-  v >= 100_000 ? `${(v / 100_000).toFixed(2)} L` : `${v.toLocaleString("en-IN")}`;
+const fmt_in = (v: number): string => {
+  const n = Math.abs(v) < 0.5 ? 0 : v;
+  return Math.abs(n) >= 100_000
+    ? `${(n / 100_000).toFixed(2)} L`
+    : `${Math.round(n).toLocaleString("en-IN")}`;
+};
 
-const pct = (v: number): string => `${v.toFixed(1)}%`;
+const pct = (v: number): string => `${(Math.abs(v) < 0.05 ? 0 : v).toFixed(1)}%`;
 
 const rs = (val: string, color = "#111827", _size = "inherit") =>
   `<span style="color:${color};font-family:'Inter',sans-serif;font-weight:700;"><span style="font-size:0.85em;margin-right:2px">&#x20B9;</span>${val}</span>`;
@@ -64,7 +72,7 @@ function header(quarter: string, name: string, age: number, city: string): strin
 function footer(pageNum: number): string {
   return `
     <div class="page-footer">
-      <span>Confidential - For Client Use Only</span>
+      <span>Confidential - For Client Use Only | Illustrative projection, not investment advice</span>
       <span>Page ${pageNum} of 6</span>
     </div>`;
 }
@@ -125,9 +133,146 @@ function sparkline(
     </svg>`;
 }
 
+function portfolioProjectionChart(
+  rows: VelvetReportViewData["thirtyYearProjection"],
+  width = 430,
+  height = 140
+): string {
+  if (rows.length === 0) return "";
+  const PAD_L = 36;
+  const PAD_R = 12;
+  const TOP = 10;
+  const BOT = 20;
+  const chartW = width - PAD_L - PAD_R;
+  const chartH = height - TOP - BOT;
+
+  const rawMax = Math.max(
+    ...rows.map((r) => Math.max(r.portfolioValue, r.fireNumber, r.goals)),
+    1
+  );
+  // Pick a clean ceiling in Cr or L so ticks are even (0, mid, max)
+  const inCr = rawMax >= 10_000_000;
+  const unitDiv = inCr ? 10_000_000 : 100_000;
+  const unitLabel = inCr ? "Cr" : "L";
+  const rawUnits = rawMax / unitDiv;
+  const roughStep = rawUnits / 2;
+  const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+  const norm = roughStep / mag;
+  const stepMult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  const halfUnits = stepMult * mag;
+  const axisMax = Math.max(halfUnits * 2, Math.ceil(rawUnits / (halfUnits * 2)) * (halfUnits * 2)) * unitDiv;
+
+  const py = (v: number) => TOP + (1 - Math.min(v, axisMax) / axisMax) * chartH;
+  const n = rows.length;
+  const slotW = chartW / n;
+  const barW = Math.max(2, Math.min(8, slotW * 0.62));
+  const cx = (i: number) => PAD_L + (i + 0.5) * slotW;
+
+  const gridLines = [0, 0.5, 1].map((t) => {
+    const val = t * axisMax;
+    const y = py(val).toFixed(1);
+    const lbl = t === 0 ? "0" : `${+(val / unitDiv).toFixed(1)} ${unitLabel}`;
+    return `
+      <line x1="${PAD_L}" y1="${y}" x2="${width - PAD_R}" y2="${y}" stroke="#E5E7EB" stroke-width="0.6"/>
+      <text x="${PAD_L - 5}" y="${y}" text-anchor="end" font-size="8.5" fill="${GRAY}" dominant-baseline="middle">${lbl}</text>
+    `;
+  }).join("");
+
+  const bars = rows.map((r, i) => {
+    const x = (cx(i) - barW / 2).toFixed(1);
+    const y = py(r.portfolioValue).toFixed(1);
+    const h = Math.max(0.5, TOP + chartH - py(r.portfolioValue)).toFixed(1);
+    return `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h}" rx="1.5" fill="${NAVY}"/>`;
+  }).join("");
+
+  const firePts = rows.map((r, i) => `${cx(i).toFixed(1)},${py(r.fireNumber).toFixed(1)}`).join(" ");
+  const fireLine = `<polyline points="${firePts}" fill="none" stroke="${GOLD}" stroke-width="2" stroke-dasharray="4 3"/>`;
+
+  const goalDots = rows
+    .map((r, i) =>
+      r.goals > 0
+        ? `<circle cx="${cx(i).toFixed(1)}" cy="${py(r.goals).toFixed(1)}" r="3.5" fill="${GOLD}"/>`
+        : ""
+    )
+    .join("");
+
+  const xLabels = rows
+    .map((r, i) => {
+      if (i !== 0 && i !== n - 1 && i % 5 !== 0) return "";
+      const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
+      return `<text x="${cx(i).toFixed(1)}" y="${height - 4}" text-anchor="${anchor}" font-size="8.5" fill="${GRAY}">${r.year}</text>`;
+    })
+    .join("");
+
+  return `<svg width="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="display:block;margin-top:6px">
+      ${gridLines}${bars}${fireLine}${goalDots}${xLabels}
+    </svg>
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:6px;font-size:8px;color:${GRAY}">
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:${NAVY};border-radius:1.5px;display:inline-block"></span>Portfolio</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:2px;background:${GOLD};display:inline-block"></span>F.I.R.E Number</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;background:${GOLD};border-radius:50%;display:inline-block"></span>Goal payout</span>
+    </div>`;
+}
+
+function fireProgressChart(
+  rows: VelvetReportViewData["thirtyYearProjection"],
+  width = 430,
+  height = 140
+): string {
+  if (rows.length === 0) return "";
+  const PAD_L = 34;
+  const PAD_R = 12;
+  const TOP = 10;
+  const BOT = 20;
+  const chartW = width - PAD_L - PAD_R;
+  const chartH = height - TOP - BOT;
+
+  const maxPct = Math.max(...rows.map((r) => r.firePercent), 100);
+  const axisMax = maxPct <= 120 ? 120 : Math.ceil(maxPct / 20) * 20;
+  const midTick = Math.round(axisMax / 2);
+
+  const n = rows.length;
+  const px = (i: number) => PAD_L + (i / Math.max(1, n - 1)) * chartW;
+  const py = (v: number) => TOP + (1 - Math.min(Math.max(v, 0), axisMax) / axisMax) * chartH;
+
+  const gridLines = [0, midTick, axisMax].map((tv) => {
+    const y = py(tv).toFixed(1);
+    return `
+      <line x1="${PAD_L}" y1="${y}" x2="${width - PAD_R}" y2="${y}" stroke="#E5E7EB" stroke-width="0.6"/>
+      <text x="${PAD_L - 5}" y="${y}" text-anchor="end" font-size="8.5" fill="${GRAY}" dominant-baseline="middle">${tv}%</text>
+    `;
+  }).join("");
+
+  const pts = rows.map((r, i) => `${px(i).toFixed(1)},${py(r.firePercent).toFixed(1)}`).join(" ");
+  const baseY = py(0).toFixed(1);
+  const areaPts = `${px(0).toFixed(1)},${baseY} ${pts} ${px(n - 1).toFixed(1)},${baseY}`;
+
+  const y100 = py(100).toFixed(1);
+  const targetLine = `
+    <line x1="${PAD_L}" y1="${y100}" x2="${width - PAD_R}" y2="${y100}" stroke="${GREEN}" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="${width - PAD_R}" y="${(py(100) - 5).toFixed(1)}" text-anchor="end" font-size="8.5" font-weight="600" fill="${GREEN}">F.I.R.E achieved</text>
+  `;
+
+  const xLabels = rows
+    .map((r, i) => {
+      if (i !== 0 && i !== n - 1 && i % 5 !== 0) return "";
+      const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
+      return `<text x="${px(i).toFixed(1)}" y="${height - 4}" text-anchor="${anchor}" font-size="8.5" fill="${GRAY}">${r.year}</text>`;
+    })
+    .join("");
+
+  return `<svg width="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="display:block;margin-top:6px">
+      ${gridLines}
+      <polygon points="${areaPts}" fill="${GOLD}" fill-opacity="0.16"/>
+      <polyline points="${pts}" fill="none" stroke="${GOLD}" stroke-width="2.2"/>
+      ${targetLine}
+      ${xLabels}
+    </svg>`;
+}
+
 function pieChart(data: { name: string; value: number; percentage: number }[], size = 140): string {
   const cx = size / 2, cy = size / 2, r = size / 2 - 6;
-  const PIE_COLORS = [NAVY, GRAY, GOLD, GREEN];
+  const PIE_COLORS = [NAVY, GOLD, "#D1D5DB", GREEN];
   const slices = data.filter(d => d.value > 0);
   let cumAngle = -90;
   const paths = slices.map((slice, i) => {
@@ -136,20 +281,22 @@ function pieChart(data: { name: string; value: number; percentage: number }[], s
     const e = ((cumAngle + angle) * Math.PI) / 180;
     cumAngle += angle;
     const color = PIE_COLORS[i % PIE_COLORS.length]!;
-    return {
-      d: `M${cx},${cy} L${(cx + r * Math.cos(s)).toFixed(2)},${(cy + r * Math.sin(s)).toFixed(2)} A${r},${r} 0 ${angle > 180 ? 1 : 0} 1 ${(cx + r * Math.cos(e)).toFixed(2)},${(cy + r * Math.sin(e)).toFixed(2)} Z`,
-      color, name: slice.name, pct: slice.percentage
-    };
+    const d = angle >= 359.99
+      ? `M${cx},${cy - r} A${r},${r} 0 1 1 ${cx - 0.01},${cy - r} Z`
+      : `M${cx},${cy} L${(cx + r * Math.cos(s)).toFixed(2)},${(cy + r * Math.sin(s)).toFixed(2)} A${r},${r} 0 ${angle > 180 ? 1 : 0} 1 ${(cx + r * Math.cos(e)).toFixed(2)},${(cy + r * Math.sin(e)).toFixed(2)} Z`;
+    return { d, color, name: slice.name, pct: slice.percentage };
   });
   const legend = paths.map(p =>
-    `<div style="display:flex;align-items:center;gap:4px;font-size:8px;color:${GRAY};margin-bottom:2px">
+    `<div style="display:flex;align-items:center;gap:6px;font-size:8.5px;color:${GRAY};margin-bottom:4px">
            <div style="width:7px;height:7px;background:${p.color};border-radius:2px;flex-shrink:0"></div>
            <span style="white-space:nowrap">${p.name} ${p.pct}%</span>
          </div>`
   ).join("");
-  return `<div style="display:flex;align-items:center;justify-content:center;gap:12px;width:100%">
+  const innerR = (r * 0.56).toFixed(2);
+  return `<div style="display:flex;align-items:center;justify-content:center;gap:16px;width:100%">
       <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
         ${paths.map(p => `<path d="${p.d}" fill="${p.color}"/>`).join("")}
+        <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#F9FAFB"/>
       </svg>
       <div style="display:flex;flex-direction:column;justify-content:center;align-items:flex-start">${legend}</div>
     </div>`;
@@ -301,8 +448,8 @@ function getCSS(regularB64: string, boldB64: string): string {
     .tbl td { font-size: 8px; padding: 5px 4px; color: #111827; border-bottom: 0.5px solid #E5E7EB; }
     .tbl tr:nth-child(even) td { background: #FAFAFA; }
     .tbl .text-right { text-align: right; }
-    .tbl-tight td { padding: 3px 4px !important; font-size: 9px !important; color: #111827 !important; }
-    .tbl-tight th { padding: 3px 4px !important; font-size: 10px !important; }
+    .tbl-tight td { padding: 4.5px 6px !important; font-size: 10px !important; color: #111827 !important; }
+    .tbl-tight th { padding: 5px 6px !important; font-size: 10.5px !important; }
     .tbl .green { color: ${GREEN}; font-weight: bold; }
 
     .metric-row { display: flex; justify-content: space-between; padding: 2px 0; }
@@ -331,14 +478,16 @@ function getCSS(regularB64: string, boldB64: string): string {
 
 // ─── Page 1: Financial Overview ───────────────────────────────────────────────
 function page1(data: VelvetReportViewData): string {
-  const { currentQuarter, clientData, snapshot, qoqChanges } = data;
+  const { currentQuarter, clientData, snapshot, qoqChanges, thirtyYearProjection } = data;
   const nwPos = parseFloat(qoqChanges.netWorth) >= 0;
-  const firePos = parseFloat(qoqChanges.firePercent) >= 0;
   const fireBarW = Math.max(0, Math.min(snapshot.firePercentage, 100));
   const page1CardBg = "rgba(249, 250, 251, 1)";
   const page1CardBorder = "rgba(249, 250, 251, 1)";
-  const nwHistory = snapshot.netWorthHistory.map(h => ({ label: h.quarter, value: h.value }));
-  const fireHistory = snapshot.fireHistory.map(h => ({ label: h.quarter, value: h.fire / 100_000 }));
+  const projYears = thirtyYearProjection.length || 30;
+  const lastProj = thirtyYearProjection[thirtyYearProjection.length - 1];
+  const projEndYear = lastProj?.year ?? new Date().getFullYear() + projYears - 1;
+  const projEndPortfolio = lastProj?.portfolioValue ?? snapshot.fireCurrentCorpus;
+  const projEndFirePct = lastProj?.firePercent ?? snapshot.firePercentage;
 
   return `
   <div class="page">
@@ -348,22 +497,20 @@ function page1(data: VelvetReportViewData): string {
 
       <div style="flex-shrink:0">
         <div class="page-title">Financial Overview (Quarterly)</div>
-        <div class="insight"><b>Executive Insight:</b> Net worth ${nwPos ? "grew" : "declined"} ${Math.abs(parseFloat(qoqChanges.netWorth))}% QoQ to ${rs(fmt_cr(snapshot.netWorth), NAVY)} with steady financial asset accumulation at age ${clientData.age}.</div>
+        <div class="insight"><b>Executive Insight:</b> Net worth stands at ${rs(fmt_cr(snapshot.netWorth), NAVY)} at age ${clientData.age}, with F.I.R.E progress of ${pct(snapshot.firePercentage)}.</div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:20px;min-height:0">
         <!-- KPI ROW (Natural height) -->
         <div style="display:flex;gap:20px;min-height:0;align-items:stretch">
           <div class="card" style="flex:1;display:flex;flex-direction:column;padding:20px;text-align:center;background:${page1CardBg};border:1px solid ${page1CardBorder};justify-content:space-between">
-            <div class="card-label" style="font-size:10px;text-align:left">Current Net Worth</div>
+            <div class="card-label" style="font-size:10px;text-align:left">Current Net Worth<sup>18</sup></div>
 
             <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:12px">
               <div style="font-size:42px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY};line-height:1">${rs(fmt_cr(snapshot.netWorth), NAVY)}</div>
-              <span class="${nwPos ? "badge-pos" : "badge-neg"}" style="font-size:9px;padding:2px 10px;margin-top:4px">${nwPos ? "↑" : "↓"} ${Math.abs(parseFloat(qoqChanges.netWorth)).toFixed(1)}%</span>
-              
               <div style="margin-top:14px">
-                <div style="font-size:8.5px;color:${GRAY}">Previous Quarter: ${rs(fmt_cr(snapshot.netWorthPrevQ), GRAY)}</div>
-                <div style="font-size:8px;color:${GRAY};margin-top:2px">Absolute Increase: ${rs(fmt_cr(snapshot.netWorth - snapshot.netWorthPrevQ), GRAY)}</div>
+                <div style="font-size:8.5px;color:${GRAY}">Total Assets: ${rs(fmt_cr(data.balanceSheet.totalAssets), "#111827")}</div>
+                <div style="font-size:8.5px;color:${GRAY};margin-top:3px">Total Liabilities: ${rs(fmt_cr(data.balanceSheet.totalLiabilities), "#111827")}</div>
               </div>
             </div>
 
@@ -371,20 +518,20 @@ function page1(data: VelvetReportViewData): string {
           </div>
 
           <div class="card" style="flex:1;display:flex;flex-direction:column;padding:20px;background:${page1CardBg};border:1px solid ${page1CardBorder};justify-content:space-between">
-            <div class="card-label" style="font-size:10px">Current F.I.R.E Status</div>
+            <div class="card-label" style="font-size:10px">Current F.I.R.E Status<sup>1</sup></div>
             
             <div style="margin-top:12px">
               <div style="display:flex;gap:16px;margin-bottom:12px;align-items:baseline">
                 <div style="flex:1">
-                  <div style="font-size:8px;color:${GRAY}">F.I.R.E Number</div>
+                  <div style="font-size:8px;color:${GRAY}">F.I.R.E Number<sup>2</sup></div>
                   <div style="font-size:16px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY};margin-top:4px;line-height:1">${rs(fmt_cr(snapshot.fireNumber), NAVY)}</div>
                 </div>
                 <div style="flex:1">
-                  <div style="font-size:8px;color:${GRAY}">F.I.R.E %</div>
+                  <div style="font-size:8px;color:${GRAY}">F.I.R.E %<sup>3</sup></div>
                   <div style="font-size:16px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${GOLD};margin-top:4px;line-height:1">${pct(snapshot.firePercentage)}</div>
                 </div>
                 <div style="flex:1">
-                  <div style="font-size:8px;color:${GRAY}">Gap</div>
+                  <div style="font-size:8px;color:${GRAY}">Gap<sup>4</sup></div>
                   <div style="font-size:16px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${RED};margin-top:4px;line-height:1">${rs(fmt_cr(snapshot.fireGap), RED)}</div>
                 </div>
               </div>
@@ -404,25 +551,21 @@ function page1(data: VelvetReportViewData): string {
         <!-- CHARTS ROW (Natural height) -->
         <div style="display:flex;gap:20px;min-height:0;align-items:stretch">
           <div class="card" style="flex:1;display:flex;flex-direction:column;padding:16px;background:${page1CardBg};border:1px solid ${page1CardBorder}">
-            <div class="card-label" style="font-size:10px">QoQ Net Worth Change</div>
-            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;margin-top:6px">
-              <div style="font-size:36px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${nwPos ? GREEN : RED};line-height:1">${nwPos ? "+" : ""}${qoqChanges.netWorth}%</div>
-              <div style="font-size:8.5px;color:${GRAY};margin-top:4px">Quarter over Quarter</div>
+            <div class="card-label" style="font-size:10px">Portfolio Projection, ${projYears} Years<sup>5</sup></div>
+            <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;margin-top:6px">
+              <div style="font-size:32px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY};line-height:1">${rs(fmt_cr(projEndPortfolio), NAVY)}</div>
+              <div style="font-size:8.5px;color:${GRAY};margin-top:4px">Projected portfolio by ${projEndYear}</div>
             </div>
-            <div style="height:112px;margin-top:8px">${sparkline(nwHistory, GREEN, 430, 112)}</div>
-            ${nwHistory.length >= 2 ? `<div style="font-size:8px;color:${GRAY};margin-top:4px;text-align:center">${nwHistory[nwHistory.length - 2]!.label}: ${rs(fmt_cr(nwHistory[nwHistory.length - 2]!.value * 100_000), GRAY, "7px")} &rarr; ${nwHistory[nwHistory.length - 1]!.label}: ${rs(fmt_cr(nwHistory[nwHistory.length - 1]!.value * 100_000), GRAY, "7px")}</div>` : ""}
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;margin-top:6px">${portfolioProjectionChart(thirtyYearProjection, 430, 140)}</div>
           </div>
           
           <div class="card" style="flex:1;display:flex;flex-direction:column;padding:16px;background:${page1CardBg};border:1px solid ${page1CardBorder}">
-            <div class="card-label" style="font-size:10px">QoQ F.I.R.E Score Change</div>
-            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;margin-top:6px">
-              <div style="font-size:36px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${firePos ? GOLD : RED};line-height:1">${firePos ? "+" : ""}${qoqChanges.firePercent}%</div>
-              <div style="font-size:8.5px;color:${GRAY};margin-top:4px">F.I.R.E % Improvement</div>
+            <div class="card-label" style="font-size:10px">F.I.R.E % Over Time<sup>6</sup></div>
+            <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;margin-top:6px">
+              <div style="font-size:32px;font-family:'NotoSansBold','NotoSans',sans-serif;color:${GOLD};line-height:1">${projEndFirePct.toFixed(1)}%</div>
+              <div style="font-size:8.5px;color:${GRAY};margin-top:4px">F.I.R.E progress by ${projEndYear}</div>
             </div>
-            <div style="height:112px;margin-top:8px">${sparkline(fireHistory, GOLD, 430, 112)}</div>
-            ${snapshot.fiYear
-      ? `<div style="font-size:8px;color:${GRAY};margin-top:4px;text-align:center">Projected FI: Year ${snapshot.fiYear} (Age ${snapshot.fiAge})</div>`
-      : ""}
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;margin-top:6px">${fireProgressChart(thirtyYearProjection, 430, 140)}</div>
           </div>
         </div>
       </div>
@@ -433,9 +576,8 @@ function page1(data: VelvetReportViewData): string {
         <div class="fn_1"><sup>2</sup><b>F.I.R.E Number:</b> Annual Expenses &times; 30 (based on a ~3.3% safe withdrawal rate). Annual expenses include loan EMIs due in the next 12 months = ${rs(fmt_cr(snapshot.annualExpenses), "#111", "7px")} &times; 30 = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")}</div>
         <div class="fn_1"><sup>3</sup><b>F.I.R.E %:</b> (Current Investable Portfolio / F.I.R.E Number) &times; 100 = (${rs(fmt_cr(snapshot.fireCurrentCorpus), "#111", "7px")} / ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")}) &times; 100 = ${snapshot.firePercentage.toFixed(1)}%</div>
         <div class="fn_1"><sup>4</sup><b>Gap:</b> F.I.R.E Number &minus; Current Investable Portfolio = ${rs(fmt_cr(snapshot.fireNumber), "#111", "7px")} &minus; ${rs(fmt_cr(snapshot.fireCurrentCorpus), "#111", "7px")} = ${rs(fmt_cr(snapshot.fireGap), "#111", "7px")}</div>
-        <div class="fn_1"><sup>5</sup><b>QoQ Net Worth Change:</b> ((Current NW &minus; Previous NW) / Previous NW) &times; 100 = ((${rs(fmt_cr(snapshot.netWorth), "#111", "7px")} &minus; ${rs(fmt_cr(snapshot.netWorthPrevQ), "#111", "7px")}) / ${rs(fmt_cr(snapshot.netWorthPrevQ), "#111", "7px")}) &times; 100 = ${qoqChanges.netWorth}%</div>
-        <div class="fn_1"><sup>6</sup><b>QoQ F.I.R.E Score Change:</b> Current F.I.R.E % &minus; Previous F.I.R.E % = ${qoqChanges.firePercent} percentage points</div>
-        <div class="fn_1">* Data marked with asterisk represents estimated values</div>
+        <div class="fn_1"><sup>5</sup><b>Portfolio Projection:</b> Investable portfolio at the start of each year, grown at ${pctRate(RETURN)} a year, with ${SURPLUS_PCT}% of the yearly surplus added until age ${STOP_AGE} and goal payouts withdrawn in their target year (see page 2).</div>
+        <div class="fn_1"><sup>6</sup><b>Financial Independence:</b> The first year in which the projected portfolio reaches the F.I.R.E Number (F.I.R.E % &ge; 100%) = ${snapshot.fiYear ? `Year ${snapshot.fiYear} (Age ${snapshot.fiAge})` : `beyond ${projEndYear}`}.</div>
       </div>
 
     </div>
@@ -446,39 +588,75 @@ function page1(data: VelvetReportViewData): string {
 
 // ─── Page 2: FIRE Calculations ────────────────────────────────────────────────
 function page2(data: VelvetReportViewData): string {
-  const { currentQuarter, clientData, snapshot, thirtyYearProjection } = data;
+  const { currentQuarter, clientData, snapshot, thirtyYearProjection, goals, incomeExpense } = data;
   const fireBarW = Math.max(0, Math.min(snapshot.firePercentage, 100));
 
-  const rows = thirtyYearProjection.map((row) => `
+  let payoutLetterIdx = 0;
+  const payoutNotes: {
+    letter: string;
+    year: number;
+    label: string;
+    amount: number;
+    todayCost?: number;
+    timeInHand?: number;
+    infPct?: number;
+  }[] = [];
+
+  const rows = thirtyYearProjection.map((row) => {
+    let goalCell = "&mdash;";
+    if (row.goals > 0) {
+      const letter = String.fromCharCode(97 + payoutLetterIdx);
+      payoutLetterIdx++;
+      const label = row.goalHits.length > 0
+        ? row.goalHits.map((h) => h.label).join(", ")
+        : `Goal (${row.year})`;
+      const matchedGoal = goals.find((g) => g.targetYear === row.year && row.goalHits.some((h) => h.label === g.name))
+        ?? goals.find((g) => g.targetYear === row.year);
+      const infPct = matchedGoal && matchedGoal.todayCost > 0 && matchedGoal.timeInHand > 0
+        ? Math.round((Math.pow(matchedGoal.futureValue / matchedGoal.todayCost, 1 / matchedGoal.timeInHand) - 1) * 100)
+        : undefined;
+      payoutNotes.push({
+        letter,
+        year: row.year,
+        label: matchedGoal?.name ?? label,
+        amount: row.goals,
+        todayCost: matchedGoal?.todayCost,
+        timeInHand: matchedGoal?.timeInHand,
+        infPct,
+      });
+      goalCell = `${rs(fmt_in(row.goals), "#374151", "8px")}<sup>${letter}</sup>`;
+    }
+    return `
       <tr>
         <td class="bold">${row.year}</td>
         <td class="text-right">${rs(fmt_cr(row.portfolioValue), "#374151", "8px")}</td>
         <td class="text-right">${rs(fmt_in(row.expenses), "#374151", "8px")}</td>
-        <td class="text-right">${row.goals > 0 ? rs(fmt_in(row.goals), "#374151", "8px") : "&mdash;"}</td>
+        <td class="text-right">${goalCell}</td>
         <td class="text-right">${rs(fmt_cr(row.fireNumber), "#374151", "8px")}</td>
         <td class="text-right ${row.firePercent >= 100 ? "green bold" : ""}">${pct(row.firePercent)}</td>
-      </tr>`).join("");
+      </tr>`;
+  }).join("");
 
   return `
-  <div class="page">
+  <div class="page" style="padding-bottom:18mm">
     ${header(currentQuarter, clientData.name, clientData.age, clientData.city)}
-    <div class="page-body page-body-with-footnotes">
-      <div class="page-title">F.I.R.E Calculations</div>
-      <div class="insight"><b>Executive Insight:</b> Current FIRE progress at ${pct(snapshot.firePercentage)}${snapshot.fiYear ? ` with projected financial independence by ${snapshot.fiYear} (age ${snapshot.fiAge}).` : ". Keep building your corpus consistently."}</div>
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div class="page-title" style="padding-top:8px;padding-bottom:8px">F.I.R.E Calculations</div>
+      <div class="insight" style="margin-bottom:8px"><b>Executive Insight:</b> Current FIRE progress at ${pct(snapshot.firePercentage)}${snapshot.fiYear ? ` with projected financial independence by ${snapshot.fiYear} (age ${snapshot.fiAge}).` : ". Keep building your corpus consistently."}</div>
 
-      <div class="card" style="margin-bottom:10px;flex-shrink:0">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;align-items:flex-end">
+      <div class="card" style="margin-bottom:8px;flex-shrink:0;padding:10px 14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:flex-end">
           <div>
             <div class="metric-label">Current Portfolio</div>
-            <div style="font-size:16px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY}">${rs(fmt_cr(snapshot.fireCurrentCorpus), NAVY, "13px")}</div>
+            <div style="font-size:15px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY}">${rs(fmt_cr(snapshot.fireCurrentCorpus), NAVY, "13px")}</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:28px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${GOLD}">${pct(snapshot.firePercentage)}</div>
+            <div style="font-size:24px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${GOLD}">${pct(snapshot.firePercentage)}</div>
             <div class="metric-label">FIRE Progress</div>
           </div>
           <div style="text-align:right">
             <div class="metric-label">FIRE Target</div>
-            <div style="font-size:16px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${RED}">${rs(fmt_cr(snapshot.fireNumber), RED, "13px")}</div>
+            <div style="font-size:15px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${RED}">${rs(fmt_cr(snapshot.fireNumber), RED, "13px")}</div>
           </div>
         </div>
         <div class="progress-bg"><div class="progress-fill" style="width:${fireBarW}%;background:linear-gradient(to right,#3B82F6,${GREEN})"></div></div>
@@ -488,10 +666,10 @@ function page2(data: VelvetReportViewData): string {
         </div>
       </div>
 
-      ${snapshot.fiYear ? `<div style="font-size:9px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY};margin-bottom:6px;flex-shrink:0">Projected FI in Year ${snapshot.fiYear} at FIRE % &ge; 100% (Age ${snapshot.fiAge})</div>` : ""}
+      ${snapshot.fiYear ? `<div style="font-size:9px;font-weight:bold;font-family:'NotoSansBold','NotoSans',sans-serif;color:${NAVY};margin-bottom:4px;flex-shrink:0">Projected FI in Year ${snapshot.fiYear} at FIRE % &ge; 100% (Age ${snapshot.fiAge})</div>` : ""}
 
-      <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-        <table class="tbl tbl-tight" style="height:100%">
+      <div style="flex:1;min-height:0">
+        <table class="tbl tbl-tight">
           <thead>
             <tr>
               <th style="width:9%">Year</th>
@@ -507,12 +685,33 @@ function page2(data: VelvetReportViewData): string {
       </div>
     </div>
 
-    <div class="footnotes-block">
-      <div class="fn"><b>7. Portfolio Value:</b> Total investable assets at the beginning of each year (first row = today). The whole portfolio grows at ${pctRate(RETURN)} a year. Until age ${STOP_AGE}, ${SURPLUS_PCT}% of each year's surplus (Income &minus; Expenses &minus; EMI) is added and any deficit is drawn from the portfolio; from age ${STOP_AGE} no surplus is added.</div>
-      <div class="fn"><b>8. Total Expenses:</b> Projected annual expenses adjusted for ${pctRate(FIRE_CONSTANTS.expense_growth)} inflation, plus loan EMIs. Goal SIPs are not counted as expenses. Assumes ${pctRate(FIRE_CONSTANTS.income_growth)} annual growth on income.</div>
-      <div class="fn"><b>9. Goal Payouts:</b> Lump-sum goal amount due that year, withdrawn from the portfolio</div>
-      <div class="fn"><b>10. FIRE Number:</b> Annual Expenses &times; 30</div>
-      <div class="fn"><b>11. FIRE %:</b> (Current Portfolio Value / FIRE Number) &times; 100</div>
+    <div style="flex-shrink:0;border-top:0.5px solid #E5E7EB;padding-top:8px;margin-top:8px">
+      ${(() => {
+        const row0 = thirtyYearProjection[0];
+        const row1 = thirtyYearProjection[1];
+        const annualSurplus = Math.max(0, (incomeExpense.monthlyIncome - incomeExpense.monthlyExpense - incomeExpense.monthlyEmi) * 12);
+        const surplusShare = clientData.age < STOP_AGE ? SURPLUS_PCT : 0;
+        const baseAnnualExp = incomeExpense.monthlyExpense * 12;
+        const row1Emi = row1 ? Math.max(0, row1.expenses - baseAnnualExp * (1 + FIRE_CONSTANTS.expense_growth)) : 0;
+        const pvExample = row0 && row1
+          ? ` Example: ${row1.year} = ${rs(fmt_cr(row0.portfolioValue), "#111", "7px")} &times; ${(1 + RETURN).toFixed(2)} + ${surplusShare}% &times; ${rs(fmt_cr(annualSurplus), "#111", "7px")} surplus${row1.goals > 0 ? ` &minus; goal payout ${rs(fmt_cr(row1.goals), "#111", "7px")}` : ""} = ${rs(fmt_cr(row1.portfolioValue), "#111", "7px")}`
+          : "";
+        const expExample = row1
+          ? ` Example: ${row1.year} = ${rs(fmt_cr(baseAnnualExp), "#111", "7px")} &times; ${(1 + FIRE_CONSTANTS.expense_growth).toFixed(2)} + EMI ${rs(fmt_cr(row1Emi), "#111", "7px")} = ${rs(fmt_cr(row1.expenses), "#111", "7px")}`
+          : "";
+        return `
+      <div class="fn"><b>7. Portfolio Value:</b> Investable assets at the start of each year (first row = today). The whole portfolio grows at ${pctRate(RETURN)} a year, every asset type. Until age ${STOP_AGE}, ${SURPLUS_PCT}% of each year's surplus (Income &minus; Expenses &minus; EMI) is added; from age ${STOP_AGE}, nothing is added. A year with no surplus adds nothing and takes nothing.${pvExample}</div>
+      <div class="fn"><b>8. Expenses:</b> Monthly expenses &times; 12, grown at ${pctRate(FIRE_CONSTANTS.expense_growth)} a year, plus loan EMIs due that year. Goal SIPs are not expenses. Income grows at ${pctRate(FIRE_CONSTANTS.income_growth)} a year.${expExample}</div>`;
+      })()}
+      <div class="fn"><b>9. Goal Payouts:</b> Each goal's future value, withdrawn from the portfolio in its target year.${payoutNotes.length > 0 ? " The letter next to a payout shows which goal it is:" : ""}</div>
+      ${payoutNotes.map((p) => {
+        if (p.todayCost !== undefined && p.timeInHand !== undefined && p.infPct !== undefined) {
+          return `<div class="fn" style="padding-left:10px"><sup>${p.letter}</sup> <b>${p.label}</b>, paid in ${p.year}: ${rs(fmt_cr(p.todayCost), "#111", "7px")} today &times; (1 + ${p.infPct}%)^${p.timeInHand} = ${rs(fmt_in(p.amount), "#111", "7px")}</div>`;
+        }
+        return `<div class="fn" style="padding-left:10px"><sup>${p.letter}</sup> <b>${p.label}</b>, paid in ${p.year}: ${rs(fmt_in(p.amount), "#111", "7px")}</div>`;
+      }).join("")}
+      <div class="fn"><b>10. FIRE Number:</b> Expenses &times; ${FIRE_CONSTANTS.fire_factor}. Example: ${thirtyYearProjection[0]?.year ?? new Date().getFullYear()} = ${rs(fmt_cr(thirtyYearProjection[0]?.expenses ?? snapshot.annualExpenses), "#111", "7px")} &times; ${FIRE_CONSTANTS.fire_factor} = ${rs(fmt_cr(thirtyYearProjection[0]?.fireNumber ?? snapshot.fireNumber), "#111", "7px")}</div>
+      <div class="fn"><b>11. FIRE %:</b> (Portfolio Value / FIRE Number) &times; 100. Example: ${thirtyYearProjection[0]?.year ?? new Date().getFullYear()} = (${rs(fmt_cr(thirtyYearProjection[0]?.portfolioValue ?? snapshot.fireCurrentCorpus), "#111", "7px")} / ${rs(fmt_cr(thirtyYearProjection[0]?.fireNumber ?? snapshot.fireNumber), "#111", "7px")}) &times; 100 = ${pct(thirtyYearProjection[0]?.firePercent ?? snapshot.firePercentage)}</div>
     </div>
     ${footer(2)}
   </div>`;
@@ -520,9 +719,11 @@ function page2(data: VelvetReportViewData): string {
 
 // ─── Page 3: Financial Statement ──────────────────────────────────────────────
 function page3(data: VelvetReportViewData): string {
-  const { currentQuarter, clientData, incomeExpense, balanceSheet, qoqChanges } = data;
-  const { monthlyIncome, monthlyExpense, monthlySurplus, savingsRate } = incomeExpense;
-  const nwPos = parseFloat(String(qoqChanges.netWorth)) >= 0;
+  const { currentQuarter, clientData, incomeExpense, balanceSheet } = data;
+  const { monthlyIncome, monthlyExpense, monthlySurplus, monthlyEmi, savingsRate } = incomeExpense;
+  const emiToIncomePct = monthlyIncome > 0 ? (monthlyEmi / monthlyIncome) * 100 : 0;
+  const formatLoanType = (raw: string) =>
+    raw.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
   const expenseRows = incomeExpense.expenseBreakdown.map(e =>
     `<div class="metric-row"><span class="metric-label">${e.category}</span><span class="metric-value">${rs(fmt_in(e.amount), "#1F2937", "8px")}</span></div>`
@@ -536,7 +737,7 @@ function page3(data: VelvetReportViewData): string {
     ? `<div class="metric-label">No outstanding loans</div>`
     : balanceSheet.liabilities.map(l => `
             <div style="margin-bottom:4px">
-              <div class="metric-row"><span class="metric-label">${l.name}</span><span class="metric-value">${rs(fmt_cr(l.outstanding), "#1F2937", "8px")}</span></div>
+              <div class="metric-row"><span class="metric-label">${formatLoanType(l.name)}</span><span class="metric-value">${rs(fmt_cr(l.outstanding), "#1F2937", "8px")}</span></div>
               <div style="font-size:7px;color:${GRAY}">EMI: ${rs(fmt_in(l.emi), GRAY, "7px")}/mo &bull; ${l.tenure_months} months left</div>
             </div>`).join("");
 
@@ -604,8 +805,8 @@ function page3(data: VelvetReportViewData): string {
       <div style="padding:0 40px;flex-shrink:0;margin-top:16px">
         <div class="card" style="display:flex;justify-content:space-around;border:2px solid ${GOLD};padding:12px">
           <div style="text-align:center"><div class="metric-label">Net Worth<sup>18</sup></div><div style="font-size:28px;font-weight:bold;font-family:'Inter',sans-serif;color:${GOLD}">${rs(fmt_cr(balanceSheet.netWorth), GOLD)}</div></div>
-          <div style="text-align:center"><div class="metric-label">QoQ Change<sup>19</sup></div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${nwPos ? GREEN : RED}">${nwPos ? "+" : ""}${balanceSheet.qoqNwPct}%</div></div>
-          <div style="text-align:center"><div class="metric-label">Previous Quarter<sup>20</sup></div><div style="font-size:20px;font-weight:bold;font-family:'Inter',sans-serif;color:#1F2937">${rs(fmt_cr(balanceSheet.netWorthPrevQ), "#1F2937")}</div></div>
+          <div style="text-align:center"><div class="metric-label">Monthly EMI</div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${NAVY}">${rs(fmt_in(monthlyEmi), NAVY)}</div></div>
+          <div style="text-align:center"><div class="metric-label">EMI to Income<sup>19</sup></div><div style="font-size:24px;font-weight:bold;font-family:'Inter',sans-serif;color:${NAVY}">${pct(emiToIncomePct)}</div></div>
         </div>
       </div>
 
@@ -613,13 +814,14 @@ function page3(data: VelvetReportViewData): string {
     </div>
 
     <div class="footnotes-block">
-      <div class="fn"><b>12. Income:</b> Total monthly income from all sources</div>
-      <div class="fn"><b>13. Expenses:</b> Housing + Food + Transport + Others = ${rs(fmt_in(monthlyExpense), "#111", "7px")}/month</div>
-      <div class="fn"><b>14. Surplus:</b> Income &minus; Expenses &minus; EMI = ${rs(fmt_in(monthlyIncome), "#111", "7px")} &minus; ${rs(fmt_in(monthlyExpense), "#111", "7px")} &minus; ${rs(fmt_in(incomeExpense.monthlyEmi), "#111", "7px")} = ${rs(fmt_in(monthlySurplus), "#111", "7px")}/month</div>
-      <div class="fn"><b>15. Savings Rate:</b> (Surplus / Income) &times; 100 = ${pct(savingsRate)}</div>
-      <div class="fn"><b>16. Assets:</b> All resources owned with economic value = ${rs(fmt_cr(balanceSheet.totalAssets), "#111", "7px")}</div>
-      <div class="fn"><b>17. Liabilities:</b> All financial obligations = ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111", "7px")}</div>
-      <div class="fn"><b>18. Net Worth:</b> Total Assets &minus; Total Liabilities = ${rs(fmt_cr(balanceSheet.netWorth), "#111", "7px")}</div>
+      <div class="fn"><b>12. Income:</b> Annual income &divide; 12 = ${rs(fmt_cr(monthlyIncome * 12), "#111", "7px")} &divide; 12 = ${rs(fmt_in(monthlyIncome), "#111", "7px")}/month</div>
+      <div class="fn"><b>13. Expenses:</b> Housing + Food + Transport + Others = ${incomeExpense.expenseBreakdown.map((e) => rs(fmt_in(e.amount), "#111", "7px")).join(" + ")} = ${rs(fmt_in(monthlyExpense), "#111", "7px")}/month</div>
+      <div class="fn"><b>14. Surplus:</b> Income &minus; Expenses &minus; EMI = ${rs(fmt_in(monthlyIncome), "#111", "7px")} &minus; ${rs(fmt_in(monthlyExpense), "#111", "7px")} &minus; ${rs(fmt_in(monthlyEmi), "#111", "7px")} = ${rs(fmt_in(monthlySurplus), "#111", "7px")}/month (never below &#x20B9;0)</div>
+      <div class="fn"><b>15. Savings Rate:</b> (Surplus / Income) &times; 100 = (${rs(fmt_in(monthlySurplus), "#111", "7px")} / ${rs(fmt_in(monthlyIncome), "#111", "7px")}) &times; 100 = ${pct(savingsRate)}</div>
+      <div class="fn"><b>16. Assets:</b> Mutual Funds + Stocks + FDs + Gold + Cash = ${rs(fmt_cr(balanceSheet.totalAssets), "#111", "7px")}</div>
+      <div class="fn"><b>17. Liabilities:</b> Outstanding loan balances = ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111", "7px")}</div>
+      <div class="fn"><b>18. Net Worth:</b> Total Assets &minus; Total Liabilities = ${rs(fmt_cr(balanceSheet.totalAssets), "#111", "7px")} &minus; ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111", "7px")} = ${rs(fmt_cr(balanceSheet.netWorth), "#111", "7px")}</div>
+      <div class="fn"><b>19. EMI to Income:</b> (Monthly EMI &times; 12 / Annual Income) &times; 100 = ${pct(emiToIncomePct)}</div>
     </div>
     ${footer(3)}
   </div>`;
@@ -628,73 +830,66 @@ function page3(data: VelvetReportViewData): string {
 // ─── Page 4: Net Worth ────────────────────────────────────────────────────────
 function page4(data: VelvetReportViewData): string {
   const { currentQuarter, clientData, balanceSheet, netWorthPage } = data;
-  const nwPos = parseFloat(String(balanceSheet.qoqNwPct)) >= 0;
+  const assetVal = (name: string) => balanceSheet.assets.find((a) => a.name === name)?.value ?? 0;
 
-  const trendQoQ = (trend: { q: string; value: number }[]) => {
-    if (trend.length < 2) return { pct: "0.0", abs: 0, last: 0, prev: 0, lastQ: "", prevQ: "" };
-    const prev = trend[trend.length - 2]!;
-    const last = trend[trend.length - 1]!;
-    const p = prev.value ? (((last.value - prev.value) / prev.value) * 100).toFixed(1) : "0.0";
-    return { pct: p, abs: last.value - prev.value, last: last.value, prev: prev.value, lastQ: last.q, prevQ: prev.q };
-  };
+  const equityVal = assetVal("Mutual Funds") + assetVal("Stocks/Equity");
+  const debtVal = assetVal("Fixed Deposits");
+  const goldCashVal = assetVal("Gold") + assetVal("Cash & Savings");
+  const totalAssets = balanceSheet.totalAssets || (equityVal + debtVal + goldCashVal);
+  const growth10y = Math.pow(1 + RETURN, 10);
 
   const cats = [
-    { label: "Equity (MF + Direct)", trend: netWorthPage.equityTrend, color: NAVY },
-    { label: "Debt (FD + PPF/EPF)", trend: netWorthPage.debtTrend, color: GOLD },
-    { label: "Gold & Cash", trend: netWorthPage.goldCashTrend, color: "#D1D5DB" },
-  ] as const;
+    { label: "Equity (MF + Direct)", value: equityVal, color: NAVY, short: "Equity", desc: "Mutual Funds + Direct Stocks" },
+    { label: "Debt (FD)", value: debtVal, color: GOLD, short: "Debt", desc: "Fixed Deposits (FD)" },
+    { label: "Gold & Cash", value: goldCashVal, color: "#9CA3AF", short: "Gold & Cash", desc: "Gold + Cash/Bank holdings" },
+  ];
 
-  const catCards = cats.map(cat => {
-    const q = trendQoQ([...cat.trend]);
-    const td = [...cat.trend].map(p => ({ label: p.q, value: p.value }));
+  const catCards = cats.map((cat) => {
+    const sharePct = totalAssets > 0 ? (cat.value / totalAssets) * 100 : 0;
+    const barW = Math.max(0, Math.min(100, sharePct));
+    const val10y = cat.value * growth10y;
     return `
-        <div style="display: flex; flex-direction: column; min-height: 0;padding:12px;background:#F9FAFB;border:1px solid #F3F4F6;display:flex;flex-direction:column;gap:8px">
-          <div style="display:flex;justify-content:space-between">
-            <span style="font-size:9px;font-weight:700;color:${NAVY}">${cat.label}</span>
-            <span style="font-size:9px;color:${parseFloat(q.pct) >= 0 ? GREEN : RED};font-weight:700">${parseFloat(q.pct) >= 0 ? "+" : ""}${q.pct}% QoQ</span>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font-size:10px;font-weight:700;color:${NAVY}">${cat.label}</span>
+            <span style="font-size:9.5px;color:${GRAY}">${rs(fmt_cr(cat.value), "#111827")} &bull; ${sharePct.toFixed(1)}%</span>
           </div>
-          <div style="flex:1;display:flex;align-items:center;justify-content:center">
-            ${sparkline(td, cat.color, 400, 70, true)}
+          <div style="width:100%;height:10px;background:#E5E7EB;border-radius:999px;overflow:hidden">
+            <div style="width:${barW.toFixed(1)}%;height:100%;background:${cat.color};border-radius:999px"></div>
           </div>
-          <div style="font-size:7.5px;color:${GRAY};text-align:center">${q.prevQ}: ${rs(fmt_cr(q.prev * 100_000), GRAY)} &rarr; ${q.lastQ}: ${rs(fmt_cr(q.last * 100_000), GRAY)}</div>
+          <div style="font-size:8.5px;color:${GRAY}">In 10 years at ${pctRate(RETURN)} a year: ${rs(fmt_cr(val10y), "#111827")}</div>
         </div>`;
   }).join("");
 
   return `
   <div class="page">
     ${header(currentQuarter, clientData.name, clientData.age, clientData.city)}
-    <div class="">
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0">
       <div class="page-title">Net Worth</div>
       <div class="insight"><b>Executive Insight:</b> Diversified portfolio across asset classes at age ${clientData.age}.</div>
 
-      <div class="row2" style="min-height:0;margin-bottom:20px">
-        <div class="card" style="flex:1;text-align:center; background:rgba(249, 250, 251, 1) !important; display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:8px">
-          <div class="card-label">Current Net Worth<sup>19</sup></div>
-          <div style="font-size:48px;font-weight:700;color:rgba(30, 58, 95, 1);line-height:1">${rs(fmt_cr(balanceSheet.netWorth), NAVY)}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
-            <span class="${nwPos ? "badge-pos" : "badge-neg"}" style="font-size:9px;padding:2px 10px">${nwPos ? "↑" : "↓"} ${Math.abs(parseFloat(String(balanceSheet.qoqNwPct)))}%</span>
-            <span style="font-size:9px;color:${GRAY}">vs ${data.previousQuarter}</span>
-          </div>
-          <div style="font-size:8.5px;color:${GRAY};margin-top:4px">Previous Quarter: ${rs(fmt_cr(balanceSheet.netWorthPrevQ), GRAY)}</div>
+      <div class="row2" style="min-height:0;margin-bottom:24px">
+        <div class="card" style="flex:1;text-align:center;background:rgba(249, 250, 251, 1) !important;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:10px">
+          <div class="card-label">Current Net Worth<sup>20</sup></div>
+          <div style="font-size:48px;font-weight:700;color:${NAVY};line-height:1">${rs(fmt_cr(balanceSheet.netWorth), NAVY)}</div>
+          <div style="font-size:9px;color:${GRAY};margin-top:4px">Assets ${rs(fmt_cr(balanceSheet.totalAssets), "#111827")} &minus; Liabilities ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111827")}</div>
         </div>
-        <div class="card" style="flex:1;display:flex; background:rgba(249, 250, 251, 1) !important;flex-direction:column;padding:20px;justify-content:center">
-          <div class="card-label" style="margin-bottom:12px;text-align:left">Net Worth Distribution<sup>20</sup></div>
-          ${pieChart(netWorthPage.pieData, 110)}
+        <div class="card" style="flex:1;display:flex;background:rgba(249, 250, 251, 1) !important;flex-direction:column;padding:20px;justify-content:center">
+          <div class="card-label" style="margin-bottom:12px;text-align:left">Net Worth Distribution</div>
+          ${pieChart(netWorthPage.pieData, 118)}
         </div>
       </div>
 
-      <div class="section-title" style="margin-top:20px;margin-bottom:12px">Quarterly Performance Trends (Last 3 Quarters)</div>
-      <div style="display:grid;grid-template-columns:1fr;gap:16px;align-items:start">
+      <div class="section-title" style="margin-top:8px;margin-bottom:14px">Asset Allocation</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
         ${catCards}
       </div>
     </div>
 
-    <div style="padding-top: 24px">
-      <div class="fn"><b>19. Net Worth:</b> Total Assets &minus; Total Liabilities</div>
-      <div class="fn"><b>20. Asset Allocation:</b> Distribution shows percentage of net worth invested in each asset class. Trend lines estimated via deterministic backward simulation.</div>
-      <div class="fn">&bull; <b>Equity:</b> Mutual Funds + Direct Stocks</div>
-      <div class="fn">&bull; <b>Debt:</b> Fixed Deposits (FD)</div>
-      <div class="fn">&bull; <b>Gold & Cash:</b> Gold + Cash/Bank holdings</div>
+    <div style="flex-shrink:0;border-top:0.5px solid #E5E7EB;padding-top:10px;margin-top:16px">
+      <div class="fn"><b>20. Net Worth:</b> Total Assets &minus; Total Liabilities = ${rs(fmt_cr(balanceSheet.totalAssets), "#111827")} &minus; ${rs(fmt_cr(balanceSheet.totalLiabilities), "#111827")} = ${rs(fmt_cr(balanceSheet.netWorth), "#111827")}</div>
+      <div class="fn"><b>21. Asset Allocation:</b> Share of total assets held in each asset class. The 10-year figure applies the report's flat ${pctRate(RETURN)} portfolio return to today's value, with no new money added.</div>
+      ${cats.map((c) => `<div class="fn">&bull; <b>${c.short}:</b> ${c.desc} = ${rs(fmt_cr(c.value), "#111827")}</div>`).join("")}
     </div>
     ${footer(4)}
   </div>`;
@@ -717,17 +912,17 @@ function page5(data: VelvetReportViewData): string {
 
   const yrRows = yearlyGoalRequirements.map((r: YearlyGoalRequirement) => `
       <tr>
-        <td>${r.year}</td>
-        <td class="text-right">${rs(fmt_in(r.monthly_required), "#374151", "8px")}</td>
-        <td class="text-right">${rs(fmt_in(r.yearly_required), "#374151", "8px")}</td>
+        <td style="padding:4px;font-size:8.5px">${r.year}</td>
+        <td class="text-right" style="padding:4px;font-size:8.5px">${rs(fmt_in(r.monthly_required), "#374151", "8.5px")}</td>
+        <td class="text-right" style="padding:4px;font-size:8.5px">${rs(fmt_in(r.yearly_required), "#374151", "8.5px")}</td>
       </tr>`).join("");
 
   return `
-  <div class="page">
+  <div class="page" style="padding-bottom:18mm">
     ${header(currentQuarter, clientData.name, clientData.age, clientData.city)}
-    <div class="page-body page-body-with-footnotes">
-      <div class="page-title">Goals Planning</div>
-      <div class="insight"><b>Executive Insight:</b> Total goal funding requirement of ${rs(fmt_in(goalsTotal.monthlySavingsReq))}/month across ${goals.length} goals.</div>
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div class="page-title" style="padding-top:6px;padding-bottom:6px">Goals Planning</div>
+      <div class="insight" style="margin-bottom:8px"><b>Executive Insight:</b> Total goal funding requirement of ${rs(fmt_in(goalsTotal.monthlySavingsReq))}/month across ${goals.length} goals.</div>
 
       <table class="tbl" style="margin-bottom:6px">
         <thead>
@@ -736,9 +931,9 @@ function page5(data: VelvetReportViewData): string {
             <th style="width:22%">Goal Name</th>
             <th class="text-right" style="width:12%">Target Year</th>
             <th class="text-right" style="width:7%">Yrs</th>
-            <th class="text-right" style="width:16%">Monthly SIP\<sup>21</sup></th>
+            <th class="text-right" style="width:16%">Monthly SIP<sup>22</sup></th>
             <th class="text-right" style="width:16%">Yearly</th>
-            <th class="text-right" style="width:16%">Future Value<sup>22</sup></th>
+            <th class="text-right" style="width:16%">Future Value<sup>23</sup></th>
           </tr>
         </thead>
         <tbody>
@@ -755,13 +950,13 @@ function page5(data: VelvetReportViewData): string {
       </table>
 
       <div style="display:flex;flex-direction:column;flex:1;min-height:0">
-        <div class="section-title">Year-by-Year Savings Requirement</div>
-        <table class="tbl" style="height:100%">
+        <div class="section-title" style="margin:6px 0 4px">Year-by-Year Savings Requirement</div>
+        <table class="tbl">
           <thead>
             <tr>
-              <th style="width:20%">Year</th>
-              <th class="text-right" style="width:40%">Monthly Required</th>
-              <th class="text-right" style="width:40%">Yearly Required</th>
+              <th style="width:20%;padding:5px 4px;font-size:8.5px">Year</th>
+              <th class="text-right" style="width:40%;padding:5px 4px;font-size:8.5px">Monthly Required</th>
+              <th class="text-right" style="width:40%;padding:5px 4px;font-size:8.5px">Yearly Required</th>
             </tr>
           </thead>
           <tbody>${yrRows}</tbody>
@@ -769,12 +964,12 @@ function page5(data: VelvetReportViewData): string {
       </div>
     </div>
 
-    <div class="footnotes-block">
-      <div class="fn">Assumptions: Retirement Inflation<sup>24</sup> 6% | SIP Return 10% | Goal FV Growth 8%</div>
-      <div class="fn"><b>21. Monthly SIP:</b> PMT formula to accumulate future value at assumed returns and inflation</div>
-      <div class="fn"><b>22. Future Value:</b> Today's cost &times; (1 + inflation)^years, using the inflation rate saved on each goal</div>
-      <div class="fn"><b>23. Year-by-Year Requirement:</b> Aggregated monthly and yearly commitment across all active goals</div>
-      <div class="fn"><b>24. Inflation:</b> 6% annual cost-of-living increase applied to retirement goal; 8% growth rate applied to standard goals</div>
+    <div style="flex-shrink:0;border-top:0.5px solid #E5E7EB;padding-top:8px;margin-top:8px">
+      <div class="fn">Assumptions: SIP Return ${pctRate(FIRE_CONSTANTS.goal_sip_return)} a year | Goal inflation: Education, Marriage, Other 6% &bull; Home, Vehicle 5% &bull; Savings 0%</div>
+      <div class="fn"><b>22. Monthly SIP:</b> SIP = Net amount &times; r &divide; ((1 + r)^months &minus; 1), with r = ${pctRate(FIRE_CONSTANTS.goal_sip_return)} &divide; 12. Net amount = Future Value &minus; (Already saved &times; 1.10^years).</div>
+      <div class="fn"><b>23. Future Value:</b> Today's cost &times; (1 + goal inflation)^years, using the inflation rate saved on each goal.</div>
+      <div class="fn"><b>24. Year-by-Year Requirement:</b> Sum of SIPs across all goals still running that year. A goal's SIP stops in its target year, when the future value is paid out from the portfolio.</div>
+      <div class="fn"><b>25. Goal SIPs and F.I.R.E:</b> Goal SIPs are shown for planning only. They are not counted as expenses and do not change the F.I.R.E Number.</div>
     </div>
     ${footer(5)}
   </div>`;
@@ -782,11 +977,13 @@ function page5(data: VelvetReportViewData): string {
 
 // ─── Page 6: Insurance ────────────────────────────────────────────────────────
 function page6(data: VelvetReportViewData): string {
-  const { currentQuarter, clientData, insurance, summaryQuarter } = data;
+  const { currentQuarter, clientData, insurance, incomeExpense, summaryQuarter } = data;
   const termGap = insurance.termLife.gap > 0;
   const healthGap = insurance.health.gap > 0;
   const termTarget = Math.max(insurance.termLife.recommended, insurance.termLife.have);
   const healthTarget = Math.max(insurance.health.recommended, insurance.health.have);
+  const annualIncome = incomeExpense.monthlyIncome * 12;
+  const termMult = clientData.age <= 30 ? 30 : clientData.age <= 40 ? 20 : clientData.age <= 50 ? 15 : 10;
 
   return `
   <div class="page">
@@ -867,13 +1064,12 @@ function page6(data: VelvetReportViewData): string {
         </div>
       </div>
 
-      <div style="margin:16px">
-        <div class="fn" >&bull; Term Life = Age-based income multiplier (10x - 30x)</div>
-        <div class="fn" >&bull; Health = Age-based minimum cover (₹10L - ₹40L)</div>
-        <div class="fn" ><b>25. Term Life Recommended:</b> Coverage based on age: 30x Annual Income (Age 20-30), 20x (31-40), 15x (41-50), and 10x (50+).</div>
-        <div class="fn" ><b>26. Health Recommended:</b> Coverage based on age: ₹10L (Age 20-30), ₹15L (31-40), ₹25L (41-50), and ₹40L (51+).</div>
-        <div class="fn" ><b>27. Super Top-up:</b> Additional health coverage after base sum exhausts. Recommendation assumes family floater cover.</div>
-        <div class="fn" ><b>28. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases. Recommended at ₹50L standard.</div>
+      <div style="margin:12px 16px">
+        <div class="fn"><b>26. Term Life Recommended:</b> Annual income &times; age multiplier: 30x (age 20-30), 20x (31-40), 15x (41-50), 10x (50+). For you: ${rs(fmt_cr(annualIncome), "#111", "7px")} &times; ${termMult} = ${rs(fmt_cr(insurance.termLife.recommended), "#111", "7px")}</div>
+        <div class="fn"><b>27. Health Recommended:</b> Age-based minimum cover: &#x20B9;10L (age 20-30), &#x20B9;15L (31-40), &#x20B9;25L (41-50), &#x20B9;40L (51+). For age ${clientData.age}: ${rs(fmt_cr(insurance.health.recommended), "#111", "7px")}</div>
+        <div class="fn"><b>28. Super Top-up:</b> Additional health coverage after the base sum is exhausted. Recommendation assumes family floater cover.</div>
+        <div class="fn"><b>29. Critical Illness Rider:</b> Lump-sum payout on diagnosis of specified serious diseases. Recommended at &#x20B9;50L standard.</div>
+        <div class="fn" style="margin-top:4px;padding-left:0;text-indent:0">This report is an illustrative projection based on the figures entered and the assumptions stated. It is not investment advice or a guarantee of returns. Mutual fund investments are subject to market risks; read all scheme related documents carefully.</div>
       </div>
 
       <div class="summary-box" style="margin:12px 0">
